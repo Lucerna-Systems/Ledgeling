@@ -24,12 +24,8 @@ including the M1 addendum). The `PERCH_RENDERER=small` variant has been removed.
 
 | Doc | Read when |
 |---|---|
-| [00-README.md](planning_files/00-README.md) | Orientation |
-| [01-product-brief.md](planning_files/01-product-brief.md) | Deciding *what* to build; scope disputes |
-| [02-technical-architecture.md](planning_files/02-technical-architecture.md) | Writing any code |
-| [03-pet-pack-spec.md](planning_files/03-pet-pack-spec.md) | Anything touching pets or the pack format |
-| [04-awareness-and-behavior.md](planning_files/04-awareness-and-behavior.md) | Signals, energy/mood, nudges |
-| [05-user-stories.md](planning_files/05-user-stories.md) | Every session — this is the backlog |
+| [00-PLAN.md](planning_files/00-PLAN.md) | Every session — plan, MVP status, what's left |
+| [verification.md](docs/verification.md) | What has actually been run; keep it honest |
 
 ## Architecture in one page
 

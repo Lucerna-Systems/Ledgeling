@@ -4,7 +4,8 @@
 
 The directory is `lupetty`; the product is **Perch**. M0-M4 are implemented as far
 as code goes; `docs/verification.md` records what has actually been run and what
-has not. The planning docs in `planning_files/` remain the authority on intent.
+has not. `planning_files/00-PLAN.md` is the consolidated plan and the authority
+on intent.
 
 - `src-tauri/src/world/` surface extraction, the traversal graph, scan diffing.
 - `src-tauri/src/pet/` pet runtime, locomotion classes, pathfinding, behavior FSM.
