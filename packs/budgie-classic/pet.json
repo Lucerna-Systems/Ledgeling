@@ -1,0 +1,128 @@
+{
+  "format": 1,
+  "id": "com.perch.budgie-classic",
+  "name": "Pip the Budgie",
+  "author": "Perch",
+  "version": "1.0.0",
+  "description": "A small green budgie who flits between window tops, preens, and sings when you take a break.",
+  "license": "CC-BY-4.0",
+  "tags": ["bird", "small", "cheerful"],
+  "sprite": {
+    "width": 48,
+    "height": 48,
+    "anchor": { "x": 0.5, "y": 1.0 },
+    "default_facing": "right",
+    "surface_orientation": "upright"
+  },
+  "locomotion": {
+    "class": "flier",
+    "surfaces": ["window_top", "monitor_top", "taskbar_top"],
+    "speed": { "surface": 45, "air": 220 },
+    "jump": { "enabled": false },
+    "gravity": 0.0,
+    "air_style": "flap_arc",
+    "min_surface_length": 40
+  },
+  "animations": {
+    "idle": { "file": "sprites/idle.png", "frames": 4, "fps": 6 },
+    "move": { "file": "sprites/move.png", "frames": 6, "fps": 14 },
+    "land": { "file": "sprites/land.png", "frames": 3, "fps": 16, "loop": false },
+    "takeoff": { "file": "sprites/takeoff.png", "frames": 3, "fps": 14, "loop": false },
+    "preen": { "file": "sprites/preen.png", "frames": 4, "fps": 8 },
+    "sleep": { "file": "sprites/sleep.png", "frames": 2, "fps": 2 },
+    "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
+    "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false }
+  },
+  "behavior": {
+    "initial": "perch",
+    "idle_wander_chance": 0.3,
+    "states": {
+      "perch": {
+        "clip": "idle",
+        "duration": [6, 20],
+        "transitions": [
+          { "to": "preen", "weight": 3 },
+          { "to": "relocate", "weight": 2 },
+          { "to": "sing", "weight": 1 },
+          { "to": "restless", "weight": 4, "when": "session_minutes > 45" },
+          { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
+          { "to": "doze", "weight": 4, "when": "energy < 0.25" }
+        ]
+      },
+      "preen": {
+        "clip": "preen",
+        "duration": [3, 6],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "relocate": {
+        "clip": "move",
+        "action": "move_to_random_surface",
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "restless": {
+        "clip": "move",
+        "action": "patrol_current_surface",
+        "duration": [3, 7],
+        "transitions": [
+          { "to": "relocate", "weight": 2 },
+          { "to": "perch", "weight": 1 }
+        ]
+      },
+      "attend": {
+        "clip": "alert",
+        "duration": [4, 9],
+        "action": "move_to_nearest_surface",
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "doze": {
+        "clip": "sleep",
+        "duration": [30, 120],
+        "transitions": [{ "to": "greet", "weight": 1, "when": "idle_seconds < 10" }]
+      },
+      "greet": {
+        "clip": "happy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "sing": {
+        "clip": "happy",
+        "duration": [2, 4],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "startled": {
+        "clip": "takeoff",
+        "duration": [0.5, 1],
+        "action": "move_to_nearest_surface",
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "peek": {
+        "clip": "alert",
+        "duration": [1, 2],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "held": {
+        "clip": "alert",
+        "duration": [0.5, 0.5],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      }
+    }
+  },
+  "reactions": [
+    { "on": "surface_lost", "goto": "startled", "priority": 100 },
+    { "on": "surface_moved_fast", "goto": "startled", "priority": 100, "cooldown": 4 },
+    { "on": "grabbed", "goto": "held", "priority": 90 },
+    { "on": "clicked", "goto": "sing", "priority": 90, "cooldown": 3 },
+    { "on": "long_session", "goto": "attend", "priority": 50, "cooldown": 900 },
+    { "on": "break_taken", "goto": "sing", "priority": 40, "cooldown": 300 },
+    { "on": "user_idle_long", "goto": "doze", "priority": 30 },
+    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
+    { "on": "cursor_nearby", "goto": "peek", "priority": 20, "cooldown": 15 }
+  ],
+  "personality": {
+    "activity": 0.7,
+    "boldness": 0.4,
+    "sociability": 0.8,
+    "sleepiness": 0.3,
+    "curiosity": 0.6
+  }
+}

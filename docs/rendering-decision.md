@@ -29,3 +29,43 @@ The bird's PNG strip was visually inspected in the native release window. The co
 - [Tauri Vite configuration](https://v2.tauri.app/start/frontend/vite/)
 - [Tauri window builder](https://docs.rs/tauri/latest/tauri/webview/struct.WebviewWindowBuilder.html)
 - [Apple window geometry API](https://developer.apple.com/documentation/coregraphics/cgwindowlistcopywindowinfo(_:_:))
+
+---
+
+## M1 addendum — one overlay per monitor
+
+The M0 comparison chose the overlay. M1 needed the pet to use more than the
+primary display, and the overlay had to change shape to allow it: instead of a
+single window over the primary display, Perch now creates **one transparent
+overlay per monitor**, each covering that monitor and drawing in that monitor's
+own logical coordinates.
+
+Why this rather than one window spanning the whole virtual desktop:
+
+- Mixed DPI stays correct without any per-pixel fudging. Each overlay converts
+  physical to logical using its own scale factor, which is the boundary the
+  architecture doc already asked for.
+- Click-through is decided per monitor, so a pet on the left screen does not make
+  the right screen interactive.
+- A monitor being unplugged closes one window rather than resizing everything.
+
+What did not change: no window is repositioned per frame, so the measurement that
+drove the M0 decision still holds. Pets moving between monitors are simply drawn
+by a different overlay; the Rust side does not care, because it works in
+virtual-desktop physical pixels throughout.
+
+The `PERCH_RENDERER=small` variant has been **removed**. It existed to answer the
+M0 question, that question is answered, and keeping an unused renderer that could
+not handle multiple monitors was a liability rather than an option. `PetSurface`
+remains the boundary, so a different renderer can still be dropped in.
+
+`scripts/benchmark.py` was rewritten accordingly: it no longer selects a renderer,
+and it now measures the whole process tree by default rather than only the Rust
+process, because the budget is about what the machine pays.
+
+## Screens that cannot be read
+
+A locked session or a sleeping display makes macOS report **no screens at all**.
+The engine treats that as a suspend trigger and keeps the last known monitor
+geometry, rather than concluding the desktop is empty and stranding every pet.
+This was found by running the app while the machine was locked.

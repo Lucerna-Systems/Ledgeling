@@ -1,0 +1,5 @@
+The sprite art, preview image and manifest in this pack are released under
+Creative Commons Attribution 4.0 International (CC-BY-4.0).
+
+You may copy, modify and redistribute them, including commercially, as long as
+you credit the Perch project. Full text: https://creativecommons.org/licenses/by/4.0/

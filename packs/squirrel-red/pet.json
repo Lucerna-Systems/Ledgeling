@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "id": "com.perch.squirrel-red",
+  "name": "Nutkin the Squirrel",
+  "author": "Perch",
+  "version": "1.0.0",
+  "description": "Runs along window tops, climbs their sides, leaps gaps up to 180 px, and falls when a window closes under them.",
+  "license": "CC-BY-4.0",
+  "tags": ["mammal", "climber", "busy"],
+  "sprite": {
+    "width": 48,
+    "height": 48,
+    "anchor": { "x": 0.5, "y": 1.0 },
+    "default_facing": "right",
+    "surface_orientation": "align"
+  },
+  "locomotion": {
+    "class": "climber",
+    "surfaces": ["window_any", "monitor_any", "taskbar_top"],
+    "speed": { "surface": 110, "climb": 85, "air": 0 },
+    "jump": { "enabled": true, "max_gap": 180, "arc_height": 70 },
+    "gravity": 1.0,
+    "min_surface_length": 60
+  },
+  "animations": {
+    "idle": { "file": "sprites/idle.png", "frames": 4, "fps": 6 },
+    "move": { "file": "sprites/move.png", "frames": 6, "fps": 14 },
+    "climb": { "file": "sprites/climb.png", "frames": 6, "fps": 12 },
+    "jump": { "file": "sprites/jump.png", "frames": 4, "fps": 12, "loop": false },
+    "fall": { "file": "sprites/fall.png", "frames": 2, "fps": 8 },
+    "land": { "file": "sprites/land.png", "frames": 3, "fps": 16, "loop": false },
+    "sleep": { "file": "sprites/sleep.png", "frames": 2, "fps": 2 },
+    "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
+    "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false }
+  },
+  "behavior": {
+    "initial": "rest",
+    "idle_wander_chance": 0.5,
+    "states": {
+      "rest": {
+        "clip": "idle",
+        "duration": [4, 12],
+        "transitions": [
+          { "to": "forage", "weight": 4 },
+          { "to": "explore", "weight": 3 },
+          { "to": "doze", "weight": 5, "when": "idle_seconds > 240" },
+          { "to": "doze", "weight": 3, "when": "energy < 0.2" }
+        ]
+      },
+      "forage": {
+        "clip": "move",
+        "action": "patrol_current_surface",
+        "duration": [2, 6],
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "explore": {
+        "clip": "move",
+        "action": "move_to_random_surface",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "fret": {
+        "clip": "alert",
+        "duration": [3, 8],
+        "action": "move_to_nearest_surface",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "doze": {
+        "clip": "sleep",
+        "duration": [30, 120],
+        "transitions": [{ "to": "greet", "weight": 1, "when": "idle_seconds < 10" }]
+      },
+      "greet": {
+        "clip": "happy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "startled": {
+        "clip": "alert",
+        "duration": [1, 2],
+        "action": "move_to_nearest_surface",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "held": {
+        "clip": "alert",
+        "duration": [0.5, 0.5],
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      }
+    }
+  },
+  "reactions": [
+    { "on": "surface_lost", "goto": "startled", "priority": 100 },
+    { "on": "surface_moved_fast", "goto": "startled", "priority": 100, "cooldown": 4 },
+    { "on": "grabbed", "goto": "held", "priority": 90 },
+    { "on": "clicked", "goto": "greet", "priority": 90, "cooldown": 3 },
+    { "on": "long_session", "goto": "fret", "priority": 50, "cooldown": 900 },
+    { "on": "break_taken", "goto": "greet", "priority": 40, "cooldown": 300 },
+    { "on": "user_idle_long", "goto": "doze", "priority": 30 },
+    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 }
+  ],
+  "personality": {
+    "activity": 0.9,
+    "boldness": 0.6,
+    "sociability": 0.4,
+    "sleepiness": 0.2,
+    "curiosity": 0.9
+  }
+}

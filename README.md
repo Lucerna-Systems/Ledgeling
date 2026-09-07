@@ -1,79 +1,143 @@
 # Perch
 
-A little company for your desktop. Perch is a Vue 3 + TypeScript + Tailwind CSS + Tauri 2 app with a Rust-owned desktop bird.
+A little company for your desktop. A bird, a squirrel or a gecko lives on the
+edges of your open windows, notices roughly how your session is going, and never
+sends anything anywhere.
+
+Vue 3 · TypeScript · Tailwind 4 · Tauri 2 · Rust.
 
 ## Run it
 
-Requirements: Node.js 22.12+ (or a compatible newer version), Rust stable, and the native [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS, install Xcode Command Line Tools.
+Requirements: Node.js 22.12+, Rust stable, and the native
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS,
+install the Xcode Command Line Tools.
 
 ```sh
 npm install
 npm run tauri dev
 ```
 
-The native app opens a companion screen and a transparent bird overlay. Pip automatically flies between visible window tops on the **primary display**. Move or close a supporting window and Pip rides it or finds another perch. Open a normal, non-maximized window with some space above its title bar to give Pip somewhere to land.
+The companion window opens and a transparent overlay appears on each display.
+Your first pet is a budgie; open **Pet packs** to bring out the squirrel or the
+gecko as well.
 
-- Drag Pip to pick them up; release to let them find a perch.
-- Right-click Pip to say hello.
-- Use **Find a new perch**, **Pause**, **Hide Pip**, and the flight-speed slider in the companion screen.
-- **Desktop view** shows live window geometry and can draw available perches on the desktop.
-- While Perch is focused, **Cmd/Ctrl+Shift+H** shows/hides Pip and **Cmd/Ctrl+Shift+P** pauses/resumes. **Cmd/Ctrl+1** reopens the companion screen.
-- Closing the companion screen leaves Pip running. Reopen it from the menu-bar icon. Quit from that menu or **Quiet by design → Quit Perch**.
-
-`npm run dev` starts a browser preview at http://127.0.0.1:1420. Desktop controls require the native app; browser preview does not pretend to enumerate windows.
+- **Drag** a pet to pick it up; let go and it finds its way back.
+- **Click** a pet to say hello.
+- **Pet packs** installs, exports, removes and scaffolds packs. Drop a `.petpack`
+  file or a pack folder onto the window to install it.
+- **Desktop view** draws the live surface map, and can draw it over your real
+  windows.
+- **Your day** shows what Perch has noticed and lets you retune or disable it.
+- **Pet Lab** is for pack authors: live reload, a validator, scenario buttons.
+- **Quiet by design** is the plain-language privacy screen.
+- Cmd/Ctrl+Shift+H shows or hides the pets, Cmd/Ctrl+Shift+P pauses, Cmd/Ctrl+1
+  reopens the companion window. Closing that window leaves the pets running;
+  quit from the menu-bar icon.
 
 ## Build and check
 
 ```sh
-npm run build
-npm test
-npm run check
+npm run build      # type-check and build the frontend
+npm test           # 74 Rust tests
+npm run check      # frontend build plus Clippy with warnings denied
 npm run tauri build
 ```
 
-On this Mac, the application bundle is written to `src-tauri/target/release/bundle/macos/Perch.app`. Open it normally, or:
+On macOS the bundle lands in `src-tauri/target/release/bundle/macos/Perch.app`.
+It is an unsigned local build, not a notarised release. On Windows, build the
+installers with `npm run tauri build -- --bundles nsis,msi`; they are configured
+as a per-user install and are not in the default target list, because those
+bundlers only run on Windows.
 
-```sh
-open src-tauri/target/release/bundle/macos/Perch.app
-```
+## What is built
 
-This is a local, unsigned development build, not a signed or notarized public release. No development server is required by the release app.
+Everything in milestones M0–M4 that is code:
 
-`npm run check` builds/type-checks the frontend and runs Rust Clippy with warnings treated as errors. `npm test` runs focused Rust tests for occlusion, clipping, DPI geometry, landing, moving/closed windows, lost destinations, dragging, pause, and alpha hit-testing.
+- **The surface graph.** Every visible window edge — top, bottom, left, right —
+  with z-order occlusion subtracted, plus monitor edges and the taskbar/dock line,
+  connected as contiguous and jumpable edges and diffed between scans.
+- **Four locomotion classes.** `flier` ignores the graph and flies; `climber` A\*s
+  over contiguous and jumpable edges, rounds corners, leaps up to `max_gap` and
+  falls when its surface goes; `walker` uses connected horizontal edges only;
+  `hopper` is a walker with short jumps.
+- **Pets ride windows.** A pet holds `(surface, t)`, so dragging the window it is
+  standing on carries it along, and a fast drag startles it.
+- **Recovery.** A closed window makes a flier take off and a climber fall to the
+  first surface below. A pet is never left floating, off-screen, or on NaN.
+- **Multiple monitors,** including negative coordinates and mixed DPI, with an
+  overlay per display. Unplugging one does not strand anybody.
+- **Suspend.** A fullscreen app, a locked session or a sleeping display suspends
+  scanning and rendering.
+- **Pet packs.** The full v1 manifest, a validator whose every message names the
+  file, the JSON path, the problem and the expectation, a declarative behavior
+  machine with a non-Turing-complete condition grammar, `.petpack` install and
+  export, a pack browser, scaffolding, live reload, a debug overlay and scenario
+  buttons.
+- **Three species, no engine changes between them.** Budgie (flier, window tops),
+  squirrel (climber, everything, leaps 180 px), gecko (climber, window sides only,
+  two sprite strips and under forty lines of JSON — the format's own acceptance
+  test).
+- **Awareness.** Idle detection, process-name→category mapping with a 5 s
+  debounce, energy and mood on a minutes-long timescale, session and break
+  tracking, and a three-tier nudge ladder that is body language only.
+- **Settings and lifecycle.** Persistence with corrupt-file recovery, a tray icon,
+  opt-in launch at login, and a clean quit.
 
-## MVP scope
+## What is not
 
-This implements the **M0 desktop-bird proof**, with the interaction and lifecycle controls needed to use it. The supplied roadmap remains in [planning_files](planning_files/00-README.md).
+- **Windows has never been run.** The Win32 adapter is written to the documented
+  APIs but has not been compiled or tested; this was developed on a Mac. Perch on
+  Windows should be treated as unreviewed code until somebody runs it.
+- **No signing or notarisation.** No certificate is available, so bundles are
+  unsigned. On Windows, SmartScreen will warn about an unknown publisher until the
+  installer builds reputation or is signed; some antivirus tools flag unsigned
+  Rust binaries that create always-on-top windows. Both are expected for an
+  unsigned build; the fix is a certificate, not a code change.
+- **The performance budget is not re-certified** for this build, and the
+  eight-hour soak has not been run. `scripts/benchmark.py` and `scripts/soak.py`
+  are there to do both.
+- **Nobody outside the project has shipped a pack yet,** and the authoring guide
+  has not been tested on an actual non-programmer. Both are M2/M4 exit criteria
+  that need a second person.
+- **No release has been published.**
 
-Working here: macOS real window geometry, one bundled bird, transparent click-through overlay, animated flights, live top-edge detection, primary-display scale conversion, pause/hide, drag, menu-bar controls, and debug surfaces.
+`docs/verification.md` is the full account of what has and has not been run.
 
-Not implemented: Windows native window enumeration, multiple-monitor traversal, squirrels/climbing, installable packs, awareness, persistent preferences, automatic fullscreen/lock suspension, or distribution/signing. Other platforms currently have a desktop-edge fallback and have not been built or runtime-verified. This does **not** claim M1–M4 completion.
+## How it is put together
 
-The Mac adapter was added to make the requested MVP run on the available development machine; it does not establish cross-platform parity. Keep the Windows-first roadmap for future product work.
+Rust owns all truth. The webview draws a sprite at a position it was told, and
+sends pointer events back; it never decides where a pet is.
 
-## How it works
+| Path | What lives there |
+|---|---|
+| `src-tauri/src/world/` | Geometry, surface extraction with occlusion, the traversal graph, scan diffing |
+| `src-tauri/src/pet/` | Pet runtime, per-class locomotion, A\* pathfinding, the behavior machine |
+| `src-tauri/src/packs/` | Manifest reading, human-readable validation, the condition grammar, install and scaffolding |
+| `src-tauri/src/awareness/` | Idle and session tracking, process→category mapping, the nudge ladder |
+| `src-tauri/src/platform/` | Every OS call, behind one trait, with macOS, Windows and mock implementations |
+| `src-tauri/src/engine.rs` | The headless core: no Tauri, no windows, fully testable |
+| `src-tauri/src/app.rs` | Tauri wiring: windows, commands, menus, the update loop |
+| `src/` | The companion UI and the overlay renderer |
+| `packs/` | The three bundled first-party packs |
+| `schema/` | The published JSON Schema for `pet.json` |
 
-- `src-tauri/src/platform/`: OS queries behind `Platform`. The Mac adapter extracts only geometry, window IDs, layer and opacity from CoreGraphics. It never reads window titles or captures the screen. Cursor position/button state are used only for pet interactions.
-- `src-tauri/src/world.rs`: front-to-back occlusion subtraction, visible top edges, and a permanent desktop-edge fallback.
-- `src-tauri/src/pet.rs`: authoritative position, flight, `(owner, t)` anchoring, recovery, and interaction state.
-- `src-tauri/src/windows_mgr.rs`: renderer boundary and alpha hit-testing from the actual sprite pixels.
-- `src/pet/`: rendering-only webview. The companion controls and live geometry view are in `src/Companion.vue`.
-- `public/idle.png`, `public/move.png`: original four-frame bird sprite strips. `scripts/make_sprites.py` reproduces the art and its Rust alpha masks (requires Pillow).
+Coordinates are physical pixels in virtual-desktop space throughout, converted to
+logical only at the window API boundary.
 
-Runtime data stays in memory. No accounts, telemetry, network services, window contents, or keystroke collection. Tauri capabilities allow only local event subscriptions; application commands are implemented in Rust. Runtime errors are shown in the companion screen.
+## Making a pet
 
-## Rendering spike
+Read [docs/pack-authoring.md](docs/pack-authoring.md). It is written for someone
+who can draw and edit JSON but cannot program, and the whole format is designed
+around that person finishing in under an hour.
 
-The MVP defaults to a transparent primary-display overlay. `PERCH_RENDERER=small npm run tauri dev` enables the alternative 128×128 moving window for development comparison. Desktop debug lines are intended for the overlay renderer.
+`python3 scripts/make_packs.py` redraws the bundled sprite art (needs Pillow).
 
-The benchmark runs a fixed 60 Hz path and captures native-process CPU/RSS once a second:
+## Privacy
 
-```sh
-npm run tauri build
-python3 scripts/benchmark.py small 600
-python3 scripts/benchmark.py overlay 600
-```
+Nothing leaves your machine, and there is no code in the build that could send it.
+Window titles are never read. See [docs/privacy.md](docs/privacy.md) — and note
+that `src-tauri/tests/privacy.rs` fails the build if any of that stops being true.
 
-Reports are written to `docs/benchmark-small.json` and `docs/benchmark-overlay.json`. The sampler uses macOS `ps` and excludes WebKit helper and WindowServer costs. See [the architecture decision](docs/rendering-decision.md) for results and limitations.
+## Environment variables
 
-For local verification, `PERCH_START_HIDDEN=1` starts with Pip hidden and `PERCH_DIAGNOSTICS=1` prints a geometry-count/scan-time summary to stderr every five seconds. Both are off by default.
+- `PERCH_DIAGNOSTICS=1` prints a scan/state summary to stderr every five seconds.

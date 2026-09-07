@@ -1,0 +1,287 @@
+//! Win32 adapter. It reads window geometry, z-order, idle time and the
+//! foreground process's executable name. It never asks for a window title,
+//! never captures the screen, and never installs an input hook.
+//!
+//! Not exercised on the development machine this was written on; see
+//! docs/verification.md for what has and has not been run on real hardware.
+use super::{Platform, ProcessInfo};
+use crate::world::{MonitorInfo, Point, Rect, WindowInfo};
+use std::sync::{Mutex, OnceLock};
+
+type Handle = isize;
+type Bool = i32;
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct RectW {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct PointW {
+    x: i32,
+    y: i32,
+}
+#[repr(C)]
+struct LastInputInfo {
+    size: u32,
+    time: u32,
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn EnumWindows(callback: extern "system" fn(Handle, isize) -> Bool, param: isize) -> Bool;
+    fn IsWindowVisible(window: Handle) -> Bool;
+    fn IsIconic(window: Handle) -> Bool;
+    fn GetWindowLongPtrW(window: Handle, index: i32) -> isize;
+    fn GetWindowRect(window: Handle, rect: *mut RectW) -> Bool;
+    fn GetForegroundWindow() -> Handle;
+    fn GetShellWindow() -> Handle;
+    fn GetWindowThreadProcessId(window: Handle, pid: *mut u32) -> u32;
+    fn GetLastInputInfo(info: *mut LastInputInfo) -> Bool;
+    fn GetCursorPos(point: *mut PointW) -> Bool;
+    fn GetAncestor(window: Handle, flags: u32) -> Handle;
+}
+#[link(name = "kernel32")]
+extern "system" {
+    fn GetTickCount() -> u32;
+    fn OpenProcess(access: u32, inherit: Bool, pid: u32) -> Handle;
+    fn CloseHandle(handle: Handle) -> Bool;
+    fn QueryFullProcessImageNameW(
+        process: Handle,
+        flags: u32,
+        buffer: *mut u16,
+        size: *mut u32,
+    ) -> Bool;
+}
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmGetWindowAttribute(
+        window: Handle,
+        attribute: u32,
+        value: *mut std::ffi::c_void,
+        size: u32,
+    ) -> i32;
+}
+
+const GWL_EXSTYLE: i32 = -20;
+const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
+const WS_EX_NOACTIVATE: isize = 0x0800_0000;
+/// `GetWindowRect` includes invisible resize borders; pets would perch several
+/// pixels off the visual edge without this.
+const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
+/// Without the cloak check, closed UWP shells appear as phantom windows.
+const DWMWA_CLOAKED: u32 = 14;
+const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+const GA_ROOT: u32 = 2;
+const MINIMUM_WIDTH: f64 = 80.;
+const MINIMUM_HEIGHT: f64 = 40.;
+
+pub struct NativePlatform;
+impl Default for NativePlatform {
+    fn default() -> Self {
+        NativePlatform
+    }
+}
+
+fn monitor_cache() -> &'static Mutex<Vec<MonitorInfo>> {
+    static CACHE: OnceLock<Mutex<Vec<MonitorInfo>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+struct Collector {
+    windows: Vec<WindowInfo>,
+}
+
+extern "system" fn collect(window: Handle, param: isize) -> Bool {
+    // EnumWindows walks top-level windows in z-order, front to back.
+    let collector = unsafe { &mut *(param as *mut Collector) };
+    unsafe {
+        if IsWindowVisible(window) == 0 || GetAncestor(window, GA_ROOT) != window {
+            return 1;
+        }
+        let style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+        if style & WS_EX_TOOLWINDOW != 0 || style & WS_EX_NOACTIVATE != 0 {
+            return 1;
+        }
+        let mut cloaked: u32 = 0;
+        let cloak_result = DwmGetWindowAttribute(
+            window,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut u32 as *mut std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+        if cloak_result == 0 && cloaked != 0 {
+            return 1;
+        }
+        let mut bounds = RectW::default();
+        let framed = DwmGetWindowAttribute(
+            window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut bounds as *mut RectW as *mut std::ffi::c_void,
+            std::mem::size_of::<RectW>() as u32,
+        );
+        if framed != 0 && GetWindowRect(window, &mut bounds) == 0 {
+            return 1;
+        }
+        let rect = Rect::new(
+            bounds.left as f64,
+            bounds.top as f64,
+            (bounds.right - bounds.left) as f64,
+            (bounds.bottom - bounds.top) as f64,
+        );
+        if rect.width < MINIMUM_WIDTH || rect.height < MINIMUM_HEIGHT {
+            return 1;
+        }
+        let z_index = collector.windows.len();
+        collector.windows.push(WindowInfo {
+            id: window as u64,
+            rect,
+            z_index,
+            is_minimized: IsIconic(window) != 0,
+            monitor_id: monitor_for(rect),
+        });
+    }
+    1
+}
+
+fn monitor_for(rect: Rect) -> u64 {
+    monitor_cache()
+        .lock()
+        .ok()
+        .and_then(|monitors| {
+            monitors
+                .iter()
+                .find(|m| m.bounds.contains(rect.center()))
+                .or_else(|| monitors.first())
+                .map(|m| m.id)
+        })
+        .unwrap_or(0)
+}
+
+impl Platform for NativePlatform {
+    fn enumerate_windows(&self) -> Result<Vec<WindowInfo>, String> {
+        let mut collector = Collector {
+            windows: Vec::new(),
+        };
+        let ok = unsafe { EnumWindows(collect, &mut collector as *mut Collector as isize) };
+        if ok == 0 && collector.windows.is_empty() {
+            return Err("Windows could not list open windows. Using the desktop edge.".into());
+        }
+        collector.windows.retain(|w| !w.is_minimized);
+        Ok(collector.windows)
+    }
+
+    fn idle_seconds(&self) -> Result<f64, String> {
+        let mut info = LastInputInfo {
+            size: std::mem::size_of::<LastInputInfo>() as u32,
+            time: 0,
+        };
+        if unsafe { GetLastInputInfo(&mut info) } == 0 {
+            return Ok(0.);
+        }
+        // Both values are 32-bit tick counts that wrap about every 49 days;
+        // wrapping subtraction gives the right answer across the wrap.
+        let now = unsafe { GetTickCount() };
+        Ok(now.wrapping_sub(info.time) as f64 / 1000.)
+    }
+
+    fn foreground_process(&self) -> Result<Option<ProcessInfo>, String> {
+        unsafe {
+            let window = GetForegroundWindow();
+            if window == 0 || window == GetShellWindow() {
+                return Ok(None);
+            }
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(window, &mut pid);
+            if pid == 0 {
+                return Ok(None);
+            }
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process == 0 {
+                return Ok(None);
+            }
+            let mut buffer = [0_u16; 512];
+            let mut size = buffer.len() as u32;
+            // The executable path, not the window title. Only the file stem is
+            // kept, and only long enough to map it to a category.
+            let ok = QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut size);
+            CloseHandle(process);
+            if ok == 0 {
+                return Ok(None);
+            }
+            let path = String::from_utf16_lossy(&buffer[..size as usize]);
+            let name = path
+                .rsplit(['\\', '/'])
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches(".exe")
+                .to_lowercase();
+            Ok((!name.is_empty()).then_some(ProcessInfo { name, pid }))
+        }
+    }
+
+    fn monitors(&self) -> Result<Vec<MonitorInfo>, String> {
+        let cache = monitor_cache()
+            .lock()
+            .map_err(|_| "Monitor geometry is unavailable")?;
+        if cache.is_empty() {
+            Err("No monitor geometry has been reported yet".into())
+        } else {
+            Ok(cache.clone())
+        }
+    }
+
+    fn set_monitors(&self, monitors: Vec<MonitorInfo>) {
+        if let Ok(mut cache) = monitor_cache().lock() {
+            *cache = monitors;
+        }
+    }
+
+    fn fullscreen_app_active(&self) -> Result<bool, String> {
+        let monitors = self.monitors().unwrap_or_default();
+        if monitors.is_empty() {
+            return Ok(false);
+        }
+        unsafe {
+            let window = GetForegroundWindow();
+            if window == 0 || window == GetShellWindow() {
+                return Ok(false);
+            }
+            let mut bounds = RectW::default();
+            if GetWindowRect(window, &mut bounds) == 0 {
+                return Ok(false);
+            }
+            let rect = Rect::new(
+                bounds.left as f64,
+                bounds.top as f64,
+                (bounds.right - bounds.left) as f64,
+                (bounds.bottom - bounds.top) as f64,
+            );
+            // A foreground window covering a whole monitor, taskbar included,
+            // is the observable signature of an exclusive or borderless game.
+            Ok(monitors.iter().any(|m| {
+                (rect.x - m.bounds.x).abs() < 2.
+                    && (rect.y - m.bounds.y).abs() < 2.
+                    && (rect.width - m.bounds.width).abs() < 2.
+                    && (rect.height - m.bounds.height).abs() < 2.
+            }))
+        }
+    }
+
+    fn cursor(&self) -> Option<Point> {
+        let mut point = PointW::default();
+        (unsafe { GetCursorPos(&mut point) } != 0)
+            .then(|| Point::new(point.x as f64, point.y as f64))
+    }
+
+    fn mouse_down(&self) -> bool {
+        // Deliberately not implemented with GetAsyncKeyState: Perch installs no
+        // input hooks and reads no key state. The overlay's pointer capture
+        // reports the release instead.
+        false
+    }
+}

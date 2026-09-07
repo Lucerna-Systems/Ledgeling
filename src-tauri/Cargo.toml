@@ -5,12 +5,25 @@ description = "A little company for your desktop"
 authors = ["Perch contributors"]
 edition = "2021"
 
+[lib]
+name = "perch"
+path = "src/lib.rs"
+
+[[bin]]
+name = "perch"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
 serde_json = "1"
 
 [profile.release]

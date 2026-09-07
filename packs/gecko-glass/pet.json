@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "com.perch.gecko-glass",
+  "name": "Glass the Gecko",
+  "author": "Perch",
+  "version": "1.0.0",
+  "description": "Lives only on the vertical sides of windows, flat against the glass. Two sprite strips and twenty lines of settings.",
+  "license": "CC-BY-4.0",
+  "tags": ["reptile", "climber", "quiet"],
+  "sprite": {
+    "width": 48,
+    "height": 48,
+    "anchor": { "x": 0.5, "y": 1.0 },
+    "surface_orientation": "align"
+  },
+  "locomotion": {
+    "class": "climber",
+    "surfaces": ["window_vertical"],
+    "speed": { "surface": 60, "climb": 60 },
+    "jump": { "enabled": false },
+    "gravity": 1.0,
+    "min_surface_length": 60
+  },
+  "animations": {
+    "idle": { "file": "sprites/idle.png", "frames": 4, "fps": 4 },
+    "move": { "file": "sprites/move.png", "frames": 4, "fps": 10 }
+  }
+}

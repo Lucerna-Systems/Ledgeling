@@ -4,9 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-A working macOS M0 MVP is scaffolded with Vue 3, TypeScript, Tailwind 4, Tauri 2, and Rust. The folder is not a Git repository. Read `README.md` for run/build/test commands and scope, and `AGENTS.md` for current repository instructions. The roadmap remains Windows-first; the Mac adapter makes the MVP run on this development machine.
+M0–M4 are implemented as far as code can take them. The surface graph (all four
+window edges, occlusion-subtracted, plus monitor and taskbar surfaces), four
+locomotion classes, pack loading and validation, the declarative behavior machine,
+the awareness layer and the nudge ladder, settings persistence and the tray
+lifecycle all exist and are tested. Three bundled species — budgie, squirrel,
+gecko — differ only in data.
 
-Default rendering is a transparent primary-display overlay following the recorded M0 comparison in `docs/rendering-decision.md`. The small-window renderer remains selectable for experiments. Pet packs, a second species, awareness, multiple-monitor traversal, and release distribution are still future milestones.
+What is genuinely outstanding is not code: the Windows adapter has never been
+compiled or run (this is a Mac), nothing is signed, the performance budget has not
+been re-certified and the soak has not been run for this build, no outside author
+has shipped a pack, and nothing has been released. `docs/verification.md` is the
+honest account; keep it that way and do not let README or docs drift ahead of it.
+
+Rendering is one transparent overlay per monitor (see `docs/rendering-decision.md`,
+including the M1 addendum). The `PERCH_RENDERER=small` variant has been removed.
 
 ## Read the docs before writing code
 
@@ -48,9 +60,22 @@ These are product-defining, not preferences. Violating one is a bug, not a trade
 
 Any proposed format feature that breaks that test does not go in. Corollaries the code must honour: a minimal pack is two sprite strips and ~20 lines of JSON; every optional animation falls back down a chain (`climb → move → idle`) so a pack never fails to load for something absent; and every validation failure names the file, the JSON path, what was wrong, and what was expected — **no error message may be only a stack trace or a raw serde error**.
 
-## Build order
+## Working on this now
 
-The first thing to build is not the first story in the backlog. Start with **M0-4**, the spike measuring whether a 128×128 window can be repositioned at 60 Hz without jitter or excessive CPU — the rendering architecture depends on the answer, and the decision must be recorded back into doc 02. Then the rest of M0. Within M1, build the **climber before the flier**: the flier ignores the graph, so building it first hides graph flaws until late. M2 (packs) comes before M3 (awareness), because the pack system changes engine interfaces.
+The build order in the planning docs is history: M0-4 was spiked and recorded, and
+M1-M3 are built. What matters when changing things now:
+
+- **`engine.rs` is the headless core.** Anything interesting should be reachable
+  from it without Tauri, because that is what the timeline tests drive through a
+  mock `Platform`. Resist putting behavior in `app.rs`.
+- **Never emit a Tauri event while holding the engine lock.** Emitting hops to the
+  main thread, which may be inside a command handler waiting for that lock. This
+  deadlock has happened once already; the update loop is shaped to avoid it.
+- **macOS monitor enumeration and window creation only work on the UI thread**,
+  and report nothing at all when the session is locked. `on_main` in `app.rs`
+  exists for this, and an empty screen list means suspend, not an empty desktop.
+- **The privacy tests are load-bearing.** They scan the source for title,
+  capture, key-state and network APIs. If one fires, the fix is the code.
 
 ## Testing shape
 

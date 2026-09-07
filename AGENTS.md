@@ -2,12 +2,21 @@
 
 ## Project Structure & Module Organization
 
-The directory is `lupetty`; the product is **Perch**. A working macOS M0 MVP now exists. The authoritative roadmap remains in `planning_files/`; implementation and limits are documented in `README.md`.
+The directory is `lupetty`; the product is **Perch**. M0-M4 are implemented as far
+as code goes; `docs/verification.md` records what has actually been run and what
+has not. The planning docs in `planning_files/` remain the authority on intent.
 
-- Start with `planning_files/00-README.md` for the document map.
-- Consult `02-technical-architecture.md` for architecture and `05-user-stories.md` for milestone acceptance criteria.
-- The requested stack is Vue 3, TypeScript, Tailwind CSS, and Tauri 2 with Rust. Reserve `src/` for frontend components and assets, and `src-tauri/` for Rust, capabilities, and desktop configuration.
-- Keep authoritative pet behavior and world state in Rust; use the frontend for rendering and settings. Isolate OS integration behind platform traits.
+- `src-tauri/src/world/` surface extraction, the traversal graph, scan diffing.
+- `src-tauri/src/pet/` pet runtime, locomotion classes, pathfinding, behavior FSM.
+- `src-tauri/src/packs/` manifest reading, validation, condition grammar, install.
+- `src-tauri/src/awareness/` idle, session, categories, nudges.
+- `src-tauri/src/platform/` all OS calls behind one trait (macOS, Windows, mock).
+- `src-tauri/src/engine.rs` headless core; `src-tauri/src/app.rs` Tauri wiring only.
+- `src/` companion UI and overlay renderer; `packs/` bundled packs; `schema/` the
+  published JSON Schema.
+
+Keep authoritative pet and world state in Rust. The webview renders and forwards
+pointer events; it never decides where a pet is.
 
 ## Build, Test, and Development Commands
 
@@ -28,11 +37,17 @@ Use two-space indentation in Vue, TypeScript, and JSON; use `rustfmt` defaults f
 
 ## Testing Guidelines
 
-Rust tests cover surface geometry, flier recovery, dragging, pause, and alpha hit-testing. No frontend test framework or coverage threshold is configured. Add focused tests for behavior changes, especially surface geometry, traversal, and future pack validation. Use colocated `*.test.ts` frontend tests when a runner is introduced; use Rust unit tests and `src-tauri/tests/` for integration tests. Verify milestone acceptance criteria manually where native window behavior matters.
+74 Rust tests: unit tests beside the code, `src-tauri/tests/timeline.rs` for
+window-layout replays through the mock platform, and `src-tauri/tests/privacy.rs`,
+which fails the build if a window-title, screen-capture, key-state or network API
+appears anywhere in the source. Add tests for behavior changes — surface geometry,
+traversal rules, pack validation messages — and prefer driving `engine::Engine`
+with `platform::mock::MockPlatform` over anything needing a GUI. No frontend test
+runner is configured; if one is added, colocate `*.test.ts`.
 
 ## Commit & Pull Request Guidelines
 
-This folder is not yet a Git repository. No Git history exists to establish conventions. Use concise imperative commits, optionally prefixed with `feat:`, `fix:`, or `docs:`. PRs should identify the milestone or issue, explain behavior changes, list validation results, and include screenshots for UI changes.
+Use concise imperative commits, optionally prefixed with `feat:`, `fix:`, or `docs:`. PRs should identify the milestone or issue, explain behavior changes, list validation results, and include screenshots for UI changes.
 
 ## Agent-Specific Instructions
 
@@ -40,6 +55,10 @@ Before code discovery, use `memory-mcp`: derive repo `lupetty` and the current G
 
 Write only durable findings through `ingest_note` with repo, branch, and `source: "codex"`. Promote selectively at merge; review stale scopes before pruning.
 
-## Current MVP boundaries
+## Boundaries to keep honest
 
-The native platform adapter currently supports macOS primary-display window geometry. Windows/Linux have a desktop-edge fallback and are not validated. The default renderer is a transparent primary-display overlay, chosen after the M0 comparison; `PERCH_RENDERER=small` keeps the alternate implementation available. Rust owns all world and pet state. No pack installation, awareness, persistence, fullscreen suspension, or multiple-monitor traversal is implemented yet. Do not describe M1–M4 as complete. See `docs/rendering-decision.md`.
+macOS is the only platform that has been run. The Windows adapter is written to
+the documented Win32 APIs but has never been compiled. Nothing is signed, the
+performance budget is not re-certified for the current build, the soak has not
+been run, and no release exists. Do not describe any of those as done; update
+`docs/verification.md` when one of them changes.

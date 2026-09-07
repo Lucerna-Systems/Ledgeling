@@ -1,0 +1,181 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://perch.local/schema/pet-pack-v1.schema.json",
+  "title": "Perch pet pack (format 1)",
+  "description": "A pet is data: identity, one sprite block, one locomotion block, animation strips, and optionally a declarative behavior machine. Nothing here can execute code.",
+  "type": "object",
+  "required": ["format", "id", "name", "author", "version", "sprite", "locomotion", "animations"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": 1, "description": "Spec version. Currently 1." },
+    "id": { "type": "string", "pattern": "^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)+$", "description": "Reverse-DNS and globally unique, e.g. com.yourname.simplebird." },
+    "name": { "type": "string", "minLength": 1 },
+    "author": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "description": { "type": "string" },
+    "license": { "type": "string", "description": "SPDX identifier, e.g. CC-BY-4.0." },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "sprite": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0, "description": "Width of one frame in pixels." },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "anchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "description": "Contact point in 0-1 sprite space. {0.5, 1.0} is feet; a hanging bat uses {0.5, 0.0}."
+        },
+        "default_facing": { "enum": ["left", "right"] },
+        "scale": { "type": "number", "exclusiveMinimum": 0 },
+        "surface_orientation": { "enum": ["align", "upright"], "description": "align rotates to the surface; upright never rotates." }
+      }
+    },
+    "locomotion": {
+      "type": "object",
+      "required": ["class"],
+      "additionalProperties": false,
+      "properties": {
+        "class": { "enum": ["flier", "climber", "walker", "hopper"] },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "window_top", "window_bottom", "window_left", "window_right",
+              "monitor_top", "monitor_bottom", "monitor_left", "monitor_right",
+              "taskbar_top", "window_any", "window_vertical", "monitor_any", "all"
+            ]
+          }
+        },
+        "speed": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "surface": { "type": "number", "minimum": 0 },
+            "air": { "type": "number", "minimum": 0 },
+            "climb": { "type": "number", "minimum": 0 }
+          }
+        },
+        "jump": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "max_gap": { "type": "number", "minimum": 0 },
+            "arc_height": { "type": "number", "minimum": 0 }
+          }
+        },
+        "gravity": { "type": "number", "minimum": 0, "maximum": 4 },
+        "air_style": { "enum": ["straight", "flap_arc", "flutter", "glide"] },
+        "min_surface_length": { "type": "number", "minimum": 0 }
+      }
+    },
+    "animations": {
+      "type": "object",
+      "required": ["idle", "move"],
+      "description": "idle and move are required; every other clip falls back down a chain to them.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["file", "frames"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string", "description": "Pack-relative path, e.g. sprites/idle.png." },
+          "frames": { "type": "integer", "minimum": 1 },
+          "fps": { "type": "number", "exclusiveMinimum": 0 },
+          "loop": { "type": "boolean" },
+          "pingpong": { "type": "boolean" },
+          "sound": { "type": "string" },
+          "offset": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+          }
+        }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "initial": { "type": "string" },
+        "idle_wander_chance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "states": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "clip": { "type": "string" },
+              "duration": {
+                "oneOf": [
+                  { "type": "number", "minimum": 0 },
+                  { "type": "array", "items": { "type": "number", "minimum": 0 }, "minItems": 2, "maxItems": 2 }
+                ]
+              },
+              "action": {
+                "enum": [
+                  "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
+                  "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
+                ]
+              },
+              "sound": { "type": "string" },
+              "transitions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["to"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": { "type": "string" },
+                    "weight": { "type": "number", "minimum": 0 },
+                    "when": {
+                      "type": "string",
+                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, is_dragging."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["on", "goto"],
+        "additionalProperties": false,
+        "properties": {
+          "on": {
+            "enum": [
+              "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
+              "cursor_nearby", "user_idle_long", "user_returned", "long_session",
+              "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy"
+            ]
+          },
+          "goto": { "type": "string" },
+          "priority": { "type": "integer" },
+          "cooldown": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "personality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "boldness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sociability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sleepiness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "curiosity": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}
