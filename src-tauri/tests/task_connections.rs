@@ -1,0 +1,108 @@
+//! Explicit opt-in smoke tests. They send only a synthetic readiness request.
+//! API tests use credentials saved through Perch, never print or copy keys.
+use perch::tasks::{
+    providers::{HttpModel, ModelProvider},
+    runtimes,
+    types::{Connection, ProviderKind},
+    Cancel,
+};
+fn model(kind: ProviderKind, variable: &str) {
+    let config = Connection {
+        kind,
+        model: std::env::var(variable).expect(variable),
+        endpoint: std::env::var("PERCH_TEST_ENDPOINT").unwrap_or_default(),
+        ..Default::default()
+    };
+    assert!(
+        HttpModel(config)
+            .capabilities(&Cancel::default())
+            .unwrap()
+            .structured
+    );
+}
+#[test]
+#[ignore = "Requires saved OpenAI API key and PERCH_TEST_OPENAI_MODEL; incurs usage"]
+fn openai() {
+    model(ProviderKind::Openai, "PERCH_TEST_OPENAI_MODEL")
+}
+#[test]
+#[ignore = "Requires saved Anthropic API key and PERCH_TEST_ANTHROPIC_MODEL; incurs usage"]
+fn anthropic() {
+    model(ProviderKind::Anthropic, "PERCH_TEST_ANTHROPIC_MODEL")
+}
+#[test]
+#[ignore = "Requires PERCH_TEST_ENDPOINT and PERCH_TEST_COMPATIBLE_MODEL"]
+fn compatible() {
+    model(ProviderKind::Compatible, "PERCH_TEST_COMPATIBLE_MODEL")
+}
+#[test]
+#[ignore = "Requires installed Codex runtime"]
+fn codex_protocol() {
+    let caps = runtimes::capabilities(&Connection {
+        kind: ProviderKind::Codex,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(caps.advanced);
+    assert!(caps.detail.contains("Codex App Server protocol connected."));
+    // The status line reflects the actual session: either an account is named
+    // or sign-in is genuinely outstanding — never a demand when it is done.
+    assert!(
+        caps.detail.contains("Signed in to ChatGPT as")
+            || caps.detail.contains("ign in with ChatGPT")
+    );
+}
+#[test]
+#[ignore = "Requires saved OpenAI API key; model listing is free"]
+fn openai_model_list() {
+    let models = perch::tasks::providers::list_models(&Connection {
+        kind: ProviderKind::Openai,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(!models.is_empty());
+}
+#[test]
+#[ignore = "Requires saved Anthropic API key; model listing is free"]
+fn anthropic_model_list() {
+    let models = perch::tasks::providers::list_models(&Connection {
+        kind: ProviderKind::Anthropic,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(!models.is_empty());
+}
+#[test]
+#[ignore = "Requires running Ollama"]
+fn ollama_model_list() {
+    let models = perch::tasks::providers::list_models(&Connection {
+        kind: ProviderKind::Ollama,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(!models.is_empty());
+}
+#[test]
+#[ignore = "Requires npm run prepare:sidecar; no provider request"]
+fn claude_bridge() {
+    assert!(
+        runtimes::capabilities(&Connection {
+            kind: ProviderKind::Claude,
+            ..Default::default()
+        })
+        .unwrap()
+        .advanced
+    )
+}
+#[test]
+#[ignore = "Requires saved Brave Search key; sends synthetic query"]
+fn brave_search() {
+    use perch::tasks::search::{Brave, SearchProvider};
+    assert!(!Brave
+        .search(
+            "Rust programming language official documentation",
+            &Cancel::default()
+        )
+        .unwrap()
+        .is_empty());
+}
