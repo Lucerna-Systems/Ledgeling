@@ -34,6 +34,9 @@ The bird's PNG strip was visually inspected in the native release window. The co
 
 ## M1 addendum — one overlay per monitor
 
+> **Superseded by the single-screen addendum below** — kept as the record of
+> how the multi-monitor renderer was built and why it was replaced.
+
 The M0 comparison chose the overlay. M1 needed the pet to use more than the
 primary display, and the overlay had to change shape to allow it: instead of a
 single window over the primary display, Perch now creates **one transparent
@@ -62,6 +65,71 @@ remains the boundary, so a different renderer can still be dropped in.
 `scripts/benchmark.py` was rewritten accordingly: it no longer selects a renderer,
 and it now measures the whole process tree by default rather than only the Rust
 process, because the budget is about what the machine pays.
+
+## Single-screen addendum — one overlay, on the designated pet screen
+
+Decision date: 2026-09-09, after the first real multi-display session on this
+Mac (1080p external at scale 1 as main, MacBook built-in at scale 2). That
+session found the per-monitor model broken in practice, and the product answer
+is smaller, not bigger: **pets live on exactly one user-chosen screen** — the
+"pet workstation" — and there is exactly one overlay, on that screen.
+
+What the multi-display session actually exposed:
+
+- **A coordinate-space mismatch on mixed DPI.** tao reports each monitor's
+  geometry as CoreGraphics points scaled by *that monitor's* scale, while the
+  macOS adapter scaled window and cursor coordinates by the *primary* monitor's
+  scale. With a scale-1 primary and a scale-2 secondary, every window on the
+  secondary landed at half the coordinates the monitor list claimed. Window
+  edges on the secondary fell outside its work area and were clipped away
+  (pets there could walk screen edges but never perch on a window), and the
+  "gap" between claimed and real geometry was a region where pets were drawn
+  outside any overlay — invisible.
+- **A rebuild storm.** Any change to the monitor list — including transient
+  states while a display negotiates its connection, and index reshuffles that
+  change nothing — tore down and recreated every overlay. Closing a webview is
+  asynchronous, so during a storm several generations of overlay coexisted,
+  each still showing its last painted scene: pets appeared **duplicated across
+  screens**, the screen **flashed** while it settled, and frozen ghost overlays
+  sat under real windows. The engine's monitor ids are also list indices, so
+  an index reshuffle registered as a world change and made it worse.
+
+The single-screen model removes both failure modes structurally rather than
+patching them:
+
+- The engine and the platform adapter receive **only the chosen monitor**, with
+  its id canonicalised to 0 (stable across reshuffles). Surface extraction
+  already clips window edges to a monitor's work area, so every other screen's
+  geometry is excluded before the graph exists; `Pet::clamp` keeps pets inside
+  the chosen screen's bounds; and because there is only one monitor in engine
+  space, the one scale factor the adapter applies is the right one for every
+  window it reports.
+- There is **one overlay window with a constant label**, created once. When the
+  pet screen changes — a different pick, a resolution change, a replug — the
+  window is **moved and resized** (`set_position` then `set_size`, logical
+  coordinates pre-converted against the target screen's scale, because tao
+  converts `set_size` with the window's *current* screen scale). No teardown,
+  no reload, no flash, nothing to duplicate. Pets relocate through the existing
+  `SurfaceLost` recovery, which the timeline tests already cover; a pet whose
+  position the new screen does not cover is rehomed onto it like a fresh
+  spawn, because falling alone can leave it parked at the clamp margin with
+  nothing under it and no way back.
+
+The user picks the screen in the companion app's Desktop panel (stored in
+settings as the display's hardware name, so it survives list reshuffles); the
+default is the main display. When a pick's display is not connected, the
+fallback becomes the pick: the setting is rewritten to the screen pets
+actually fell back to, and the old display does not reclaim them when it
+returns — pick it again to move pets back. Decided 2026-09-10, after the
+first live unplug: the earlier sticky-until-return design left the picker
+naming a display that was not there, which read as the pets being in limbo
+rather than moved.
+
+The engine itself remains multi-monitor-capable — the timeline tests still
+prove pets can use two monitors and survive one being pulled — so multi-screen
+pets stay a product decision, not an engine rewrite, if it is ever revisited.
+What is *not* solved, and does not need to be while pets are single-screen, is
+mixed-DPI multi-monitor coordinate space in the engine.
 
 ## Screens that cannot be read
 

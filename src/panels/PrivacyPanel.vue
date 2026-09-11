@@ -13,8 +13,8 @@ const never = [
   'Window titles — they hold email subjects, document names and URLs',
   'What you type; only that input happened, never what it was',
   'Screen contents. Perch takes no screenshots and asks for no recording permission',
-  'The clipboard, your files, your browser history or your open tabs',
-  'Anything at all sent over a network. There is no account and no server',
+  'The clipboard, browser history or open tabs through passive observation',
+  'Background uploads or telemetry from companion awareness',
 ]
 </script>
 
@@ -22,19 +22,20 @@ const never = [
   <section class="page-heading">
     <div>
       <div class="eyebrow">LESS NOISE. MORE TRUST.</div>
-      <h1>Exactly what<br>Perch looks at<span>.</span></h1>
-      <p>Written out in full, because a companion that watches you should say so plainly.</p>
+      <h1>Privacy & preferences</h1>
+      <p>Your data, your connections, your choices.</p>
     </div>
   </section>
 
   <section class="privacy-card">
     <ShieldCheck :size="34" :stroke-width="1.2" />
-    <h2>Perch runs entirely on your computer.</h2>
+    <h2>Your companion stays private. Tasks are opt-in.</h2>
     <p>
       It checks how long since you last touched the keyboard, and which <em>kind</em> of application is in
-      front — code editor, browser, chat, and so on. It does not read window titles, file names, what you
-      type, or what is on your screen. Nothing is sent anywhere. There is no account, no server, and no
-      telemetry. You can turn all of this off and keep the pet.
+      front — code editor, browser, chat, and so on. It never reads window titles, keystrokes or your screen.
+      Tasks can read files you select. Local Ollama processes them on your computer; cloud providers receive
+      selected task content only when you allow it. Web tasks contact search services and public pages.
+      There is no Perch account or telemetry, and no automatic local-to-cloud fallback.
     </p>
   </section>
 
@@ -44,14 +45,14 @@ const never = [
       <ul class="privacy-list">
         <li v-for="item in collected" :key="item"><Check :size="15" /> {{ item }}</li>
       </ul>
-      <p class="muted">All of it lives in memory only. The one thing written to disk is your settings file, plus the position each pet was last standing in.</p>
+      <p class="muted">Awareness stays in memory. Settings, task history, selected paths, results and operation journals are stored locally. API keys are stored separately in the OS credential store.</p>
     </section>
     <section>
       <h3>What is never collected</h3>
       <ul class="privacy-list never">
         <li v-for="item in never" :key="item"><X :size="15" /> {{ item }}</li>
       </ul>
-      <p class="muted">Perch's own tests assert this: the build fails if any window-title, screen-capture, key-state or network call appears in the source.</p>
+      <p class="muted">Privacy tests prohibit passive window-title, screen-capture and key-state APIs. Network code is confined to explicit task connections; the pet engine has no network access.</p>
     </section>
   </div>
 
@@ -78,7 +79,7 @@ const never = [
     <Heart :size="20" :stroke-width="1.4" />
     <div>
       <h3>A small thing, on purpose</h3>
-      <p>No accounts, no streaks, no reports. Just an animal that lives on the edges of your windows and is a bit more settled when you take a break.</p>
+      <p>Your pet remains a companion even without AI. Advanced task mode delegates to an agent runtime with its own sandbox and per-action approvals; commands do not have universal undo.</p>
     </div>
   </section>
   <button class="quit-button" :disabled="!native" @click="call('quit_app')"><Power :size="15" /> Quit Perch</button>

@@ -13,7 +13,11 @@ file summarizes; that one is the record.
 **The idea.** A desktop companion that lives on the edges of your real windows,
 moves like the animal it actually is, and quietly notices how your session is
 going. Not a productivity tracker, not a mascot skin engine. Never reads window
-titles, screen contents, or keystrokes; nothing leaves the machine in v1.
+titles, screen contents, or keystrokes. The original brief said "nothing leaves
+the machine in v1"; that has been deliberately re-scoped — an **opt-in task
+service** now exists (see [`docs/assistant.md`](../docs/assistant.md)) whose
+network access is confined to three explicit adapter files and enforced by the
+privacy tests. The passive companion still makes no network calls of its own.
 
 **v1 scope (as planned):** real window-edge awareness, two shipped species
 proving two locomotion classes, a data-only pet pack format, local-only session
@@ -41,11 +45,14 @@ by the M0 spike: per-pet window vs full overlay.
 **Done in the MVP.**
 
 - **Rendering decision made and recorded** ([`docs/rendering-decision.md`](../docs/rendering-decision.md),
-  including the M1 addendum): **one transparent overlay per monitor**. The
-  per-pet-window spike cost too much native CPU; the `PERCH_RENDERER=small`
-  variant was later removed entirely. Pets are drawn as DOM sprites in the
-  overlay; click-through is toggled per-monitor by alpha hit-testing against
-  the pack's real alpha masks.
+  including the M1 and single-screen addenda): **one transparent overlay on the
+  single designated pet screen**. The per-pet-window spike cost too much native
+  CPU; one-overlay-per-monitor was tried next and replaced after the first real
+  multi-display session (see the single-screen addendum). Pets are drawn as DOM
+  sprites in the overlay; click-through is toggled by alpha hit-testing against
+  the pack's real alpha masks. Pets live on one user-chosen screen, picked in
+  the Desktop panel and remembered by display name; the engine still accepts
+  multiple monitors, but the app layer only ever hands it the chosen one.
 - **`Platform` trait** (`src-tauri/src/platform/mod.rs`) with a working
   **geometry-only macOS adapter** (`macos.rs`) — CoreGraphics window bounds,
   layers, alpha, owner PIDs via `proc_name`, input idle, cursor, mouse-down.
@@ -64,9 +71,11 @@ by the M0 spike: per-pet window vs full overlay.
 - **Scan cadence**: 2 Hz baseline, 10 Hz for 2 s after any change — as planned.
   Measured 1.2–2.8 ms with 9–11 windows on this Mac (budget < 3 ms).
 - **Deviation from plan:** macOS, not Windows, is the only verified platform;
-  mixed-DPI is exercised only through the mock (single display here). The
-  Windows-first roadmap claim is currently inverted — decide which way to
-  resolve before release (see §6).
+  mixed-DPI in the engine is exercised only through the mock, and the shipped
+  single-screen policy sidesteps it entirely by giving the engine one monitor
+  (see the rendering addendum for what the first real multi-display session
+  exposed). The Windows-first roadmap claim is currently inverted — decide
+  which way to resolve before release (see §6).
 
 **Performance budget** (a ceiling, not a goal): < 0.5% CPU idle, < 2% moving,
 ~0% suspended, < 80 MB RAM per pet, scan < 3 ms. Scan cost is measured and
@@ -157,7 +166,7 @@ parts code can do:
 | Milestone | Status |
 |---|---|
 | M0 — spike, overlay, enumeration, hit-testing | ✅ Done; decision recorded |
-| M1 — surface graph, all locomotion classes, riding, recovery, multi-monitor, fullscreen suspend | ✅ Done (multi-monitor mock-verified only) |
+| M1 — surface graph, all locomotion classes, riding, recovery, multi-monitor, fullscreen suspend | ✅ Done (single-screen policy verified on real two-display hardware; multi-monitor engine behaviour remains mock-verified) |
 | M2 — manifest, validator, FSM, install, Pet Lab, scaffold, schema, species | ✅ Done; the gecko proved the abstraction |
 | M3 — idle, categories, energy/mood, sessions, nudge ladder, privacy screen | ✅ Done |
 | M4-1 settings/persistence, M4-2 tray/lifecycle/autostart | ✅ Done |
@@ -165,6 +174,14 @@ parts code can do:
 
 77 tests cover it (61 unit, 7 privacy, 9 timeline integration), clippy and fmt
 clean on every change; `docs/verification.md` is the item-by-item account.
+
+**One deferred item was pulled forward early:** the **AI layer** (now the task
+service, [`docs/assistant.md`](../docs/assistant.md)) was built before M4
+shipped, at the user's direction. It is opt-in, independent of pet animation
+and awareness, and its automated suites pass (90 Rust tests + 3 UI tests, plus
+7 ignored credential-gated connection tests that have never been run); its
+desktop behaviour — native bubble, Spaces, Finder handoff — has not been
+hand-verified. See `docs/verification.md`.
 
 ---
 
@@ -176,8 +193,11 @@ In the order the plan itself suggests:
    hours: memory drift, sleep/wake, lock/unlock, monitor changes.
 2. **Performance re-certification** — ten minutes of
    `scripts/benchmark.py` on this build for CPU/RAM, not just scan cost.
-3. **Multi-monitor on real hardware** — the timeline tests pass; a second
-   display has never been plugged in.
+3. **Multi-monitor on real hardware** — a second display is now attached and
+   drove a product change: pets are single-screen by design (one designated
+   "workstation" display; see the rendering single-screen addendum). Verified
+   on this machine; unplug/replug cycles of the pet screen itself have not
+   been exercised beyond what the timeline tests replay.
 4. **Authoring guide test (M4-5, also the M2 exit criterion)** — hand
    `docs/pack-authoring.md` to an actual non-programmer; they ship a pet in
    under an hour or the format needs work, not them.
@@ -193,5 +213,6 @@ In the order the plan itself suggests:
 
 Nothing here enters the repo until M4 ships publicly: macOS/Linux parity
 beyond what exists, pets noticing each other, more species (cat, moth, bat,
-frog), sound design pass, AI layer, pet actions, meeting detection,
-notification interception, pack marketplace.
+frog), sound design pass, pet actions, meeting detection,
+notification interception, pack marketplace. (The AI layer was on this list
+and was pulled forward early — see §5.)

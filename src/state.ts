@@ -11,12 +11,17 @@ export const busy = ref(false)
 export const packs = ref<PackListing[]>([])
 
 let polling = false
+let revision = 0
+let pending = 0
 
 export async function refresh() {
-  if (!native || polling || document.hidden) return
+  if (!native || polling || busy.value || document.hidden) return
   polling = true
+  const requestedRevision = revision
   try {
-    snapshot.value = await invoke<Snapshot>('get_snapshot')
+    const next = await invoke<Snapshot>('get_snapshot')
+    // A poll started before an action must not overwrite its result.
+    if (requestedRevision === revision) snapshot.value = next
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -33,8 +38,10 @@ export async function refreshPacks() {
   }
 }
 
-export async function call<T>(command: string, args: Record<string, unknown> = {}): Promise<T | undefined> {
+export async function call<T>(command: string, args: Record<string, unknown> = {}, refreshAfter = true): Promise<T | undefined> {
   if (!native) return undefined
+  pending++
+  revision++
   busy.value = true
   error.value = ''
   try {
@@ -43,18 +50,18 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
     error.value = String(e)
     return undefined
   } finally {
-    busy.value = false
-    await refresh()
+    busy.value = --pending > 0
+    if (refreshAfter) void refresh()
   }
 }
 
 export async function action(kind: string) {
-  const next = await call<Snapshot>('pet_action', { kind })
+  const next = await call<Snapshot>('pet_action', { kind }, false)
   if (next) snapshot.value = next
 }
 
 export async function saveSettings(next: Settings) {
-  const saved = await call<Snapshot>('set_settings', { settings: next })
+  const saved = await call<Snapshot>('set_settings', { settings: next }, false)
   if (saved) snapshot.value = saved
 }
 
@@ -67,9 +74,14 @@ export function start() {
   void refresh()
   void refreshPacks()
   const timer = setInterval(refresh, 1000)
+  const onVisible = () => { if (!document.hidden) void refresh() }
+  document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('focus', onVisible)
   const unlisten = listen('packs:changed', () => { void refreshPacks(); void refresh() })
   return () => {
     clearInterval(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener('focus', onVisible)
     void unlisten.then(stop => stop())
   }
 }

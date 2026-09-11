@@ -17,8 +17,11 @@ been re-certified and the soak has not been run for this build, no outside autho
 has shipped a pack, and nothing has been released. `docs/verification.md` is the
 honest account; keep it that way and do not let README or docs drift ahead of it.
 
-Rendering is one transparent overlay per monitor (see `docs/rendering-decision.md`,
-including the M1 addendum). The `PERCH_RENDERER=small` variant has been removed.
+Rendering is one transparent overlay on the single designated pet screen (see
+`docs/rendering-decision.md`, including the M1 and single-screen addenda). The
+`PERCH_RENDERER=small` variant has been removed. Pets are confined to that one
+screen by design — the engine is fed only that monitor, so window-edge surfaces
+on other screens are clipped away before the graph is built.
 
 ## Read the docs before writing code
 

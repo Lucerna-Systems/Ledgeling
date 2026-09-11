@@ -99,13 +99,48 @@ impl Engine {
         self.screens_available = !monitors.is_empty();
         if !monitors.is_empty() && monitors != self.monitors {
             self.monitors = monitors;
+            // Cached window rects were scaled for the previous pet screen
+            // (platform::macos::engine_scale() bakes in whichever monitor was
+            // current when they were captured). Rebuilding against the new
+            // bounds before a fresh, correctly-scaled scan lands would mix two
+            // different DPI scales into one surface graph on any screen swap
+            // between differently-scaled displays — window edges land in the
+            // wrong place relative to the monitor edges, breaking pathing and
+            // stranding pets until something else forces a rescan. Dropping
+            // the stale windows and forcing an immediate rescan means the
+            // rebuild only ever sees one scale at a time.
+            self.windows.clear();
+            self.last_scan = f64::NEG_INFINITY;
             self.rebuild();
+            self.rehome_strays();
         }
     }
 
     fn rebuild(&mut self) {
         self.surfaces = world::surfaces(&self.windows, &self.monitors, MIN_SEGMENT);
         self.graph = SurfaceGraph::build(&self.surfaces);
+    }
+
+    /// A screen swap strands pets where the new screen is not — the pick
+    /// falls back to another display when its hardware is unplugged — and a
+    /// pet beside or below the new bounds would otherwise park at the clamp
+    /// margin with nothing under it and never recover. Out-of-bounds pets
+    /// re-enter the new world the way a fresh spawn does.
+    fn rehome_strays(&mut self) {
+        if self.monitors.is_empty() {
+            return;
+        }
+        let bounds = self.bounds();
+        let scale = self.monitors.first().map(|m| m.scale).unwrap_or(1.);
+        for pet in &mut self.pets {
+            if bounds.contains(pet.position) || pet.is_held() {
+                continue;
+            }
+            let pack = pet.pack.clone();
+            let (position, perch) =
+                spawn_point(&self.surfaces, &pack.manifest, bounds, scale, &mut self.rng);
+            pet.rehome(position, perch);
+        }
     }
 
     // ------------------------------------------------------------------ pets
@@ -142,12 +177,19 @@ impl Engine {
     pub fn restore_pets(&mut self) -> Vec<String> {
         let mut missing = Vec::new();
         let wanted = self.settings.pets.clone();
+        let bounds = self.bounds();
         for setting in wanted {
             match self.spawn(&setting.pack_id) {
                 Ok(id) => {
+                    // A saved spot only applies while it is still on the
+                    // screens pets have: coordinates from a disconnected
+                    // display would drop the pet outside the world it was
+                    // restored into.
                     if let (Some(x), Some(y)) = (setting.x, setting.y) {
-                        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
-                            pet.position = Point::new(x, y);
+                        if bounds.contains(Point::new(x, y)) {
+                            if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+                                pet.position = Point::new(x, y);
+                            }
                         }
                     }
                 }

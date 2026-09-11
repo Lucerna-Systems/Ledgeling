@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare:sidecar && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -20,7 +20,9 @@
         "minWidth": 760,
         "minHeight": 600,
         "center": true,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "visible": false,
+        "focus": false
       }
     ],
     "security": {
@@ -29,24 +31,42 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
-    "icon": ["icons/icon.png", "icons/icon.icns"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns"
+    ],
     "shortDescription": "A little company for your desktop",
-    "longDescription": "Perch is a small desktop companion. A bird, a squirrel or a gecko lives on the edges of your open windows, notices roughly how your session is going, and never sends anything anywhere.",
+    "longDescription": "Perch is a desktop companion that lives on your windows and helps with tasks when asked. Built-in actions run locally; optional AI and web connections use your own provider access. No Perch account or telemetry.",
     "category": "Utility",
     "copyright": "Perch contributors",
     "licenseFile": "../LICENSE.txt",
     "fileAssociations": [
       {
-        "ext": ["petpack"],
+        "ext": [
+          "petpack"
+        ],
         "name": "Perch pet pack",
         "description": "A Perch pet pack",
         "role": "Editor"
       }
     ],
-    "macOS": { "minimumSystemVersion": "12.0" },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "resources": {
+      "../sidecar/bridge.mjs": "sidecar/bridge.mjs",
+      "../sidecar/package.json": "sidecar/package.json",
+      "../sidecar/node": "sidecar/node",
+      "../sidecar/node_modules/": "sidecar/node_modules/"
     }
   }
 }

@@ -11,15 +11,21 @@ const debug = ref<Scene['debug']>(null)
 const atlases = new Map<number, SpawnPayload>()
 const nodes = new Map<number, HTMLDivElement>()
 const off: UnlistenFn[] = []
+const indicators = new Map<number, string>()
 let disposed = false
 let dragging = false
 let pressedAt = 0
+let pressedX = 0
+let pressedY = 0
+let dragPet: number | null = null
+let nativeDragging = false
 
 function element(frame: Frame) {
   let node = nodes.get(frame.petId)
   if (!node) {
     node = document.createElement('div')
     node.className = 'pet-sprite'
+    node.dataset.petId = String(frame.petId)
     stage.value?.appendChild(node)
     nodes.set(frame.petId, node)
   }
@@ -31,6 +37,8 @@ function draw(frame: Frame) {
   const clip = spawn?.atlas[frame.clip] ?? Object.values(spawn?.atlas ?? {})[0]
   if (!clip) return
   const node = element(frame)
+  const taskStatus = indicators.get(frame.petId)
+  node.style.filter = taskStatus === 'waiting' ? 'drop-shadow(0 0 5px #d6a64f)' : taskStatus === 'running' || taskStatus === 'queued' ? 'drop-shadow(0 0 4px #73a1be)' : taskStatus === 'completed' ? 'drop-shadow(0 0 4px #8bae6c)' : '' 
   const left = frame.x - frame.width * frame.anchorX
   const top = frame.y - frame.height * frame.anchorY
   node.style.width = `${frame.width}px`
@@ -67,6 +75,8 @@ onMounted(async () => {
   await subscribe<SpawnPayload>('pet:spawn', payload => atlases.set(payload.petId, payload))
   await subscribe<number>('pet:despawn', despawn)
   await subscribe<Scene>('pet:scene', render)
+  await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null })
+  await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicators.set(value.petId, value.status) })
   await subscribe<string>('pet:sound', source => { void new Audio(source).play().catch(() => {}) })
   // The backend sends spawn payloads before this webview could listen; ask it
   // to re-send them now that every listener is registered.
@@ -77,13 +87,26 @@ onUnmounted(() => { disposed = true; off.forEach(stop => stop()) })
 
 function act(kind: string) { void invoke('pet_interact', { kind }).catch(() => {}) }
 
+function ask(event: MouseEvent) {
+  const id = (event.target as HTMLElement).closest<HTMLElement>('[data-pet-id]')?.dataset.petId
+  if (id) void invoke('show_pet_bubble', { petId: Number(id) }).catch(() => {})
+}
+
 function down(event: PointerEvent) {
   if (event.button !== 0) return
   dragging = true
   pressedAt = event.timeStamp
+  pressedX = event.clientX; pressedY = event.clientY
+  dragPet = Number((event.target as HTMLElement).closest<HTMLElement>('[data-pet-id]')?.dataset.petId) || null
   // Capture so the release still arrives if the pointer leaves the overlay.
   ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
   act('grab')
+}
+function move(event: PointerEvent) {
+  if (!dragging || nativeDragging || !dragPet || event.shiftKey) return
+  if (Math.hypot(event.clientX - pressedX, event.clientY - pressedY) < 12) return
+  nativeDragging = true
+  void invoke('pet_folder_drag', { petId: dragPet }).catch(() => { nativeDragging = false })
 }
 function up(event: PointerEvent) {
   if (!dragging) return
@@ -98,9 +121,10 @@ function up(event: PointerEvent) {
     ref="stage"
     class="pet-stage"
     @pointerdown="down"
+    @pointermove="move"
     @pointerup="up"
     @pointercancel="up"
-    @contextmenu.prevent="act('click')"
+    @contextmenu.prevent="ask"
   />
   <svg v-if="debug" class="debug-overlay" xmlns="http://www.w3.org/2000/svg">
     <line v-for="(s, i) in debug.surfaces" :key="`s${i}`" :x1="s[0]" :y1="s[1]" :x2="s[2]" :y2="s[3]" class="debug-surface" />

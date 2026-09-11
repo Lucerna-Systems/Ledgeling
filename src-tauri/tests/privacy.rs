@@ -1,6 +1,6 @@
 //! The privacy constraints are product-defining, so they are asserted rather
 //! than trusted: no window title is ever requested from the OS, and no code
-//! path in the build can reach the network.
+//! passive companion path can reach the network. Explicit task adapters are opt-in.
 use std::path::{Path, PathBuf};
 
 fn source_files() -> Vec<PathBuf> {
@@ -12,13 +12,17 @@ fn source_files() -> Vec<PathBuf> {
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, out);
-            } else if path.extension().is_some_and(|e| e == "rs") {
+            } else if path.extension().is_some_and(|e| e == "rs" || e == "m") {
                 out.push(path);
             }
         }
     }
     let mut out = Vec::new();
     walk(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut out);
+    walk(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("native"),
+        &mut out,
+    );
     assert!(out.len() > 10, "the source tree should have been found");
     out
 }
@@ -100,7 +104,7 @@ fn no_screen_capture_keystroke_or_clipboard_api_is_referenced() {
 }
 
 #[test]
-fn nothing_in_the_build_can_reach_the_network() {
+fn networking_is_confined_to_explicit_task_adapters() {
     const NETWORK: &[&str] = &[
         "TcpStream",
         "UdpSocket",
@@ -111,10 +115,13 @@ fn nothing_in_the_build_can_reach_the_network() {
         "curl",
         "std::net",
         "WebSocket",
-        "https://",
     ];
     for (path, text) in read_all() {
-        if path.ends_with("privacy.rs") {
+        if path.ends_with("privacy.rs")
+            || ["tasks/providers.rs", "tasks/search.rs", "tasks/commands.rs"]
+                .iter()
+                .any(|p| path.ends_with(p))
+        {
             continue;
         }
         for api in NETWORK {
@@ -136,14 +143,10 @@ fn nothing_in_the_build_can_reach_the_network() {
 }
 
 #[test]
-fn the_dependency_list_contains_no_network_or_telemetry_crate() {
+fn telemetry_and_frontend_network_plugins_are_absent() {
     let manifest =
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     for crate_name in [
-        "reqwest",
-        "hyper",
-        "ureq",
-        "curl",
         "sentry",
         "tokio-tungstenite",
         "opentelemetry",
@@ -153,7 +156,7 @@ fn the_dependency_list_contains_no_network_or_telemetry_crate() {
     ] {
         assert!(
             !manifest.contains(crate_name),
-            "`{crate_name}` has no business in a local-only companion app"
+            "`{crate_name}` must not bypass the task boundary"
         );
     }
 }

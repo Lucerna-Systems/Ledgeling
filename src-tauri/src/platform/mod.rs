@@ -26,7 +26,9 @@ pub trait Platform: Send + Sync {
     /// Is the primary mouse button held down?
     fn mouse_down(&self) -> bool;
     /// Monitor geometry is supplied by the window toolkit, which already
-    /// reports DPI-correct work areas on every platform.
+    /// reports DPI-correct work areas on every platform. The app layer passes
+    /// exactly one monitor — the pet screen — which is what anchors the
+    /// platform's coordinate conversion and window-to-screen tagging.
     fn set_monitors(&self, _monitors: Vec<MonitorInfo>) {}
 }
 
@@ -44,3 +46,5 @@ mod fallback;
 pub use fallback::NativePlatform;
 
 pub mod mock;
+
+pub mod pet_ui;

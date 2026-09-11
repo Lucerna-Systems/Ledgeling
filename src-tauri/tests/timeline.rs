@@ -183,6 +183,40 @@ fn a_second_monitor_is_used_and_unplugging_it_does_not_strand_anyone() {
 }
 
 #[test]
+fn unplugging_the_pet_screen_returns_a_climber_to_the_fallback_display() {
+    // The pet screen is the left-hand display, and a climber perched there
+    // cannot fly back the way the budgie can, only fall.
+    let (mut engine, platform) = engine(
+        vec![two_monitors()[1]],
+        vec![vec![win(1, -2000., 200., 800., 400.)]],
+    );
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 15.);
+    assert!(
+        engine.pets[0].position.x < 0.,
+        "the climber started on the unplugged display"
+    );
+
+    // The display is unplugged; the app falls back to the main display. The
+    // pet may be mid-jump at any sampled instant, so perching is checked
+    // across the whole run rather than at one moment.
+    engine.set_monitors(monitors());
+    let screen = Rect::new(0., 0., 1600., 1000.);
+    let mut perched = false;
+    for _ in 0..15 {
+        run(&mut engine, &platform, 1.);
+        let pet = &engine.pets[0];
+        assert!(
+            screen.contains(pet.position),
+            "the climber is stranded off the fallback screen: {:?}",
+            pet.position
+        );
+        perched = perched || pet.perch.is_some();
+    }
+    assert!(perched, "the climber found somewhere real to stand");
+}
+
+#[test]
 fn a_fullscreen_app_suspends_everything_and_leaving_it_resumes() {
     let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
     run(&mut engine, &platform, 1.);

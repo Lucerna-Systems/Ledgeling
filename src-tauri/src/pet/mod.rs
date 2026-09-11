@@ -176,6 +176,29 @@ impl Pet {
         self.motion == Motion::Held
     }
 
+    /// Placed onto a fresh world after the pet screen changed and its old
+    /// position is no longer covered: everything bound to the old world —
+    /// plan, home, arc — is dead weight, so it enters like a fresh spawn.
+    pub fn rehome(&mut self, position: Point, perch: Option<Perch>) {
+        self.position = position;
+        self.rotation = 0.;
+        self.flip_x = false;
+        self.perch = perch;
+        self.home = perch;
+        self.plan = None;
+        self.pending.clear();
+        if self.motion == Motion::Held {
+            return;
+        }
+        if perch.is_some() {
+            self.motion = Motion::Settled;
+            self.arc = Arc_::None;
+        } else {
+            self.motion = Motion::Falling;
+            self.arc = Arc_::Fall { velocity: 0. };
+        }
+    }
+
     /// A window yanked across the desktop is alarming; the pack decides what
     /// that looks like through its `surface_moved_fast` reaction.
     pub fn startle(&mut self) {

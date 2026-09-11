@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Check, Monitor } from '@lucide/vue'
-import { action, snapshot } from '../state'
+import { action, busy, saveSettings, settings, snapshot } from '../state'
+import type { ScreenView } from '../types'
 
 const view = computed(() => {
   const bounds = snapshot.value?.bounds
@@ -12,21 +13,42 @@ const colours: Record<string, string> = {
   window_bottom: '#8aa9c0', monitor_top: '#8aa9c0',
   window_left: '#c9a24d', window_right: '#c9a24d', monitor_left: '#c9a24d', monitor_right: '#c9a24d',
 }
+const screens = computed(() => snapshot.value?.screens ?? [])
+// The select shows the screen pets are actually on. A saved pick can name a
+// display that just went away for the moment before the backend rewrites it,
+// and it is not one of the options, so it would render blank.
+const selected = computed(() => snapshot.value?.petScreen ?? settings.value?.petScreen ?? '')
+function label(screen: ScreenView, index: number) {
+  const size = `${Math.round(screen.bounds.width / screen.scale)}×${Math.round(screen.bounds.height / screen.scale)}`
+  return `${screen.isPrimary ? 'Main display' : `Display ${index + 1}`} · ${size}`
+}
+function pick(event: Event) {
+  const name = (event.target as HTMLSelectElement).value
+  if (settings.value && name) void saveSettings({ ...settings.value, petScreen: name })
+}
 </script>
 
 <template>
   <section class="page-heading">
     <div>
       <div class="eyebrow">A BIRD'S-EYE VIEW</div>
-      <h1>Your desktop.<br>Their little world<span>.</span></h1>
+      <h1>Desktop view</h1>
       <p>Visible window edges become places to stand. Hidden ones do not.</p>
     </div>
   </section>
 
   <section class="map-card">
     <div class="map-toolbar">
-      <span><span class="live-dot" />{{ snapshot?.monitors.length ?? 0 }} display(s)</span>
+      <span><span class="live-dot" />{{ snapshot?.screens.length ?? 0 }} display(s) · pets stay on one</span>
       <span>{{ snapshot?.windows.length ?? 0 }} windows · {{ snapshot?.perchCount ?? 0 }} window edges · {{ snapshot?.surfaces.length ?? 0 }} surfaces</span>
+    </div>
+    <div v-if="screens.length > 1" class="screen-picker">
+      <label for="pet-screen">Pets live on</label>
+      <select id="pet-screen" :value="selected" :disabled="busy" @change="pick">
+        <option v-for="(screen, index) in screens" :key="screen.name" :value="screen.name">
+          {{ label(screen, index) }}
+        </option>
+      </select>
     </div>
     <svg v-if="snapshot" class="desktop-map" :viewBox="view" role="img" aria-label="Live window geometry and available surfaces">
       <rect v-for="m in snapshot.monitors" :key="`m${m.id}`" :x="m.bounds.x" :y="m.bounds.y" :width="m.bounds.width" :height="m.bounds.height" fill="#edece2" stroke="#dcded2" stroke-width="4" />

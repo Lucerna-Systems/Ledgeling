@@ -105,6 +105,8 @@ export interface Settings {
   awareness: AwarenessConfig
   categoryOverrides: Record<string, AppCategory>
   uninstalledBuiltins: string[]
+  /** Hardware name of the one screen pets live on; null means the main display. */
+  petScreen: string | null
 }
 
 export interface SessionSummary {
@@ -140,6 +142,7 @@ export interface PetView {
 }
 
 export interface MonitorInfo { id: number; bounds: Rect; work: Rect; scale: number; isPrimary: boolean }
+export interface ScreenView extends MonitorInfo { name: string }
 export interface SurfaceView { kind: string; owner: number; x1: number; y1: number; x2: number; y2: number }
 
 export interface Snapshot {
@@ -147,7 +150,12 @@ export interface Snapshot {
   packs: PackSummary[]
   settings: Settings
   awareness: AwarenessSummary
+  /** The single screen pets live on. */
   monitors: MonitorInfo[]
+  /** Every connected screen, for the picker. */
+  screens: ScreenView[]
+  /** The screen pets are actually on — the user's pick when connected, else main. */
+  petScreen: string | null
   windows: { id: number; rect: Rect; zIndex: number; isMinimized: boolean; monitorId: number }[]
   surfaces: SurfaceView[]
   bounds: Rect

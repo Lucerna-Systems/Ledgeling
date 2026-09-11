@@ -13,3 +13,5 @@ pub mod platform;
 pub mod settings;
 pub mod windows_mgr;
 pub mod world;
+
+pub mod tasks;

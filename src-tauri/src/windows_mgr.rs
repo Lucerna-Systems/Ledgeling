@@ -1,6 +1,6 @@
-//! The renderer boundary. One transparent overlay per monitor: no window is
-//! moved per frame, cross-monitor movement is free, and mixed DPI stays
-//! correct because each overlay uses its own monitor's scale.
+//! The renderer boundary. One transparent overlay on the single pet screen:
+//! no window is moved per frame and the overlay always uses its own
+//! monitor's scale, so mixed DPI stays correct.
 use crate::{
     pet::{Frame, Pet},
     world::{MonitorInfo, Point, Rect},
@@ -86,6 +86,12 @@ impl NativeSurface {
     }
     pub fn windows(&self) -> impl Iterator<Item = (&u64, &WebviewWindow)> {
         self.windows.iter()
+    }
+    /// Whether the renderer already knows the overlay for a monitor — the
+    /// update loop uses this to adopt a window that exists but was never
+    /// handed over (a timed-out build, say).
+    pub fn has(&self, monitor: u64) -> bool {
+        self.windows.contains_key(&monitor)
     }
 }
 

@@ -44,17 +44,17 @@ function removeOverride(name: string) {
   <section class="page-heading">
     <div>
       <div class="eyebrow">OBSERVED, NEVER INTERROGATED</div>
-      <h1>How your day<br>reaches the pet<span>.</span></h1>
-      <p>Two coarse signals — how long since you touched the keyboard, and what kind of app is in front.</p>
+      <h1>Your day</h1>
+      <p>Choose how your companions respond to your day.</p>
     </div>
   </section>
 
   <section class="controls-card">
-    <div class="section-label"><Activity :size="16" /> The master switch</div>
+    <div class="section-label"><Activity :size="16" /> Awareness</div>
     <div class="desktop-details">
       <div>
         <h3>Awareness</h3>
-        <p>Off means no idle polling, no foreground check, no session tracking, no nudges. The pet stays.</p>
+        <p>Let pets respond to activity and breaks. Turn off to stop awareness tracking.</p>
       </div>
       <button class="toggle" :class="{ enabled: settings?.awareness.enabled }" role="switch"
               :aria-checked="!!settings?.awareness.enabled" aria-label="Awareness"
@@ -72,9 +72,7 @@ function removeOverride(name: string) {
   <section class="controls-card">
     <div class="section-label"><Coffee :size="16" /> The nudge ladder</div>
     <p class="control-intro">
-      The pet gets restless, then moves closer to what you are working on, then settles on its edge. It never
-      shows a popup, plays an unasked-for sound, steals focus, or writes you a sentence. It stops escalating
-      after the third tier and stays quiet in games and films.
+      Gentle movement reminds you to take a break. Always quiet during games and films.
     </p>
     <div class="desktop-details">
       <div><h3>Nudges</h3><p>Turn the whole ladder off and keep the rest of the awareness.</p></div>
@@ -92,15 +90,14 @@ function removeOverride(name: string) {
   <section class="controls-card">
     <div class="section-label"><Sparkles :size="16" /> Application categories</div>
     <p class="control-intro">
-      Perch reads the executable name of the app in front, maps it to one of seven categories, and throws the
-      name away. Window titles are never read. Add your own if something is miscategorised.
+      Adjust how an app is categorised. Perch uses its process name, never its window title.
     </p>
     <ul class="override-list">
       <li v-for="(category, name) in settings?.categoryOverrides ?? {}" :key="name">
         <code>{{ name }}</code> → {{ category }}
         <button class="text-link" @click="removeOverride(String(name))">remove</button>
       </li>
-      <li v-if="!Object.keys(settings?.categoryOverrides ?? {}).length" class="muted">No additions yet — the built-in table covers the usual suspects.</li>
+      <li v-if="!Object.keys(settings?.categoryOverrides ?? {}).length" class="muted">Default categories are in use. Add an override below.</li>
     </ul>
     <div class="new-pack-row">
       <input v-model="draftName" placeholder="process name, e.g. helix" aria-label="Process name">

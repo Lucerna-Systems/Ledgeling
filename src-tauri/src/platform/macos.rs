@@ -88,8 +88,10 @@ fn monitor_cache() -> &'static Mutex<Vec<MonitorInfo>> {
     CACHE.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// CoreGraphics reports points; the engine works in physical pixels.
-fn primary_scale() -> f64 {
+/// CoreGraphics reports points; the engine works in physical pixels. The app
+/// layer hands this adapter exactly one monitor — the pet screen — so its
+/// scale is the only conversion the engine's space ever needs, on any DPI mix.
+fn engine_scale() -> f64 {
     monitor_cache()
         .lock()
         .ok()
@@ -104,7 +106,7 @@ fn primary_scale() -> f64 {
 
 impl Platform for NativePlatform {
     fn enumerate_windows(&self) -> Result<Vec<WindowInfo>, String> {
-        let scale = primary_scale();
+        let scale = engine_scale();
         // CF objects from Copy/Create are released exactly once; borrowed
         // dictionaries and numbers remain valid for the array's lifetime.
         unsafe {
@@ -222,7 +224,7 @@ impl Platform for NativePlatform {
     }
 
     fn cursor(&self) -> Option<Point> {
-        let scale = primary_scale();
+        let scale = engine_scale();
         unsafe {
             let raw = CGEventCreate(std::ptr::null());
             if raw.is_null() {

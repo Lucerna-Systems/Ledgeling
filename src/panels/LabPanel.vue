@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { FlaskConical, Zap, Eye, RefreshCw } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, settings, snapshot, saveSettings, validate } from '../state'
+import CollectionToolbar from '../components/CollectionToolbar.vue'
 import DiagnosticList from './DiagnosticList.vue'
 import type { Report } from '../types'
 
+const scenarioQuery = ref('')
+const visibleScenarios = computed(() => scenarios.filter(name => name.replace(/_/g, ' ').includes(scenarioQuery.value.trim().toLowerCase())))
 const report = ref<Report | null>(null)
 const checking = ref('')
 
@@ -57,8 +60,10 @@ function toggleDebug() {
     <section class="controls-card">
       <div class="section-label"><Zap :size="16" /> Scenarios</div>
       <p class="control-intro">Force an event so you can see the reaction without arranging the conditions.</p>
+      <CollectionToolbar v-model:query="scenarioQuery" label="Find a scenario" :count="visibleScenarios.length" />
+      <p v-if="!visibleScenarios.length" class="muted">No matching scenarios.</p>
       <div class="scenario-grid">
-        <button v-for="name in scenarios" :key="name" @click="fire(name)">{{ name.replace(/_/g, ' ') }}</button>
+        <button v-for="name in visibleScenarios" :key="name" @click="fire(name)">{{ name.replace(/_/g, ' ') }}</button>
       </div>
     </section>
   </div>

@@ -31,6 +31,11 @@ pub struct Settings {
     /// User additions to the process-name → category table.
     pub category_overrides: BTreeMap<String, AppCategory>,
     pub uninstalled_builtins: Vec<String>,
+    /// The hardware name of the one screen pets are allowed on. `None` means
+    /// the main display. A name that is not currently connected falls back to
+    /// the main display until it returns, so unplugging and replugging the
+    /// "workstation" screen round-trips.
+    pub pet_screen: Option<String>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -49,6 +54,7 @@ impl Default for Settings {
             awareness: AwarenessConfig::default(),
             category_overrides: BTreeMap::new(),
             uninstalled_builtins: Vec::new(),
+            pet_screen: None,
         }
     }
 }

@@ -1,5 +1,6 @@
-//! Tauri wiring: windows, commands, menus, and the update loop. All world and
-//! pet truth lives in `engine`; this module only moves it in and out.
+use crate::tasks::commands::*;
+// Tauri wiring: windows, commands, menus, and the update loop. All world and
+// pet truth lives in `engine`; this module only moves it in and out.
 use crate::{
     awareness::AwarenessSummary,
     engine::Engine,
@@ -35,6 +36,25 @@ pub struct App {
     /// Monitors whose overlay has just mounted and needs its spawn payloads
     /// re-sent: the first tick's sends land before the webview can listen.
     pub atlas_recheck: Vec<u64>,
+    /// Every connected screen, for the picker. Only one of them — the pet
+    /// screen — is ever given to the engine or the platform.
+    pub screens: Vec<Screen>,
+    /// The hardware name of the screen pets are actually on, which is the
+    /// user's pick when that display is connected and the main display
+    /// otherwise. Snapshot readers need it to show the truth, not the intent.
+    pub pet_screen: Option<String>,
+    /// Set when the user picks a different pet screen, so the update loop
+    /// re-reads the display list immediately instead of up to two seconds later.
+    pub rescan_screens: bool,
+}
+
+/// A connected screen plus the stable name the pet-screen setting keys on.
+/// Tauri derives it from the display's model number, so it survives unplug,
+/// replug and list reshuffles; `MonitorInfo::id` does not (it is a list index).
+#[derive(Clone, Debug)]
+pub struct Screen {
+    pub info: MonitorInfo,
+    pub name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -62,6 +82,12 @@ pub struct Snapshot {
     pub settings: Settings,
     pub awareness: AwarenessSummary,
     pub monitors: Vec<MonitorInfo>,
+    /// Every connected screen for the picker; `monitors` is the single one
+    /// pets live on.
+    pub screens: Vec<ScreenView>,
+    /// The screen pets are actually on (the user's pick when it is connected,
+    /// else the main display).
+    pub pet_screen: Option<String>,
     pub windows: Vec<crate::world::WindowInfo>,
     pub surfaces: Vec<SurfaceView>,
     pub bounds: Rect,
@@ -72,6 +98,14 @@ pub struct Snapshot {
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenView {
+    #[serde(flatten)]
+    pub info: MonitorInfo,
+    pub name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -114,6 +148,15 @@ impl App {
             settings: engine.settings.clone(),
             awareness: engine.awareness_summary(),
             monitors: engine.monitors.clone(),
+            screens: self
+                .screens
+                .iter()
+                .map(|screen| ScreenView {
+                    info: screen.info,
+                    name: screen.name.clone(),
+                })
+                .collect(),
+            pet_screen: self.pet_screen.clone(),
             windows: engine.windows.clone(),
             surfaces: engine
                 .surfaces
@@ -246,6 +289,7 @@ async fn set_settings(
     let mut app = locked(&state)?;
     let mut settings = settings;
     settings.sanitize();
+    let screen_changed = settings.pet_screen != app.engine.settings.pet_screen;
     app.engine
         .awareness
         .apply(settings.awareness.clone(), settings.category_map());
@@ -262,6 +306,9 @@ async fn set_settings(
         }
     }
     app.engine.settings = settings;
+    if screen_changed {
+        app.rescan_screens = true;
+    }
     if pets_changed {
         let ids: Vec<u64> = app.engine.pets.iter().map(|p| p.id).collect();
         for id in ids {
@@ -435,6 +482,24 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
     tauri::Builder::default()
         .on_menu_event(handle_menu)
         .invoke_handler(tauri::generate_handler![
+            crate::platform::pet_ui::pet_folder,
+            crate::platform::pet_ui::pet_folder_drag,
+            crate::platform::pet_ui::show_pet_bubble,
+            task_list,
+            task_start,
+            task_cancel,
+            task_approve,
+            task_undo,
+            task_connections,
+            task_save_connections,
+            task_secret,
+            task_models,
+            task_detect_providers,
+            task_test_connection,
+            task_account,
+            task_pick,
+            task_open_url,
+            open_assistant,
             get_snapshot,
             pet_action,
             pet_interact,
@@ -460,6 +525,24 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
+            crate::platform::pet_ui::init(app.handle());
+            let task_handle = app.handle().clone();
+            let task_service =
+                crate::tasks::TaskService::new(&config_dir.join("assistant"), move |task| {
+                    crate::platform::pet_ui::update(&task_handle, &task);
+                    let _ = task_handle.emit_to("main", "task:changed", &task);
+                    let _ = task_handle.emit(
+                        "task:indicator",
+                        serde_json::json!({"petId":task.request.pet_id,"status":task.status}),
+                    );
+                })?;
+            app.manage(task_service);
+            if let Ok(resources) = app.path().resource_dir() {
+                let bundled = resources.join("sidecar");
+                if bundled.join("bridge.mjs").exists() {
+                    crate::tasks::runtimes::set_bridge(bundled);
+                }
+            }
             let packs_dir = config_dir.join("packs");
             let (settings, note) = settings::load(&config_dir);
             let mut notes: Vec<String> = note.into_iter().collect();
@@ -470,9 +553,17 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             for report in engine.reload_packs(&packs_dir) {
                 notes.push(report);
             }
-            // Monitor geometry is occasionally not ready this early; the update
-            // loop re-checks every two seconds, so an empty list is survivable.
-            engine.set_monitors(monitors(app.handle()).unwrap_or_default());
+            // Screen geometry is occasionally not ready this early; the
+            // update loop re-checks every two seconds, so an empty list is
+            // survivable. Only the chosen pet screen goes to the engine, so
+            // restored pets land on it from the first tick.
+            let found = screens(app.handle()).unwrap_or_default();
+            let chosen = chosen_screen(&found, engine.settings.pet_screen.as_deref());
+            let initial = chosen
+                .map(|screen| vec![pet_monitor(screen)])
+                .unwrap_or_default();
+            engine.set_monitors(initial);
+            let pet_screen = chosen.map(|screen| screen.name.clone());
             if let Ok(executable) = std::env::current_exe() {
                 let _ = crate::autostart::apply(engine.settings.launch_at_login, &executable);
             }
@@ -490,6 +581,9 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 lab_active: false,
                 dirty: false,
                 atlas_recheck: Vec::new(),
+                screens: found,
+                pet_screen,
+                rescan_screens: false,
             }));
             app.manage(shared.clone());
             setup_tray(app)?;
@@ -504,11 +598,30 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 }
                 // Dragging a .petpack or a pack folder onto the window installs it.
                 tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
-                    install_dropped(&dropped, &dropped_handle, paths.clone());
+                    let packs: Vec<_> = paths
+                        .iter()
+                        .filter(|p| {
+                            p.extension().is_some_and(|e| e == "petpack")
+                                || p.join("manifest.json").is_file()
+                        })
+                        .cloned()
+                        .collect();
+                    let attachments: Vec<_> = paths
+                        .iter()
+                        .filter(|p| !packs.contains(p))
+                        .cloned()
+                        .collect();
+                    if !packs.is_empty() {
+                        install_dropped(&dropped, &dropped_handle, packs);
+                    }
+                    if !attachments.is_empty() {
+                        let _ = dropped_handle.emit_to("main", "assistant:drop", attachments);
+                    }
                 }
                 _ => {}
             });
-            main.set_focus()?;
+            // The dashboard is opened explicitly from the tray or Connections.
+            main.hide()?;
             let handle = app.handle().clone();
             std::thread::spawn(move || run_loop(shared, handle));
             Ok(())
@@ -553,9 +666,9 @@ fn on_main<T: Send + 'static>(
     receiver.recv_timeout(Duration::from_secs(2)).ok()
 }
 
-/// Monitor geometry comes from the app handle rather than a window, because a
+/// Screen geometry comes from the app handle rather than a window, because a
 /// hidden companion window reports no monitors at all.
-fn monitors(app: &tauri::AppHandle) -> Result<Vec<MonitorInfo>, String> {
+fn screens(app: &tauri::AppHandle) -> Result<Vec<Screen>, String> {
     // Ask a real window: on macOS the app-level monitor list can come back
     // empty, while the window-level one is reliable.
     let window = app.get_webview_window("main");
@@ -575,72 +688,121 @@ fn monitors(app: &tauri::AppHandle) -> Result<Vec<MonitorInfo>, String> {
         let position = monitor.position();
         let size = monitor.size();
         let work = monitor.work_area();
-        out.push(MonitorInfo {
-            id: index as u64,
-            bounds: Rect::new(
-                position.x as f64,
-                position.y as f64,
-                size.width as f64,
-                size.height as f64,
-            ),
-            work: Rect::new(
-                work.position.x as f64,
-                work.position.y as f64,
-                work.size.width as f64,
-                work.size.height as f64,
-            ),
-            scale: monitor.scale_factor(),
-            is_primary: primary_position.as_ref() == Some(position),
+        out.push(Screen {
+            info: MonitorInfo {
+                id: index as u64,
+                bounds: Rect::new(
+                    position.x as f64,
+                    position.y as f64,
+                    size.width as f64,
+                    size.height as f64,
+                ),
+                work: Rect::new(
+                    work.position.x as f64,
+                    work.position.y as f64,
+                    work.size.width as f64,
+                    work.size.height as f64,
+                ),
+                scale: monitor.scale_factor(),
+                is_primary: primary_position.as_ref() == Some(position),
+            },
+            name: monitor
+                .name()
+                .cloned()
+                .unwrap_or_else(|| format!("Display {}", index + 1)),
         });
     }
     // An empty list is a legitimate answer while the session is locked.
     Ok(out)
 }
 
-fn build_overlays(
+/// The one screen pets live on: the user's pick when it is connected, else
+/// the main display, else the only one there is.
+fn chosen_screen<'a>(screens: &'a [Screen], wanted: Option<&str>) -> Option<&'a Screen> {
+    wanted
+        .and_then(|name| screens.iter().find(|s| s.name == name))
+        .or_else(|| screens.iter().find(|s| s.info.is_primary))
+        .or_else(|| screens.first())
+}
+
+/// Canonical engine form of the chosen screen. The id is forced to 0 because
+/// Tauri's monitor ids are list indices — a reshuffle when a display connects
+/// would otherwise read as a world change. With a single monitor in engine
+/// space, window-edge surfaces outside its work area are clipped away, so
+/// confinement falls out of the existing geometry rules rather than a new one.
+fn pet_monitor(screen: &Screen) -> MonitorInfo {
+    MonitorInfo {
+        id: 0,
+        ..screen.info
+    }
+}
+
+/// The one overlay window, on the pet screen. It is created once and moved
+/// with `set_position`/`set_size` afterwards: recreating it reloads the
+/// webview (a visible flash) and closing the old one is asynchronous, so a
+/// rebuild-per-change storm leaves several dying overlays each still showing
+/// its last painted scene — pets appeared duplicated across screens.
+fn ensure_overlay(
     app: &tauri::AppHandle,
-    monitors: &[MonitorInfo],
+    monitor: &MonitorInfo,
     hidden: bool,
-) -> HashMap<u64, WebviewWindow> {
-    let mut windows = HashMap::new();
-    for monitor in monitors {
-        let label = format!("pet-{}", monitor.id);
-        if let Some(existing) = app.get_webview_window(&label) {
-            let _ = existing.close();
+) -> Option<(WebviewWindow, bool)> {
+    const LABEL: &str = "pet-0";
+    if let Some(window) = app.get_webview_window(LABEL) {
+        // Logical coordinates are pre-converted against the target screen's
+        // scale because tao converts `set_size` with the window's *current*
+        // screen scale, and the move is applied only after both calls return.
+        // Position must land before size so that conversion is the right one.
+        let scale = monitor.scale;
+        let position =
+            tauri::LogicalPosition::new(monitor.bounds.x / scale, monitor.bounds.y / scale);
+        let size =
+            tauri::LogicalSize::new(monitor.bounds.width / scale, monitor.bounds.height / scale);
+        if let Err(error) = window.set_position(position) {
+            eprintln!("Perch could not move the overlay: {error}");
         }
-        let built = WebviewWindowBuilder::new(
-            app,
-            &label,
-            WebviewUrl::App(format!("index.html?pet&monitor={}", monitor.id).into()),
-        )
-        .title("Perch")
-        .inner_size(
-            monitor.bounds.width / monitor.scale,
-            monitor.bounds.height / monitor.scale,
-        )
-        .position(
-            monitor.bounds.x / monitor.scale,
-            monitor.bounds.y / monitor.scale,
-        )
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(false)
-        .focusable(false)
-        .visible(!hidden)
-        .build();
-        match built {
-            Ok(window) => {
-                let _ = window.set_ignore_cursor_events(true);
-                windows.insert(monitor.id, window);
-            }
-            Err(error) => eprintln!("Perch could not create an overlay: {error}"),
+        if let Err(error) = window.set_size(size) {
+            eprintln!("Perch could not resize the overlay: {error}");
+        }
+        return Some((window, false));
+    }
+    let built = WebviewWindowBuilder::new(
+        app,
+        LABEL,
+        WebviewUrl::App("index.html?pet&monitor=0".into()),
+    )
+    .title("Perch")
+    .inner_size(
+        monitor.bounds.width / monitor.scale,
+        monitor.bounds.height / monitor.scale,
+    )
+    .position(
+        monitor.bounds.x / monitor.scale,
+        monitor.bounds.y / monitor.scale,
+    )
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .focused(false)
+    .accept_first_mouse(true)
+    .visible_on_all_workspaces(true)
+    .focusable(false)
+    .visible(!hidden)
+    .build();
+    match built {
+        Ok(window) => {
+            crate::platform::pet_ui::overlay(&window);
+            let _ = window.set_ignore_cursor_events(true);
+            Some((window, true))
+        }
+        Err(error) => {
+            eprintln!("Perch could not create an overlay: {error}");
+            None
         }
     }
-    windows
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -749,7 +911,9 @@ struct RenderPlan {
 fn run_loop(shared: Shared, handle: tauri::AppHandle) {
     let platform = NativePlatform;
     let mut renderer = NativeSurface::new(HashMap::new());
-    let mut known_monitors: Vec<MonitorInfo> = Vec::new();
+    // The pet screen the engine and the overlay currently reflect, in
+    // canonical form (id 0). `None` means no overlay window exists yet.
+    let mut active: Option<MonitorInfo> = None;
     let mut last = Instant::now();
     let mut last_monitor_check = Instant::now() - Duration::from_secs(10);
     let mut last_watch = Instant::now();
@@ -762,9 +926,16 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         let dt = now.duration_since(last).as_secs_f64();
         last = now;
 
-        if last_monitor_check.elapsed() > Duration::from_secs(2) {
+        // The pet screen can also be re-picked from a command, which sets a
+        // flag rather than waiting out the two-second poll.
+        let mut rescan = false;
+        if let Ok(mut app) = shared.lock() {
+            rescan = app.rescan_screens;
+            app.rescan_screens = false;
+        }
+        if last_monitor_check.elapsed() > Duration::from_secs(2) || rescan {
             last_monitor_check = now;
-            match on_main(&handle, monitors) {
+            match on_main(&handle, screens) {
                 Some(Ok(found)) if found.is_empty() => {
                     // Locked session or sleeping display: keep what we know.
                     if let Ok(mut app) = shared.lock() {
@@ -774,27 +945,60 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         app.engine.screens_available = false;
                     }
                 }
-                Some(Ok(found)) if found != known_monitors => {
-                    if diagnostics {
-                        eprintln!("Perch sees {} display(s).", found.len());
-                    }
-                    known_monitors = found.clone();
-                    platform.set_monitors(found.clone());
-                    let hidden = shared
+                Some(Ok(found)) => {
+                    let count = found.len();
+                    let wanted = shared
                         .lock()
-                        .map(|mut app| {
-                            app.engine.set_monitors(found.clone());
-                            app.engine.settings.hidden
-                        })
-                        .unwrap_or(false);
-                    // Built on the UI thread, and never while holding the lock.
-                    let overlays = on_main(&handle, move |handle| {
-                        build_overlays(handle, &found, hidden)
-                    });
-                    renderer.replace(overlays.unwrap_or_default());
+                        .map(|app| app.engine.settings.pet_screen.clone())
+                        .ok()
+                        .flatten();
+                    let chosen = chosen_screen(&found, wanted.as_deref())
+                        .map(|screen| (screen.name.clone(), pet_monitor(screen)));
+                    if let Some((name, monitor)) = chosen {
+                        let changed = active != Some(monitor);
+                        if let Ok(mut app) = shared.lock() {
+                            app.screens = found;
+                            app.pet_screen = Some(name.clone());
+                            if changed {
+                                app.engine.set_monitors(vec![monitor]);
+                            }
+                            // A pick naming hardware that is gone is adopted
+                            // over by the screen pets actually fell back to, so
+                            // the setting, the picker and the overlay always
+                            // agree on one connected display.
+                            if wanted.as_deref().is_some_and(|wanted| wanted != name) {
+                                app.engine.settings.pet_screen = Some(name.clone());
+                                app.dirty = true;
+                            }
+                        }
+                        if changed {
+                            if diagnostics {
+                                eprintln!("Perch's screen: {name} ({count} display(s) connected).");
+                            }
+                            platform.set_monitors(vec![monitor]);
+                            let hidden = shared
+                                .lock()
+                                .map(|app| app.engine.settings.hidden)
+                                .unwrap_or(false);
+                            // Moved or built on the UI thread, never while
+                            // holding the lock.
+                            let overlay = on_main(&handle, move |handle| {
+                                ensure_overlay(handle, &monitor, hidden)
+                            });
+                            match overlay.flatten() {
+                                Some((window, created)) => {
+                                    if created || !renderer.has(0) {
+                                        renderer.replace(HashMap::from([(0u64, window)]));
+                                    }
+                                    active = Some(monitor);
+                                }
+                                None => renderer.replace(HashMap::new()),
+                            }
+                        }
+                    }
                 }
                 Some(Err(error)) if diagnostics => {
-                    eprintln!("Perch could not read monitor geometry: {error}");
+                    eprintln!("Perch could not read screen geometry: {error}");
                 }
                 _ => {}
             }

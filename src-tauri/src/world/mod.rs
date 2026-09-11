@@ -104,6 +104,7 @@ impl WindowInfo {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MonitorInfo {
     pub id: u64,
     pub bounds: Rect,
