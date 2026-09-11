@@ -50,6 +50,11 @@
 .markdown-body th { background: var(--soft); }
 .task-result-preview { color: var(--muted); font-size: 12px; line-height: 1.65; margin-top: 12px; }
 .task-card .task-actions { margin-bottom: 0; }
+.approval-items { list-style: none; padding: 0; margin: 8px 0 10px; }
+.approval-items li { padding: 3px 0 3px 14px; position: relative; overflow-wrap: anywhere; }
+.approval-items li::before { content: '·'; position: absolute; left: 2px; color: var(--muted); }
+.approval-items.mono li { font: 11px/1.6 ui-monospace, monospace; }
+.approval-items .approval-more { color: var(--muted); }
 .operation-list { padding-left: 20px; list-style: decimal; }
 .operation-list li { padding: 8px 0; overflow-wrap: anywhere; }.operation-list span { display: block; font-weight: 600; }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }

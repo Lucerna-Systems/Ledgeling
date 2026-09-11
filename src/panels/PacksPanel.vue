@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { Package, Plus, Trash2, Download, PawPrint, AlertTriangle, FolderOpen } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, snapshot } from '../state'
+import type { PackSummary } from '../types'
 import CollectionToolbar from '../components/CollectionToolbar.vue'
 import DiagnosticList from './DiagnosticList.vue'
 
@@ -29,6 +30,14 @@ const classes = ['flier', 'climber', 'walker', 'hopper']
 const spawnedFor = computed(() => new Set(pets.value.map(p => p.packId)))
 
 onMounted(refreshPacks)
+
+/** Only the counts that are not zero, so a pack with nothing but notes does not
+ *  advertise "0 errors". */
+function diagnosticLabel(pack: PackSummary) {
+  const parts = [[pack.errors, 'error'], [pack.warnings, 'warning'], [pack.notes, 'note']] as const
+  const counted = parts.filter(([count]) => count > 0).map(([count, noun]) => `${count} ${noun}${count === 1 ? '' : 's'}`)
+  return counted.length ? counted.join(' · ') : 'Details'
+}
 
 async function spawn(id: string) { await call('spawn_pet', { packId: id }) }
 async function despawn(id: string) {
@@ -80,12 +89,19 @@ async function exportPack(id: string) {
           <details class="pack-more">
             <summary>Details</summary>
             <p class="pack-surfaces">{{ listing.summary.surfaces.map(surface => surface.replace(/_/g, ' ')).join(' · ') }}</p>
+            <ul class="pack-clips">
+              <li v-for="clip in listing.summary.assistantClips" :key="clip.slot">
+                <span>{{ clip.when[0]!.toUpperCase() + clip.when.slice(1) }}</span>
+                <template v-if="clip.provided">Plays its own <code>{{ clip.slot }}</code></template>
+                <template v-else>Plays <code>{{ clip.clip }}</code> — this pack has no <code>{{ clip.slot }}</code> animation</template>
+              </li>
+            </ul>
             <div class="pack-actions"><button @click="exportPack(listing.summary.id)"><Download :size="14" /> Export</button><button class="danger-button" @click="uninstall(listing.summary.id)"><Trash2 :size="14" /> Remove</button></div>
           </details>
         </div>
         <button v-if="listing.report.diagnostics.length" class="text-link" @click="open = open === listing.summary.id ? null : listing.summary.id">
           <AlertTriangle :size="12" />
-          {{ listing.summary.errors }} errors · {{ listing.summary.warnings }} warnings
+          {{ diagnosticLabel(listing.summary) }}
         </button>
         <DiagnosticList v-if="open === listing.summary.id" :report="listing.report" />
       </div>

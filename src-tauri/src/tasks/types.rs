@@ -85,12 +85,30 @@ pub struct Operation {
     pub result_fingerprint: Option<String>,
     pub state: String,
 }
+/// What an approval looks like to a person. Built once when the approval is
+/// raised (see `tasks::summary`) so every surface — the pet bubble, the task
+/// history — shows the same words, and none of them has to read `details`.
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ApprovalSummary {
+    pub headline: String,
+    pub items: Vec<String>,
+    /// Items beyond the ones listed, so long plans stay one glance.
+    pub more: usize,
+    pub note: String,
+    /// Label for the accept button; short enough for the bubble's button.
+    pub accept: String,
+    pub monospace: bool,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Approval {
     pub id: u64,
     pub title: String,
+    /// The producer's own payload. Kept for the record and never rendered.
     pub details: Value,
+    #[serde(default)]
+    pub summary: ApprovalSummary,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

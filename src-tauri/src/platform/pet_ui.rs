@@ -123,10 +123,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             send(app, serde_json::json!({"petId": pet, "models": models}));
         }
         "model" => {
-            let model = v["model"]
-                .as_str()
-                .ok_or("Missing model")?
-                .to_string();
+            let model = v["model"].as_str().ok_or("Missing model")?.to_string();
             let mut config = service.config();
             let mut connection = effective_connection(&config, Some(pet));
             if matches!(connection.kind, ProviderKind::None) {
@@ -168,6 +165,13 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
                 }
             })
             .map_err(|e| e.to_string())?;
+        }
+        // The bubble closed, by the close button or by losing focus: the pet is
+        // free to wander again unless its own task still holds it.
+        "closed" => {
+            let shared = app.state::<Shared>();
+            let mut state = shared.lock().map_err(|_| "Pet state unavailable")?;
+            state.engine.stop_listening(pet);
         }
         "dragEnded" => {
             let shared = app.state::<Shared>();
@@ -361,14 +365,21 @@ pub async fn pet_folder(pet_id: u64) -> Option<String> {
 pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), String> {
     let name = {
         let shared = app.state::<Shared>();
-        let state = shared.lock().map_err(|_| "Pet state unavailable")?;
-        state
+        let mut state = shared.lock().map_err(|_| "Pet state unavailable")?;
+        let name = state
             .engine
             .pets
             .iter()
             .find(|p| p.id == pet_id)
             .map(|p| p.pack.manifest.name.clone())
-            .ok_or("This pet is no longer on the desktop")?
+            .ok_or("This pet is no longer on the desktop")?;
+        // Whatever it was doing, it now stays under the bubble pointing at it.
+        // Only where a bubble actually opens: elsewhere this command fails, and
+        // a pet pinned by a bubble that never appeared would never move again.
+        if cfg!(target_os = "macos") {
+            state.engine.listen(pet_id);
+        }
+        name
     };
     #[cfg(target_os = "macos")]
     {

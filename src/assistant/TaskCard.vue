@@ -25,18 +25,22 @@ async function open(url: string) { try { await taskCall('task_open_url', { url }
     <p role="status">{{ task.progress }}</p>
     <div v-if="task.error" class="task-problem" role="alert">{{ task.error }}</div>
     <section v-if="task.approval && task.status === 'waiting'" class="approval-card" aria-label="Pending approval">
-      <h3>{{ task.approval.title }}</h3>
-      <template v-if="task.approval.details.operations">
-        <p>Only these changes will be applied. Existing files will not be overwritten.</p>
+      <h3>{{ task.approval.summary.headline || task.approval.title }}</h3>
+      <ul class="approval-items" :class="{ mono: task.approval.summary.monospace }">
+        <li v-for="(item, index) in task.approval.summary.items" :key="index">{{ item }}</li>
+        <li v-if="task.approval.summary.more" class="approval-more">+{{ task.approval.summary.more }} more</li>
+      </ul>
+      <p v-if="task.approval.summary.note">{{ task.approval.summary.note }}</p>
+      <details v-if="task.approval.details.operations?.length">
+        <summary>Every change · {{ task.approval.details.operations.length }}</summary>
         <ol class="operation-list"><li v-for="(op, index) in task.approval.details.operations" :key="index">
           <span>{{ op.kind === 'move' ? 'Move' : 'Create' }}</span>
           <code v-if="op.source">{{ op.source }} → </code><code>{{ op.destination }}</code>
           <details v-if="op.content"><summary>Preview contents</summary><pre>{{ op.content }}</pre></details>
         </li></ol>
-      </template>
-      <pre v-else>{{ JSON.stringify(task.approval.details, null, 2) }}</pre>
+      </details>
       <div class="task-actions">
-        <button class="primary-button" :disabled="pending" @click="control('task_approve', { approvalId: task.approval.id, accept: true })">Approve</button>
+        <button class="primary-button" :disabled="pending" @click="control('task_approve', { approvalId: task.approval.id, accept: true })">{{ task.approval.summary.accept || 'Approve' }}</button>
         <button :disabled="pending" @click="control('task_approve', { approvalId: task.approval.id, accept: false })">Reject</button>
       </div>
     </section>

@@ -1,7 +1,7 @@
 //! Pack loading, validation and the behavior format. Every malformed case must
 //! produce a message that names the file, the path, the problem and the fix.
 use super::{
-    diagnostics::{Report, Tier},
+    diagnostics::{Diagnostic, Report, Tier},
     loader,
     manifest::{self, LocomotionClass, MANIFEST_FILE},
     scaffold,
@@ -65,6 +65,45 @@ fn missing_animations_fall_back_down_the_chain() {
     assert_eq!(manifest.resolve_clip("sleep"), "idle");
     assert_eq!(manifest.resolve_clip("move"), "move");
     assert_eq!(manifest.resolve_clip("something-invented"), "idle");
+}
+
+#[test]
+fn an_empty_assistant_clip_slot_is_reported_with_what_plays_instead() {
+    let (manifest, report) = parse(MINIMAL);
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("busy"), "idle");
+    assert_eq!(manifest.resolve_clip("attention"), "idle");
+    let notes: Vec<&Diagnostic> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.tier == Tier::Info)
+        .collect();
+    for slot in ["busy", "attention"] {
+        let note = notes
+            .iter()
+            .find(|d| d.path == format!("animations.{slot}"))
+            .unwrap_or_else(|| panic!("no note about the empty `{slot}` slot"));
+        assert!(note.problem.contains("plays `idle`"), "{}", note.problem);
+        assert!(note.expected.contains(&format!("animations.{slot}")));
+    }
+    // An empty optional slot is a note, never something that blocks the pack.
+    assert!(!report.has_errors());
+}
+
+#[test]
+fn a_pack_that_supplies_its_own_assistant_clips_is_not_nagged() {
+    let text = MINIMAL.replace(
+        "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 },\n    \"busy\": { \"file\": \"sprites/busy.png\", \"frames\": 4, \"fps\": 8 },\n    \"attention\": { \"file\": \"sprites/attention.png\", \"frames\": 4, \"fps\": 6 }",
+    );
+    let (manifest, report) = parse(&text);
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("busy"), "busy");
+    assert_eq!(manifest.resolve_clip("attention"), "attention");
+    assert!(!report
+        .diagnostics
+        .iter()
+        .any(|d| d.path.starts_with("animations.busy")));
 }
 
 #[test]

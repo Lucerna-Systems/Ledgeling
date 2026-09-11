@@ -12,6 +12,7 @@ const atlases = new Map<number, SpawnPayload>()
 const nodes = new Map<number, HTMLDivElement>()
 const off: UnlistenFn[] = []
 const indicators = new Map<number, string>()
+const fading = new Map<number, ReturnType<typeof setTimeout>>()
 let disposed = false
 let dragging = false
 let pressedAt = 0
@@ -64,6 +65,26 @@ function despawn(petId: number) {
   atlases.delete(petId)
   nodes.get(petId)?.remove()
   nodes.delete(petId)
+  clearIndicator(petId)
+}
+
+function clearIndicator(petId: number) {
+  clearTimeout(fading.get(petId))
+  fading.delete(petId)
+  indicators.delete(petId)
+}
+
+/** The halo says a task is live. A finished one glows briefly and then stops:
+ *  a permanent mark would keep claiming attention the pet no longer needs. */
+function indicate(petId: number, status: string) {
+  clearTimeout(fading.get(petId))
+  fading.delete(petId)
+  if (!['queued', 'running', 'waiting', 'cancelling', 'undoing'].includes(status)) {
+    indicators.set(petId, 'completed')
+    fading.set(petId, setTimeout(() => clearIndicator(petId), 6000))
+    return
+  }
+  indicators.set(petId, status)
 }
 
 async function subscribe<T>(event: string, callback: (value: T) => void) {
@@ -76,14 +97,14 @@ onMounted(async () => {
   await subscribe<number>('pet:despawn', despawn)
   await subscribe<Scene>('pet:scene', render)
   await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null })
-  await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicators.set(value.petId, value.status) })
+  await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicate(value.petId, value.status) })
   await subscribe<string>('pet:sound', source => { void new Audio(source).play().catch(() => {}) })
   // The backend sends spawn payloads before this webview could listen; ask it
   // to re-send them now that every listener is registered.
   const monitor = new URLSearchParams(location.search).get('monitor')
   if (monitor !== null) await invoke('pet_surface_ready', { monitor: Number(monitor) })
 })
-onUnmounted(() => { disposed = true; off.forEach(stop => stop()) })
+onUnmounted(() => { disposed = true; off.forEach(stop => stop()); fading.forEach(clearTimeout); fading.clear() })
 
 function act(kind: string) { void invoke('pet_interact', { kind }).catch(() => {}) }
 

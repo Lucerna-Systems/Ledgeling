@@ -45,6 +45,15 @@ impl Pack {
                 .map(|s| s.as_str().to_string())
                 .collect(),
             animations: m.animations.keys().cloned().collect(),
+            assistant_clips: manifest::ASSISTANT_CLIPS
+                .iter()
+                .map(|(slot, when)| AssistantClip {
+                    slot: (*slot).into(),
+                    when: (*when).into(),
+                    clip: m.resolve_clip(slot).to_string(),
+                    provided: m.animations.contains_key(*slot),
+                })
+                .collect(),
             preview: self.preview.clone(),
             directory: self.directory.to_string_lossy().to_string(),
             builtin: self.builtin,
@@ -59,6 +68,12 @@ impl Pack {
                 .diagnostics
                 .iter()
                 .filter(|d| d.tier == Tier::Warning)
+                .count(),
+            notes: self
+                .report
+                .diagnostics
+                .iter()
+                .filter(|d| d.tier == Tier::Info)
                 .count(),
             loadable: true,
         }
@@ -111,12 +126,30 @@ pub struct PackSummary {
     pub class: String,
     pub surfaces: Vec<String>,
     pub animations: Vec<String>,
+    pub assistant_clips: Vec<AssistantClip>,
     pub preview: Option<String>,
     pub directory: String,
     pub builtin: bool,
     pub errors: usize,
     pub warnings: usize,
+    /// Info diagnostics: nothing is wrong, but the author may want to know —
+    /// an empty optional clip slot, for instance.
+    pub notes: usize,
     pub loadable: bool,
+}
+
+/// One assistant clip slot as this pack actually resolves it. The packs UI
+/// shows these so an author can see, without reading the fallback chain, what
+/// their pet will play while it is working or waiting on the user.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantClip {
+    pub slot: String,
+    /// When the slot plays, in words.
+    pub when: String,
+    /// The clip actually played, which is the slot itself when provided.
+    pub clip: String,
+    pub provided: bool,
 }
 
 /// A pack that failed to load still has to appear in the browser, with reasons.
@@ -307,6 +340,7 @@ fn broken_summary(directory: &Path, report: &Report, builtin: bool) -> PackSumma
         class: String::new(),
         surfaces: Vec::new(),
         animations: Vec::new(),
+        assistant_clips: Vec::new(),
         preview: None,
         directory: directory.to_string_lossy().to_string(),
         builtin,
@@ -319,6 +353,11 @@ fn broken_summary(directory: &Path, report: &Report, builtin: bool) -> PackSumma
             .diagnostics
             .iter()
             .filter(|d| d.tier == Tier::Warning)
+            .count(),
+        notes: report
+            .diagnostics
+            .iter()
+            .filter(|d| d.tier == Tier::Info)
             .count(),
         loadable: false,
     }

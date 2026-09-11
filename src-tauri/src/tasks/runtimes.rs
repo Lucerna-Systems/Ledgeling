@@ -200,7 +200,11 @@ impl AgentRuntime for CodexRuntime {
             .collect::<Vec<_>>();
         // Read the account on the same process so the status line reflects the
         // actual sign-in instead of always prompting for it.
-        let detail = match p.rpc("account/read", json!({"refreshToken":false}), &Cancel::default()) {
+        let detail = match p.rpc(
+            "account/read",
+            json!({"refreshToken":false}),
+            &Cancel::default(),
+        ) {
             Ok(v) => {
                 let who = ["email", "name", "accountName"]
                     .iter()
@@ -210,9 +214,17 @@ impl AgentRuntime for CodexRuntime {
                     None => "Codex App Server protocol connected. Not signed in; sign in with ChatGPT before starting a task.".into(),
                 }
             }
-            Err(_) => "Codex App Server protocol connected. Sign in with ChatGPT before starting a task.".into(),
+            Err(_) => {
+                "Codex App Server protocol connected. Sign in with ChatGPT before starting a task."
+                    .into()
+            }
         };
-        Ok(Capabilities { models, structured: false, advanced: true, detail })
+        Ok(Capabilities {
+            models,
+            structured: false,
+            advanced: true,
+            detail,
+        })
     }
     fn run(&self, ctx: &Context, task: &Task) -> Result<(), String> {
         let (root, extra) = working_root(&task.request.roots)?;
@@ -270,7 +282,7 @@ impl AgentRuntime for CodexRuntime {
                     if kind == "fileChange" {
                         changes = args["item"]["changes"].clone();
                     }
-                    ctx.progress(&format!("Agent · {kind}"))?;
+                    ctx.progress(super::summary::agent_activity(kind))?;
                 }
                 "turn/completed" => {
                     if args["turn"]["status"] == "failed" {
@@ -305,7 +317,8 @@ fn bridge() -> PathBuf {
 /// detection distinguishes a broken sidecar from a missing app.
 pub fn bridge_ready() -> bool {
     let dir = bridge();
-    dir.join(if cfg!(windows) { "node.exe" } else { "node" }).exists()
+    dir.join(if cfg!(windows) { "node.exe" } else { "node" })
+        .exists()
         && dir.join("bridge.mjs").exists()
 }
 pub struct ClaudeRuntime(pub Connection);

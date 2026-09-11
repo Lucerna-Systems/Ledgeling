@@ -200,6 +200,19 @@ pub const CLIP_FALLBACKS: &[(&str, &[&str])] = &[
     ("grabbed", &["idle"]),
     ("preen", &["idle"]),
     ("greet", &["happy", "idle"]),
+    // Assistant clips: what the pet plays while a task of its own is running,
+    // and while that task is waiting for the user to answer something.
+    // Not `move`: a walk cycle playing on a pet standing still reads as a bug.
+    ("busy", &["preen", "idle"]),
+    ("attention", &["alert", "happy", "idle"]),
+];
+
+/// Clips the assistant layer plays, and what a pack without them falls back to.
+/// Packs are told about these rather than required to have them — the pack
+/// format's promise is that a two-animation pack still works everywhere.
+pub const ASSISTANT_CLIPS: &[(&str, &str)] = &[
+    ("busy", "while this pet is working on a task"),
+    ("attention", "while its task is waiting for your answer"),
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -889,6 +902,25 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
                 "Every pack needs `idle` and `move`; all other clips fall back to these.",
             ));
         }
+    }
+    // Optional, but silently missing would leave an author wondering why their
+    // pet looks the same whether it is working or waiting on them.
+    for (clip, when) in ASSISTANT_CLIPS {
+        if animations.contains_key(*clip) {
+            continue;
+        }
+        let fallback = CLIP_FALLBACKS
+            .iter()
+            .find(|(name, _)| name == clip)
+            .and_then(|(_, chain)| chain.iter().find(|c| animations.contains_key(**c)))
+            .copied()
+            .unwrap_or("idle");
+        report.push(Diagnostic::info(
+            MANIFEST_FILE,
+            format!("animations.{clip}"),
+            format!("No `{clip}` animation, so this pet plays `{fallback}` {when}."),
+            format!("Add an `animations.{clip}` clip to give it its own look."),
+        ));
     }
     animations
 }

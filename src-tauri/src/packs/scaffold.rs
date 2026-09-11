@@ -18,11 +18,33 @@ pub fn create(packs_dir: &Path, class: LocomotionClass, name: &str) -> Result<Pa
     }
     std::fs::create_dir_all(directory.join("sprites"))
         .map_err(|e| format!("Could not create the pack folder: {e}"))?;
+    // `busy` and `attention` are in every scaffold so an author sees the slots
+    // exist at all: a pet with a task of its own plays them, and nothing in the
+    // manifest would otherwise hint that they are there to fill.
     let clips: &[(&str, u32)] = match class {
-        LocomotionClass::Flier => &[("idle", 4), ("move", 4), ("land", 2)],
-        LocomotionClass::Climber => &[("idle", 4), ("move", 4), ("climb", 4), ("fall", 2)],
-        LocomotionClass::Walker => &[("idle", 4), ("move", 4)],
-        LocomotionClass::Hopper => &[("idle", 4), ("move", 4), ("jump", 4)],
+        LocomotionClass::Flier => &[
+            ("idle", 4),
+            ("move", 4),
+            ("land", 2),
+            ("busy", 4),
+            ("attention", 4),
+        ],
+        LocomotionClass::Climber => &[
+            ("idle", 4),
+            ("move", 4),
+            ("climb", 4),
+            ("fall", 2),
+            ("busy", 4),
+            ("attention", 4),
+        ],
+        LocomotionClass::Walker => &[("idle", 4), ("move", 4), ("busy", 4), ("attention", 4)],
+        LocomotionClass::Hopper => &[
+            ("idle", 4),
+            ("move", 4),
+            ("jump", 4),
+            ("busy", 4),
+            ("attention", 4),
+        ],
     };
     for (clip, frames) in clips {
         write_png(
@@ -149,6 +171,10 @@ top edges; a gecko takes only `window_vertical`; a squirrel takes everything.\n\
 Only `idle` and `move` are required. Everything else falls back:\n\
 `climb → move → idle`, `land → idle`, `sleep → idle`, and so on. Adding art only ever\n\
 improves the pet; leaving it out never breaks the pack.\n\n\
+Two of the clips here are for the assistant: `busy` plays while this pet is working on\n\
+a task you gave it, and `attention` plays while that task is waiting for your answer.\n\
+Both are optional — `busy → preen → idle` and `attention → alert → happy → idle` — and\n\
+Pet packs tells you which one a pet is falling back to.\n\n\
 ## Behaviour\n\n\
 Leave `behavior` out and the engine uses a sensible default for this class. When you\n\
 want more character, add states with `clip`, `duration`, and weighted `transitions`.\n\

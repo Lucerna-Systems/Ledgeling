@@ -58,9 +58,16 @@ it is missing Perch uses one you did draw:
 climb → move → idle        land  → idle        sleep → idle
 jump  → move → idle        happy → idle        alert → idle
 fall  → move → idle        takeoff → move → idle
+busy  → preen → idle       attention → alert → happy → idle
 ```
 
 So a two-picture pack is a complete pet. Adding more art only ever makes it better.
+
+`busy` and `attention` are the two assistant clips. A pet plays `busy` while it is
+working on a task you gave it, and `attention` while that task is waiting for your
+answer — a file change to approve, a command to allow. Both are optional like the
+rest; **Pet packs → Details** tells you, per pack, which clip each slot is actually
+playing, so a missing one is visible rather than silent.
 
 ---
 

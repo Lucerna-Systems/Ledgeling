@@ -862,6 +862,27 @@ static void perch_close_dropdown(void) {
 /// The bubble's one fixed dimension; its height follows what is on show.
 static const CGFloat PERCH_BUBBLE_W = 370;
 
+/// Lays out an approval the user has to decide on. The backend already turned
+/// the requesting runtime's payload into plain words (`tasks::summary`); this
+/// only arranges them, and never renders the payload itself.
+static NSString *perch_approval_text(NSDictionary *summary, NSString *title) {
+  NSMutableArray<NSString *> *lines = [NSMutableArray new];
+  NSString *headline = summary[@"headline"];
+  BOOL usable = [headline isKindOfClass:NSString.class] && headline.length;
+  [lines addObject:usable ? headline : (title.length ? title : @"This task needs your approval.")];
+  if ([summary[@"items"] isKindOfClass:NSArray.class]) {
+    for (NSString *item in summary[@"items"])
+      if ([item isKindOfClass:NSString.class] && item.length)
+        [lines addObject:[NSString stringWithFormat:@"   • %@", item]];
+  }
+  NSInteger more = [summary[@"more"] integerValue];
+  if (more > 0) [lines addObject:[NSString stringWithFormat:@"   + %ld more", (long)more]];
+  NSString *note = summary[@"note"];
+  if ([note isKindOfClass:NSString.class] && note.length)
+    [lines addObject:[NSString stringWithFormat:@"\n%@", note]];
+  return [lines componentsJoinedByString:@"\n"];
+}
+
 /// Keep a scrolling text view filling the box it lives in as that box resizes.
 static void perch_fit_text(NSScrollView *scroll, NSView *box, NSTextView *text) {
   scroll.frame = NSInsetRect(box.bounds, 1, 1);
@@ -1255,6 +1276,9 @@ static PerchBubble *bubble;
 /// fresh open.
 - (void)dismiss {
   perch_close_dropdown();
+  // The pet stopped where it was to be under this bubble; closing it lets the
+  // pet go again, unless a task of its own is still holding it.
+  if (_pet && _panel.isVisible) emit(@{@"type": @"closed", @"petId": _pet});
   perch_stop(self);
   NSWindow *panel = _panel;
   perch_stop(panel);
@@ -1454,9 +1478,12 @@ void perch_bubble_update(const char *json) {
   }
   if (waiting) {
     bubble.approval = approval[@"id"];
-    NSData *details = [NSJSONSerialization dataWithJSONObject:approval[@"details"] options:NSJSONWritingPrettyPrinted error:nil];
-    [bubble showOutput:[NSString stringWithFormat:@"%@\n%@", approval[@"title"], [[NSString alloc] initWithData:details encoding:NSUTF8StringEncoding]]
-            monospaced:YES];
+    NSDictionary *summary = [approval[@"summary"] isKindOfClass:NSDictionary.class] ? approval[@"summary"] : @{};
+    NSString *accept = summary[@"accept"];
+    if ([accept isKindOfClass:NSString.class] && accept.length) bubble.approve.title = accept;
+    // Only a command earns a monospaced grid; everything else is a sentence.
+    [bubble showOutput:perch_approval_text(summary, approval[@"title"])
+            monospaced:[summary[@"monospace"] boolValue]];
   } else {
     NSString *error = [data[@"error"] isKindOfClass:NSString.class] ? data[@"error"] : @"";
     [bubble showOutput:[NSString stringWithFormat:@"%@\n%@%@", data[@"progress"] ?: @"", error, data[@"result"] ?: @""]

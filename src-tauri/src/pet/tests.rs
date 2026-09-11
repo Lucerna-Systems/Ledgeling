@@ -404,3 +404,111 @@ fn animation_frames_advance_loop_and_hold() {
         "a non-looping clip holds its last frame"
     );
 }
+
+// ------------------------------------------------------- attending the user
+
+#[test]
+fn a_pet_the_user_is_talking_to_stays_where_it_is() {
+    let world = World::new(&[
+        win(1, 100., 300., 600., 200.),
+        win(2, 900., 300., 600., 200.),
+    ]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(300., 100.));
+    settle(&mut pet, &world, 30.);
+    pet.listen(true);
+    let held = pet.position;
+    // Long enough for several behavior states, any of which would normally
+    // send it walking to another window.
+    step(&mut pet, &world, 120.);
+    assert_eq!(pet.attend(), Some(Attend::Listening));
+    assert_eq!(pet.motion, Motion::Settled);
+    assert!(
+        (pet.position.x - held.x).abs() < 1. && (pet.position.y - held.y).abs() < 1.,
+        "it stayed under the bubble: {:?} → {:?}",
+        held,
+        pet.position
+    );
+    pet.listen(false);
+    step(&mut pet, &world, 120.);
+    assert_eq!(pet.attend(), None, "closing the bubble frees it");
+    assert!(
+        (pet.position.x - held.x).abs() > 1. || pet.motion != Motion::Settled,
+        "and it wanders again"
+    );
+}
+
+#[test]
+fn a_walking_pet_stops_when_its_bubble_opens() {
+    let world = World::new(&[
+        win(1, 100., 300., 600., 200.),
+        win(2, 200., 700., 600., 200.),
+    ]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(300., 100.));
+    settle(&mut pet, &world, 30.);
+    let mut events = Vec::new();
+    for _ in 0..4000 {
+        pet.tick(1. / 60., &world.view(), Signals::default(), &mut events);
+        if pet.motion == Motion::Walking {
+            break;
+        }
+    }
+    assert_eq!(pet.motion, Motion::Walking, "it set off somewhere");
+    pet.listen(true);
+    assert_eq!(pet.motion, Motion::Settled, "and stopped on the spot");
+    assert!(pet.plan.is_none());
+    assert!(pet.perch.is_some(), "still standing on its surface");
+}
+
+#[test]
+fn a_working_pet_plays_its_assistant_clip_and_falls_back_when_it_has_none() {
+    let world = World::new(&[win(1, 100., 300., 600., 200.)]);
+    let mut pet = Pet::new(1, pack("budgie-classic"), Point::new(300., 100.));
+    settle(&mut pet, &world, 30.);
+    // The bundled packs ship no busy or attention clips, so both resolve down
+    // the fallback chain rather than failing to draw.
+    pet.work(Some(Attend::Busy));
+    assert_eq!(pet.clip(), "preen", "busy → preen → idle");
+    pet.work(Some(Attend::NeedsUser));
+    assert_eq!(pet.clip(), "alert", "attention → alert → happy → idle");
+    let mut gecko = Pet::new(2, pack("gecko-glass"), Point::new(300., 100.));
+    settle(&mut gecko, &world, 30.);
+    gecko.work(Some(Attend::Busy));
+    assert_eq!(gecko.clip(), "idle", "a two-animation pack still draws");
+}
+
+#[test]
+fn the_assistant_clip_never_replaces_a_locomotion_clip_in_the_air() {
+    let world = World::new(&[win(1, 100., 300., 600., 200.)]);
+    let mut pet = Pet::new(1, pack("budgie-classic"), Point::new(300., 100.));
+    pet.work(Some(Attend::Busy));
+    assert_eq!(pet.motion, Motion::Falling);
+    assert_eq!(pet.clip(), pet.machine.clip, "physics keeps its own clip");
+    settle(&mut pet, &world, 30.);
+    assert_eq!(
+        pet.clip(),
+        "preen",
+        "and the busy clip takes over on landing"
+    );
+}
+
+#[test]
+fn a_task_outranks_the_bubble_and_survives_it_closing() {
+    let world = World::new(&[win(1, 100., 300., 600., 200.)]);
+    let mut pet = Pet::new(1, pack("budgie-classic"), Point::new(300., 100.));
+    settle(&mut pet, &world, 30.);
+    pet.listen(true);
+    pet.work(Some(Attend::NeedsUser));
+    assert_eq!(pet.attend(), Some(Attend::NeedsUser));
+    pet.listen(false);
+    assert_eq!(
+        pet.attend(),
+        Some(Attend::NeedsUser),
+        "a task waiting on the user keeps it here"
+    );
+    let held = pet.position;
+    step(&mut pet, &world, 120.);
+    assert!((pet.position.x - held.x).abs() < 1.);
+    pet.work(None);
+    step(&mut pet, &world, 120.);
+    assert_eq!(pet.attend(), None);
+}

@@ -61,11 +61,15 @@ export interface PackSummary {
   class: string
   surfaces: string[]
   animations: string[]
+  /** Assistant clip slots as this pack resolves them, provided or fallen back. */
+  assistantClips: { slot: string; when: string; clip: string; provided: boolean }[]
   preview: string | null
   directory: string
   builtin: boolean
   errors: number
   warnings: number
+  /** Info diagnostics: nothing is wrong, but the author may want to know. */
+  notes: number
   loadable: boolean
 }
 export interface PackListing { summary: PackSummary; report: Report }
@@ -134,6 +138,8 @@ export interface PetView {
   state: string
   clip: string
   motion: { kind: string }
+  /** Set while the pet is staying with the user instead of wandering. */
+  attend: 'listening' | 'busy' | 'needs_user' | null
   x: number
   y: number
   energy: number

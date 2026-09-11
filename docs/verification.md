@@ -9,11 +9,11 @@ what has actually been run, and — more importantly — what has not.
 
 | Check | Result |
 |---|---|
-| `npm test` (`cargo test`) | 98 tests pass: 81 unit, 10 integration timeline, 7 privacy; plus 7 ignored (1 local-Ollama, 6 credential-gated connections) |
+| `npm test` (`cargo test`) | 118 tests pass: 101 unit, 10 integration timeline, 7 privacy; plus 10 ignored (1 local-Ollama, 9 credential-gated connections) |
 | `cargo clippy -- -D warnings` (in `npm run check`) | passes |
 | `cargo fmt --check` | passes |
 | `npm run build` (`vue-tsc` + Vite) | passes |
-| `npm run test:ui` (vitest) | 18 tests pass (approvals, refresh timing, drafts, collection search/filtering, history expansion, automatic task mode, and sanitized Markdown) |
+| `npm run test:ui` (vitest) | 28 tests pass (approvals and their plain-words summaries, refresh timing, drafts, collection search/filtering, assistant clip slots in the packs panel, history expansion, automatic task mode, and sanitized Markdown) |
 
 What those tests actually cover:
 
@@ -55,6 +55,31 @@ What those tests actually cover:
   destinations), and the scripted classification plan every direct provider
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
+
+## Pets that stay with you, and readable approvals (2026-09-11)
+
+- A pet is pinned while its bubble is open and while its own task is running or
+  waiting on an answer, and plays the new optional `busy` / `attention` clips in
+  the latter two cases. Covered by five pet tests: it stays put across two
+  minutes of behavior ticks, a walking pet stops the moment its bubble opens, a
+  mid-air pet keeps its locomotion clip until it lands, a task outranks and
+  outlives the bubble, and a two-animation pack still draws through the fallback
+  chain. Pack validation raises a note naming the fallback for an empty slot,
+  and the packs panel shows what each slot resolves to.
+- Every approval is turned into a headline, capped item list, note and button
+  label before it is stored (`tasks::summary`), and the pet bubble and task
+  history both render that instead of the producer's payload. Eight unit tests
+  cover the file planner, Codex commands and file changes, Claude tool hooks and
+  an unknown shape, all asserting no raw JSON reaches the text a user reads;
+  a UI test asserts the same for the dashboard card.
+- Automated verification: 118 Rust tests, 28 UI tests, `vue-tsc`, Clippy and
+  `cargo fmt --check` pass on macOS, and the Objective-C bubble compiles.
+- **Not verified by hand:** the bubble has not been opened on this Mac since
+  these changes. The pinning, the released-on-close behaviour, the new clips
+  playing, and the reworded approval panel have been driven only through the
+  engine and UI tests. No approval from a live Codex or Claude runtime has been
+  summarised — those two payload shapes are covered by fixtures written from
+  the protocol and the bridge's own message, not from a recorded session.
 
 ## Compact companion redesign (2026-09-11)
 

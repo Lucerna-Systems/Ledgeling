@@ -167,6 +167,31 @@ impl Engine {
         Ok(id)
     }
 
+    /// The bubble opened on one pet; there is only one bubble, so opening it
+    /// elsewhere releases whoever had it.
+    pub fn listen(&mut self, id: u64) {
+        for pet in &mut self.pets {
+            pet.listen(pet.id == id);
+        }
+    }
+
+    /// The bubble closed. Named rather than blanket, because the close of an
+    /// old bubble can be reported after a new one has already opened on
+    /// another pet, and that pet must keep its place.
+    pub fn stop_listening(&mut self, id: u64) {
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.listen(false);
+        }
+    }
+
+    /// What a pet's task is doing. Pets without a task are left alone, so a
+    /// task for one companion never stops another from wandering.
+    pub fn set_work(&mut self, id: u64, work: Option<crate::pet::Attend>) {
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.work(work);
+        }
+    }
+
     pub fn despawn(&mut self, id: u64) -> bool {
         let before = self.pets.len();
         self.pets.retain(|p| p.id != id);

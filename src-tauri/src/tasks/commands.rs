@@ -97,10 +97,7 @@ pub async fn task_secret(window: WebviewWindow, name: String, value: String) -> 
         .map_err(|_| "Credential operation failed".to_string())?
 }
 #[tauri::command]
-pub async fn task_models(
-    window: WebviewWindow,
-    config: Connection,
-) -> Result<Vec<String>, String> {
+pub async fn task_models(window: WebviewWindow, config: Connection) -> Result<Vec<String>, String> {
     main_only(&window)?;
     tauri::async_runtime::spawn_blocking(move || match config.kind {
         ProviderKind::None => Err("Choose a provider first.".into()),

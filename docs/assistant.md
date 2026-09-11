@@ -39,9 +39,48 @@ The **Actions / Ask** toggle determines execution:
   content checkbox before a folder is read; an agent's start approval is its
   consent.
 
-The bubble displays progress, task results and approval details. Approve or reject
+The bubble displays progress, task results and approvals. Approve or reject
 there; completed file changes offer Undo. Further requests include the previous
 result as context. Closing the bubble does not cancel work.
+
+## Staying with you
+
+Right-clicking a pet stops it where it is, so it stays under the bubble pointing
+at it instead of wandering off mid-sentence. It keeps idling, reacting and
+animating; only the movement its behavior asked for is dropped. Closing the
+bubble releases it. A pet already mid-jump or mid-fall finishes that first — the
+physics does not stop because a task started — and then stays put.
+
+A task holds its own pet the same way, whether or not the bubble is open, and
+says which of two things is happening:
+
+| The pet's task is | It plays | It is released when |
+|---|---|---|
+| running, queued, cancelling or undoing | its `busy` clip | the task stops |
+| waiting for an approval | its `attention` clip | you answer |
+
+Nothing else pins a pet: a finished, failed or cancelled task is history, and a
+pet held by history would never move again. Both clips are optional in a pack and
+fall back (`busy → preen → idle`, `attention → alert → happy → idle`); **Pet
+packs → Details** shows which clip each slot resolves to for every installed pack,
+and pack validation raises a note naming the fallback. See
+[pack-authoring.md](pack-authoring.md).
+
+## Approvals are written for people, not for agents
+
+Approvals arrive from three different producers — Perch's own file planner, the
+Codex app-server protocol, the Claude SDK bridge's tool hooks — each with its own
+internal payload. `tasks::summary` turns any of them into one shape before it is
+stored: a headline, up to six lines, a count of what was not listed, a caution
+note, and the label for the accept button ("Approve", "Start", "Allow"). Every
+surface renders that summary; none of them renders the payload. A shape Perch
+does not recognise is relabelled leaf by leaf and says so, rather than being
+dumped as JSON. Progress lines are translated the same way: the user reads
+"Preparing changes for you to review", never the tool name that produced it.
+
+The raw `details` stay on the task for the record and for tests, and the full
+list of file operations is still available behind a disclosure in the dashboard's
+task history, since those are the user's own paths.
 
 When a model is connected, the bubble also shows a quiet **Select another model**
 link. Clicking it fetches the models of this pet's effective provider and swaps

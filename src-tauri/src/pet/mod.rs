@@ -33,6 +33,34 @@ pub enum Motion {
     Held,
 }
 
+/// Why a pet is standing still with the user instead of wandering off.
+/// Any of these pins it: the whole point of right-clicking a pet is that it
+/// stays under the bubble that is pointing at it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Attend {
+    /// The bubble is open on this pet.
+    Listening,
+    /// Its task is running.
+    Busy,
+    /// Its task cannot go further without an answer from the user.
+    NeedsUser,
+}
+
+impl Attend {
+    /// The clip slot this maps to, or `None` to keep playing the pack's own
+    /// behavior. Listening deliberately has no clip: a pet that stops mid-idle
+    /// still reads as attentive, and inventing a third required slot would
+    /// make packs harder to write for no gain.
+    pub fn clip(self) -> Option<&'static str> {
+        match self {
+            Attend::Listening => None,
+            Attend::Busy => Some("busy"),
+            Attend::NeedsUser => Some("attention"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Arc_ {
     None,
@@ -89,6 +117,10 @@ pub struct Pet {
     action_done: bool,
     was_near_cursor: bool,
     clip_started: f64,
+    /// The bubble is open on this pet.
+    listening: bool,
+    /// What this pet's task is doing, when it has one.
+    working: Option<Attend>,
     pending: Vec<Event>,
     /// Sound the pack asked for on the last state change, if any.
     pub sound_request: Option<String>,
@@ -117,6 +149,8 @@ impl Pet {
             action_done: false,
             was_near_cursor: false,
             clip_started: 0.,
+            listening: false,
+            working: None,
             pending: Vec::new(),
             sound_request: None,
         }
@@ -125,8 +159,15 @@ impl Pet {
     pub fn manifest(&self) -> &Manifest {
         &self.pack.manifest
     }
+    /// What is actually drawn. A working or waiting pet plays its assistant
+    /// clip instead of the behavior machine's, but only once it is standing
+    /// still: a fall or a jump already in the air keeps its locomotion clip,
+    /// because the physics has not stopped just because a task started.
     pub fn clip(&self) -> &str {
-        &self.machine.clip
+        match self.attend().and_then(Attend::clip) {
+            Some(wanted) if self.motion == Motion::Settled => self.manifest().resolve_clip(wanted),
+            _ => &self.machine.clip,
+        }
     }
     pub fn state(&self) -> &str {
         &self.machine.state
@@ -174,6 +215,45 @@ impl Pet {
 
     pub fn is_held(&self) -> bool {
         self.motion == Motion::Held
+    }
+
+    /// Whether this pet is with the user, and why. A task outranks the bubble:
+    /// what it is doing is more informative than the fact that it is listening.
+    pub fn attend(&self) -> Option<Attend> {
+        self.working.or(self.listening.then_some(Attend::Listening))
+    }
+
+    /// The bubble opened or closed on this pet.
+    pub fn listen(&mut self, listening: bool) {
+        if self.listening == listening {
+            return;
+        }
+        self.listening = listening;
+        self.settle_for_attention();
+    }
+
+    /// What this pet's task is doing: `Busy` while it runs, `NeedsUser` while
+    /// it waits for an answer, `None` once it is over.
+    pub fn work(&mut self, working: Option<Attend>) {
+        if self.working == working {
+            return;
+        }
+        self.working = working;
+        // A new clip starts at its first frame, not partway through whatever
+        // the previous one had reached.
+        self.clip_started = self.clock;
+        self.settle_for_attention();
+    }
+
+    /// An attending pet stops where it is. Mid-air it cannot — a jump or a
+    /// fall finishes first — but it will not start anything new (see
+    /// `start_action`), so it settles on landing and stays there.
+    fn settle_for_attention(&mut self) {
+        if self.attend().is_none() || self.motion != Motion::Walking {
+            return;
+        }
+        self.plan = None;
+        self.settle();
     }
 
     /// Placed onto a fresh world after the pet screen changed and its old
@@ -387,7 +467,11 @@ impl Pet {
     }
 
     fn start_action(&mut self, action: Action, view: &WorldView<'_>) {
-        if self.motion == Motion::Held || self.motion == Motion::Falling {
+        // A pet the user is talking to does not wander off mid-sentence. The
+        // machine keeps running so reactions and clips still play; only the
+        // movement the state asked for is dropped.
+        if self.attend().is_some() || self.motion == Motion::Held || self.motion == Motion::Falling
+        {
             self.action_done = true;
             return;
         }

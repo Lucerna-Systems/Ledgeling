@@ -15,7 +15,14 @@ beforeEach(() => {
 })
 
 const pack = (name: string, kind: string): PackListing => ({
-  summary: { id: name, name, class: kind, author: 'Perch', description: 'A desktop friend', version: '1', builtin: true, loadable: true, errors: 0, warnings: 0, surfaces: [], preview: null, tags: [], license: '', animations: [], directory: '' },
+  summary: {
+    id: name, name, class: kind, author: 'Perch', description: 'A desktop friend', version: '1', builtin: true, loadable: true,
+    errors: 0, warnings: 0, notes: 1, surfaces: [], preview: null, tags: [], license: '', animations: ['idle', 'move'], directory: '',
+    assistantClips: [
+      { slot: 'busy', when: 'while this pet is working on a task', clip: 'idle', provided: false },
+      { slot: 'attention', when: 'while its task is waiting for your answer', clip: 'attention', provided: true },
+    ],
+  },
   report: { diagnostics: [] },
 })
 const task = (id: number, status: string): Task => ({
@@ -33,6 +40,16 @@ it('combines case-insensitive pack search with a class filter and can clear both
   expect(wrapper.text()).toContain('No matching packs')
   await wrapper.get('[aria-label="Clear search and filters"]').trigger('click')
   expect(wrapper.findAll('.pack-card')).toHaveLength(2)
+  wrapper.unmount()
+})
+
+it('says which assistant clips a pack supplies and what an empty slot plays instead', async () => {
+  packs.value = [pack('Pip', 'flier')]
+  const wrapper = mount(PacksPanel)
+  const text = wrapper.get('.pack-more').text()
+  expect(text).toContain('While this pet is working on a task')
+  expect(text).toContain('Plays idle — this pack has no busy animation')
+  expect(text).toContain('Plays its own attention')
   wrapper.unmount()
 })
 

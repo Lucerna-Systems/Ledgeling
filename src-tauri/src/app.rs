@@ -8,7 +8,7 @@ use crate::{
         builtin, diagnostics::Report, loader, manifest::Event, sprites, LocomotionClass,
         PackListing, PackSummary,
     },
-    pet::Motion,
+    pet::{Attend, Motion},
     platform::{NativePlatform, Platform},
     settings::{self, Settings},
     windows_mgr::{self, hit_test, DebugOverlay, Label, NativeSurface, PetSurface, Scene},
@@ -67,6 +67,9 @@ pub struct PetView {
     pub state: String,
     pub clip: String,
     pub motion: Motion,
+    /// Set while the pet is with the user rather than wandering: its bubble is
+    /// open, or it has a task running or waiting on an answer.
+    pub attend: Option<Attend>,
     pub x: f64,
     pub y: f64,
     pub energy: f64,
@@ -134,6 +137,7 @@ impl App {
                     state: pet.state().to_string(),
                     clip: pet.clip().to_string(),
                     motion: pet.motion,
+                    attend: pet.attend(),
                     x: pet.position.x,
                     y: pet.position.y,
                     energy: pet.energy,
@@ -184,6 +188,17 @@ impl App {
     fn persist(&mut self) -> Result<(), String> {
         self.engine.remember_pets();
         settings::save(&self.config_dir, &self.engine.settings)
+    }
+}
+
+/// How a task's status reads on the pet carrying it. Only a task that is
+/// genuinely stuck on the user counts as needing attention: a finished or
+/// failed task is history, and a pet pinned by history would never move again.
+pub fn task_attention(status: &str) -> Option<Attend> {
+    match status {
+        "queued" | "running" | "cancelling" | "undoing" => Some(Attend::Busy),
+        "waiting" => Some(Attend::NeedsUser),
+        _ => None,
     }
 }
 
@@ -529,6 +544,17 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             let task_handle = app.handle().clone();
             let task_service =
                 crate::tasks::TaskService::new(&config_dir.join("assistant"), move |task| {
+                    // The pet whose task this is stops wandering and shows what
+                    // the task is doing. The bubble may well be closed, so this
+                    // is the only thing telling the user it needs them. The
+                    // engine lock is released before anything is emitted.
+                    if let Some(pet_id) = task.request.pet_id {
+                        if let Some(shared) = task_handle.try_state::<Shared>() {
+                            if let Ok(mut app) = shared.lock() {
+                                app.engine.set_work(pet_id, task_attention(&task.status));
+                            }
+                        }
+                    }
                     crate::platform::pet_ui::update(&task_handle, &task);
                     let _ = task_handle.emit_to("main", "task:changed", &task);
                     let _ = task_handle.emit(
@@ -1308,4 +1334,29 @@ fn directory_signature(directory: &Path) -> String {
     let mut rows = Vec::new();
     walk(directory, &mut rows, 0);
     rows.join("|")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_live_task_holds_its_pet() {
+        assert_eq!(task_attention("running"), Some(Attend::Busy));
+        assert_eq!(task_attention("queued"), Some(Attend::Busy));
+        assert_eq!(task_attention("undoing"), Some(Attend::Busy));
+        assert_eq!(task_attention("waiting"), Some(Attend::NeedsUser));
+        // Anything finished lets the pet go, including the statuses a restart
+        // recovers tasks into; otherwise one old task pins a pet forever.
+        for over in [
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "undone",
+            "",
+        ] {
+            assert_eq!(task_attention(over), None, "{over} is over");
+        }
+    }
 }

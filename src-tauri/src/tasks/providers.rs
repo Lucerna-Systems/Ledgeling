@@ -207,11 +207,10 @@ pub fn detect(config: &Connections) -> ProviderDetection {
         .map(|c| c.executable)
         .filter(|e| !e.trim().is_empty())
         .unwrap_or_else(|| "codex".into());
-    let ollama = configured(config, ProviderKind::Ollama)
-        .unwrap_or_else(|| Connection {
-            kind: ProviderKind::Ollama,
-            ..Default::default()
-        });
+    let ollama = configured(config, ProviderKind::Ollama).unwrap_or_else(|| Connection {
+        kind: ProviderKind::Ollama,
+        ..Default::default()
+    });
     ProviderDetection {
         codex_installed: find_in_path(&codex).is_some(),
         claude_bridge: super::runtimes::bridge_ready(),

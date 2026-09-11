@@ -5,6 +5,7 @@ pub mod providers;
 pub mod runtimes;
 pub mod search;
 pub mod store;
+pub mod summary;
 pub mod types;
 use files::Scope;
 use providers::{HttpModel, ModelProvider};
@@ -249,12 +250,14 @@ impl Context {
     pub fn approve(&self, title: &str, details: Value) -> Result<bool, String> {
         self.cancel.check()?;
         let id = self.inner.sequence.fetch_add(1, Ordering::SeqCst);
+        let summary = summary::summarize(title, &details);
         self.update(|t| {
             t.status = "waiting".into();
             t.approval = Some(Approval {
                 id,
                 title: title.into(),
                 details,
+                summary,
             });
         })?;
         loop {
@@ -373,7 +376,7 @@ impl Context {
                 validate_citations(result, &self.task()?.sources)?;
                 return self.finish(result);
             }
-            self.progress(&format!("Working · {}", call.tool))?;
+            self.progress(summary::tool_label(&call.tool))?;
             let result = self.tool(scope, task, &call);
             self.cancel.check()?;
             let content = match result {
@@ -710,6 +713,7 @@ mod tests {
                     id: 1,
                     title: "pending".into(),
                     details: json!({}),
+                    summary: Default::default(),
                 }),
                 operations: vec![],
                 sources: vec![],

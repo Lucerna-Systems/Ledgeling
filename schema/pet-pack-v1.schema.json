@@ -79,7 +79,7 @@
     "animations": {
       "type": "object",
       "required": ["idle", "move"],
-      "description": "idle and move are required; every other clip falls back down a chain to them.",
+      "description": "idle and move are required; every other clip falls back down a chain to them. Known clips: climb, jump, fall, land, takeoff, sleep, alert, happy, grabbed, preen, greet, plus busy (this pet is working on a task) and attention (its task is waiting for your answer).",
       "additionalProperties": {
         "type": "object",
         "required": ["file", "frames"],
