@@ -1,0 +1,44 @@
+name: Linux desktop run (temporary)
+
+# Temporary: runs the real app on a composited X11 desktop and headless sway
+# for docs/verification.md. Delete with scripts/temp_linux-desktop.sh.
+on:
+  push:
+    branches: [claude/youthful-stonebraker-ce6aaf]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev \
+            xvfb openbox picom x11-utils x11-xserver-utils xdotool wmctrl xterm imagemagick \
+            sway xwayland foot grim fonts-dejavu-core dbus-x11
+      - run: npm ci
+      - run: npm ci
+        working-directory: sidecar
+      - run: npx tauri build --debug --no-bundle
+      - run: dbus-run-session -- scripts/temp_linux-desktop.sh desktop-run
+      - if: always()
+        run: cat desktop-run/summary.txt || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-desktop-run
+          path: desktop-run

@@ -510,6 +510,7 @@ fn quit_app(app: tauri::AppHandle, window: WebviewWindow, state: State<'_, Share
 // ---------------------------------------------------------------------- setup
 
 pub fn run(context: tauri::Context<tauri::Wry>) {
+    crate::platform::prepare_process();
     tauri::Builder::default()
         .on_menu_event(handle_menu)
         .invoke_handler(tauri::generate_handler![
@@ -976,7 +977,10 @@ struct RenderPlan {
 }
 
 fn run_loop(shared: Shared, handle: tauri::AppHandle) {
-    let platform = NativePlatform;
+    // A unit struct on macOS and Windows; the Linux adapter holds its X
+    // connection and idle source.
+    #[allow(clippy::default_constructed_unit_structs)]
+    let platform = NativePlatform::default();
     let mut renderer = NativeSurface::new(HashMap::new());
     // The pet screen the engine and the overlay currently reflect, in
     // canonical form (id 0). `None` means no overlay window exists yet.
@@ -1104,6 +1108,8 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     "perches": app.engine.perch_count(),
                     "kinds": kind_counts(&app.engine.surfaces),
                     "scanMs": app.engine.scan_ms,
+                    "scanError": app.engine.scan_error,
+                    "grab": grab_points(&app.engine),
                     "suspended": app.engine.suspended,
                     "screens": app.engine.screens_available,
                 })
@@ -1164,6 +1170,29 @@ fn kind_counts(surfaces: &[crate::world::Surface]) -> serde_json::Value {
         *counts.entry(surface.kind.as_str()).or_default() += 1;
     }
     serde_json::json!(counts)
+}
+
+/// A point on each pet that catches the pointer, for the diagnostics line
+/// only: it lets a scripted run hover a pet without seeing the screen.
+fn grab_points(engine: &Engine) -> Vec<[f64; 2]> {
+    engine
+        .pets
+        .iter()
+        .filter_map(|pet| {
+            let scale = engine.scale_at(pet.position);
+            let rect = pet.sprite_rect(scale);
+            (1..8)
+                .flat_map(|i| (1..8).map(move |j| (i, j)))
+                .map(|(i, j)| {
+                    Point::new(
+                        rect.x + rect.width * i as f64 / 8.,
+                        rect.y + rect.height * j as f64 / 8.,
+                    )
+                })
+                .find(|point| hit_test(pet, *point, scale))
+                .map(|point| [point.x.round(), point.y.round()])
+        })
+        .collect()
 }
 
 fn watch_interval(lab: bool) -> Duration {

@@ -57,9 +57,16 @@ fn no_window_title_api_is_referenced_anywhere_in_the_build() {
         "kCGWindowOwnerName",
         "AXTitle",
         "NSWindow.title",
-        "_NET_WM_NAME",
+        // Also covers _NET_WM_NAME; the icon and visible names are titles too.
+        "WM_NAME",
+        "_NET_WM_VISIBLE_NAME",
+        "ICON_NAME",
         "XFetchName",
         "XGetWMName",
+        // A process's arguments and environment carry file names and paths;
+        // Linux foreground detection stops at /proc/<pid>/exe and comm.
+        "/cmdline",
+        "/environ",
     ];
     for (path, text) in read_all() {
         if path.ends_with("privacy.rs") {
@@ -88,6 +95,16 @@ fn no_screen_capture_keystroke_or_clipboard_api_is_referenced() {
         "NSPasteboard",
         "GetClipboardData",
         "CGEventTapCreate",
+        "XGetImage",
+        "get_image",
+        "XShmGetImage",
+        "XQueryKeymap",
+        "query_keymap",
+        "XGrabKey",
+        "grab_key",
+        "XRecord",
+        "record_enable_context",
+        "xinput",
     ];
     for (path, text) in read_all() {
         if path.ends_with("privacy.rs") {
