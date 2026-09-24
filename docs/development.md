@@ -76,3 +76,19 @@ To change the base version, bump `version` in `src-tauri/tauri.conf.json`,
 
 Release artifacts are a macOS DMG for Apple Silicon and one for Intel, a
 Windows x64 NSIS installer, and `SHA256SUMS.txt`. None of them are signed yet.
+
+## itch.io
+
+The release workflow has an `itch` job that pushes each alpha to itch.io with
+butler, in three channels: `macos-aarch64`, `macos-x86_64` and `windows-x86_64`.
+Pre-alphas are not pushed. The job is **off** until you turn it on.
+
+To turn it on, go to the repo's Settings → Secrets and variables → Actions and:
+
+1. Add the secret `BUTLER_API_KEY`. Get the key from itch.io under Settings →
+   API keys, or by running `butler login` locally.
+2. Add the variable `ITCH_TARGET`, set to `<itch user>/<game slug>`.
+3. Add the variable `ITCH_ENABLED`, set to `true`.
+
+To turn it off again, delete `ITCH_ENABLED` or set it to anything other than
+`true`.
