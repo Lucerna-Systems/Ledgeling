@@ -1,0 +1,187 @@
+name: Release
+
+# Two channels, see docs/releasing.md:
+#   pre-alpha — every push to main (or a manual run) replaces one rolling prerelease.
+#   alpha     — pushing a tag like v0.1.0-alpha.1 publishes a permanent prerelease.
+on:
+  push:
+    branches: [main]
+    tags: ['v*-alpha.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  # A newer main push supersedes an in-flight pre-alpha; alpha tags never cancel each other.
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.plan.outputs.channel }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: |
+          base=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+            # The tag names the release, but tauri.conf.json is what the About box
+            # and bundle metadata show, so the two must not disagree.
+            if [ "${version%%-*}" != "$base" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json version $base. Bump the version first."
+              exit 1
+            fi
+            echo "channel=alpha" >> "$GITHUB_OUTPUT"
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            version="$base-prealpha.$GITHUB_RUN_NUMBER"
+            echo "channel=pre-alpha" >> "$GITHUB_OUTPUT"
+            echo "tag=pre-alpha" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Planned $version"
+
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # generate_context! refuses to compile if a bundled resource is missing.
+      - run: npm ci && npm run prepare:sidecar --prefix ..
+        working-directory: sidecar
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:ui
+
+  build:
+    needs: [plan, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+            node-arch: arm64
+          # Built on the Apple Silicon runner: the x64 Node install is what the
+          # sidecar copies and what makes npm pick the darwin-x64 agent binary.
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x86_64
+            node-arch: x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+            node-arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          architecture: ${{ matrix.node-arch }}
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+      - run: npm ci
+      - run: npm ci
+        working-directory: sidecar
+      - name: Build app
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          override=$(jq -n --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
+            '{version: $v, bundle: {macOS: {bundleVersion: $b}}}')
+          npx tauri build --target ${{ matrix.target }} --config "$override"
+      - name: Collect artifacts
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          bundle=src-tauri/target/${{ matrix.target }}/release/bundle
+          name="Perch_${VERSION}_${{ matrix.label }}"
+          mkdir out
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "$bundle"/nsis/*-setup.exe "out/$name-setup.exe"
+          else
+            cp "$bundle"/dmg/*.dmg "out/$name.dmg"
+            tar -czf "out/$name.app.tar.gz" -C "$bundle/macos" Perch.app
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perch-${{ matrix.label }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: (cd out && shasum -a 256 * > SHA256SUMS.txt)
+      - name: Write notes
+        run: |
+          {
+            if [ "$CHANNEL" = pre-alpha ]; then
+              echo "**Pre-alpha build $VERSION** from \`${GITHUB_SHA::7}\` on main. Replaced on every push; expect breakage."
+            else
+              echo "**Alpha $VERSION.** Feature-complete for testing, not for daily use."
+            fi
+            echo
+            echo "Nothing is signed yet."
+            echo
+            echo "- **macOS:** \`macos-aarch64\` for Apple Silicon, \`macos-x86_64\` for Intel. Gatekeeper refuses the"
+            echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Perch.app\`."
+            echo "- **Windows:** \`windows-x86_64-setup.exe\`. SmartScreen warns about the unknown publisher: More info → Run anyway."
+            echo "  The Windows build has not been tested on real hardware; see docs/verification.md."
+          } > notes.md
+      - name: Publish pre-alpha
+        if: env.CHANNEL == 'pre-alpha'
+        run: |
+          # One rolling release: drop the old one and move its tag to this commit.
+          gh release delete pre-alpha --cleanup-tag --yes || true
+          gh release create pre-alpha out/* --prerelease --target "$GITHUB_SHA" \
+            --title "Pre-alpha $VERSION" --notes-file notes.md
+      - name: Publish alpha
+        if: env.CHANNEL == 'alpha'
+        run: |
+          gh release create "$TAG" out/* --prerelease --verify-tag \
+            --title "Alpha $VERSION" --notes-file notes.md --generate-notes

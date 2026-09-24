@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "resources": {
+      "../sidecar/node": null,
+      "../sidecar/node.exe": "sidecar/node.exe"
+    }
+  }
+}
