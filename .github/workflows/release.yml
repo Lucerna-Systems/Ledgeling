@@ -1,13 +1,11 @@
 name: Release
 
-# Two channels:
-#   pre-alpha — every push to main (or a manual run) replaces one rolling prerelease.
-#   alpha     — pushing a tag like v0.1.0-alpha.1 publishes a permanent prerelease;
-#               its base version must match tauri.conf.json.
+# main -> pre-alpha: every push replaces one rolling prerelease.
+# prod -> alpha:     every push publishes a permanent, numbered prerelease
+#                    (v<tauri.conf.json version>-alpha.<n>).
 on:
   push:
-    branches: [main]
-    tags: ['v*-alpha.*']
+    branches: [main, prod]
   workflow_dispatch:
 
 permissions:
@@ -18,12 +16,14 @@ defaults:
     shell: bash
 
 concurrency:
-  # A newer main push supersedes an in-flight pre-alpha; alpha tags never cancel each other.
+  # A newer main push supersedes an in-flight pre-alpha; alphas always finish.
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+  cancel-in-progress: ${{ github.ref_name == 'main' }}
 
 jobs:
   plan:
+    # Creating the prod branch is not a release.
+    if: ${{ !github.event.created }}
     runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.plan.outputs.channel }}
@@ -34,56 +34,30 @@ jobs:
       - id: plan
         run: |
           base=$(jq -r .version src-tauri/tauri.conf.json)
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="${GITHUB_REF_NAME#v}"
-            # The tag names the release, but tauri.conf.json is what the About box
-            # and bundle metadata show, so the two must not disagree.
-            if [ "${version%%-*}" != "$base" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json version $base. Bump the version first."
+          case "$GITHUB_REF_NAME" in
+            prod)
+              last=$(git ls-remote --tags origin "refs/tags/v$base-alpha.*" \
+                | sed 's/.*-alpha\.//' | sort -n | tail -1)
+              version="$base-alpha.$(( ${last:-0} + 1 ))"
+              echo "channel=alpha" >> "$GITHUB_OUTPUT"
+              echo "tag=v$version" >> "$GITHUB_OUTPUT"
+              ;;
+            main)
+              version="$base-prealpha.$GITHUB_RUN_NUMBER"
+              echo "channel=pre-alpha" >> "$GITHUB_OUTPUT"
+              echo "tag=pre-alpha" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Releases are cut from main (pre-alpha) or prod (alpha), not $GITHUB_REF_NAME."
               exit 1
-            fi
-            echo "channel=alpha" >> "$GITHUB_OUTPUT"
-            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          else
-            version="$base-prealpha.$GITHUB_RUN_NUMBER"
-            echo "channel=pre-alpha" >> "$GITHUB_OUTPUT"
-            echo "tag=pre-alpha" >> "$GITHUB_OUTPUT"
-          fi
+              ;;
+          esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Planned $version"
 
   verify:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      # Tauri merges TAURI_CONFIG over tauri.conf.json at compile time, so both
-      # cargo and the bundler pick up the Windows installer, icon and node.exe.
-      - name: Windows bundle config
-        if: runner.os == 'Windows'
-        run: |
-          echo 'TAURI_CONFIG={"bundle":{"targets":["nsis"],"icon":["icons/icon.png","icons/icon.ico"],"resources":{"../sidecar/node":null,"../sidecar/node.exe":"sidecar/node.exe"}}}' >> "$GITHUB_ENV"
-      - run: npm ci
-      # generate_context! refuses to compile if a bundled resource is missing.
-      - run: npm ci && npm run prepare:sidecar --prefix ..
-        working-directory: sidecar
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: npm run check
-      - run: npm test
-      - run: npm run test:ui
+    needs: plan
+    uses: ./.github/workflows/verify.yml
 
   build:
     needs: [plan, verify]
@@ -178,7 +152,7 @@ jobs:
             if [ "$CHANNEL" = pre-alpha ]; then
               echo "**Pre-alpha build $VERSION** from \`${GITHUB_SHA::7}\` on main. Replaced on every push; expect breakage."
             else
-              echo "**Alpha $VERSION.** Feature-complete for testing, not for daily use."
+              echo "**Alpha $VERSION**, promoted from main to prod after pre-alpha testing. Not yet for daily use."
             fi
             echo
             echo "Nothing is signed yet."
@@ -198,5 +172,5 @@ jobs:
       - name: Publish alpha
         if: env.CHANNEL == 'alpha'
         run: |
-          gh release create "$TAG" out/* --prerelease --verify-tag \
+          gh release create "$TAG" out/* --prerelease --target "$GITHUB_SHA" \
             --title "Alpha $VERSION" --notes-file notes.md --generate-notes

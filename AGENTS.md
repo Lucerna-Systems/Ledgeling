@@ -48,7 +48,7 @@ runner is configured; if one is added, colocate `*.test.ts`.
 
 ## Commit & Pull Request Guidelines
 
-Use concise imperative commits, optionally prefixed with `feat:`, `fix:`, or `docs:`. PRs should identify the milestone or issue, explain behavior changes, list validation results, and include screenshots for UI changes.
+Never commit to `main` (testing, publishes pre-alpha) or `prod` (releases, publishes alpha). Work on a branch in its own worktree off `origin/main` and open a PR into `main`; see `docs/development.md`. Use concise imperative commits, optionally prefixed with `feat:`, `fix:`, or `docs:`. PRs should identify the milestone or issue, explain behavior changes, list validation results, and include screenshots for UI changes.
 
 ## Agent-Specific Instructions
 

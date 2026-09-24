@@ -29,6 +29,7 @@ on other screens are clipped away before the graph is built.
 |---|---|
 | [00-PLAN.md](planning_files/00-PLAN.md) | Every session — plan, MVP status, what's left |
 | [verification.md](docs/verification.md) | What has actually been run; keep it honest |
+| [development.md](docs/development.md) | Branches, worktrees, review and releases |
 
 ## Architecture in one page
 
@@ -58,6 +59,13 @@ These are product-defining, not preferences. Violating one is a bug, not a trade
 > A person who can draw and edit JSON, but cannot program, must be able to ship a working climbing pet in under an hour.
 
 Any proposed format feature that breaks that test does not go in. Corollaries the code must honour: a minimal pack is two sprite strips and ~20 lines of JSON; every optional animation falls back down a chain (`climb → move → idle`) so a pack never fails to load for something absent; and every validation failure names the file, the JSON path, what was wrong, and what was expected — **no error message may be only a stack trace or a raw serde error**.
+
+## Branches and PRs
+
+`main` is testing (every push becomes the pre-alpha release) and `prod` is
+releases (every push becomes an alpha). Never commit to either directly. Work on
+a branch in its own worktree off `origin/main` and open a PR into `main`. The
+user reviews every PR before it merges. See `docs/development.md`.
 
 ## Working on this now
 

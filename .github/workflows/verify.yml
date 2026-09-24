@@ -1,0 +1,60 @@
+name: Verify
+
+# Runs on every PR into main or prod, and as the gate in front of every release.
+on:
+  pull_request:
+    branches: [main, prod]
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # prod only ever receives main, so a release is always something that was
+  # already tested as a pre-alpha.
+  source-branch:
+    if: github.event_name == 'pull_request' && github.base_ref == 'prod'
+    runs-on: ubuntu-latest
+    steps:
+      - if: github.head_ref != 'main'
+        run: |
+          echo "::error::PRs into prod must come from main, not ${{ github.head_ref }}."
+          exit 1
+
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # Tauri merges TAURI_CONFIG over tauri.conf.json at compile time, so both
+      # cargo and the bundler pick up the Windows installer, icon and node.exe.
+      - name: Windows bundle config
+        if: runner.os == 'Windows'
+        run: |
+          echo 'TAURI_CONFIG={"bundle":{"targets":["nsis"],"icon":["icons/icon.png","icons/icon.ico"],"resources":{"../sidecar/node":null,"../sidecar/node.exe":"sidecar/node.exe"}}}' >> "$GITHUB_ENV"
+      - run: npm ci
+      # generate_context! refuses to compile if a bundled resource is missing.
+      - run: npm ci && npm run prepare:sidecar --prefix ..
+        working-directory: sidecar
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:ui
