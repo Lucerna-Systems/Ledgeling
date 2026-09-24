@@ -7,8 +7,6 @@ fn main() {
             .flag("-Wno-deprecated-declarations")
             .compile("perch_pet_ui");
         println!("cargo:rustc-link-lib=framework=Cocoa");
-        // The bubble animates custom view properties through CAAnimation.
-        println!("cargo:rustc-link-lib=framework=QuartzCore");
         println!("cargo:rerun-if-changed=native/pet_ui.m");
     }
     tauri_build::build()

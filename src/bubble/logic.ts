@@ -1,0 +1,163 @@
+import { terminal, type ApprovalSummary, type Task } from '../assistant/types'
+
+/** What `show_pet_bubble` sends when the bubble opens on a pet. */
+export interface BubbleShow {
+  session: number
+  petId: number
+  name: string
+  /** `none`, `ollama`, `codex`, `claude`, or `model` for any other API. */
+  runtime: string
+  /** A cloud API model, whose Actions need the content checkbox. */
+  remote: boolean
+  model: string
+  folder: string
+  tailX: number | null
+  tailUp: boolean
+}
+
+/** Everything else the backend tells the bubble arrives as one of these. */
+export type BubbleUpdate =
+  | Task
+  | { petId?: number; folder?: string; models?: string[]; model?: string; message?: string }
+
+/** Built-in actions, in menu order. The last one sends free-form text. */
+export const ACTIONS = [
+  { preset: 'sort_type', label: 'Sort by type' },
+  { preset: 'sort_date', label: 'Sort by month' },
+  { preset: 'rename', label: 'Rename with prefix' },
+  { preset: 'find', label: 'Find files' },
+  { preset: 'duplicates', label: 'Find duplicates' },
+  { preset: '', label: 'My instructions' },
+] as const
+
+export type Mode = 'actions' | 'ask'
+
+export interface Draft {
+  mode: Mode
+  action: number
+  prompt: string
+  allowCloud: boolean
+  allowWeb: boolean
+}
+
+export const connected = (runtime: string) => runtime !== '' && runtime !== 'none'
+export const agent = (runtime: string) => runtime === 'codex' || runtime === 'claude'
+
+/** What the current mode still needs before it could possibly run, or null.
+ *  Saying so here beats letting the task start and fail a second later. At
+ *  most one thing is ever missing, so the user is never handed a list of
+ *  conditions. Mirrors `compose_request`, which has the final word. */
+export function blocker(show: Pick<BubbleShow, 'runtime' | 'remote' | 'folder'>, draft: Draft): string | null {
+  const text = draft.prompt.trim()
+  if (draft.mode === 'ask') {
+    if (!connected(show.runtime)) return 'Connect a model in Connections to ask.'
+    if (!text) return 'Type a question first.'
+    return null
+  }
+  const custom = ACTIONS[draft.action]?.preset === ''
+  if (!connected(show.runtime)) {
+    // Built-in actions run offline, so they need neither a model nor consent —
+    // but they do need a folder, and free-form instructions need a model.
+    if (custom) return 'Pick a built-in action, or connect a model in Connections.'
+    if (!show.folder) return 'Choose a folder for built-in actions.'
+    return null
+  }
+  if (custom && !text) return 'Describe what to do, or pick a built-in action.'
+  // A remote API model reading folder content is the one case the checkbox
+  // exists for; an agent's start approval is its consent.
+  if (!agent(show.runtime) && show.remote && !draft.allowCloud) {
+    return "Tick the box to allow this folder's content to reach the model."
+  }
+  return null
+}
+
+/** The `start` event for the backend's `compose_request`. */
+export function startEvent(petId: number, draft: Draft, parentId: number | null) {
+  const ask = draft.mode === 'ask'
+  return {
+    type: 'start',
+    petId,
+    prompt: draft.prompt,
+    preset: ask ? '' : ACTIONS[draft.action]?.preset ?? '',
+    mode: draft.mode,
+    // Asking is the consent: only the question itself is sent.
+    allowCloud: ask ? true : draft.allowCloud,
+    allowWeb: ask && draft.allowWeb,
+    parentId,
+  }
+}
+
+/** What the bubble shows about this pet's task. */
+export interface TaskView {
+  id: number
+  status: string
+  done: boolean
+  /** The approval being asked for, if the task is waiting on one. */
+  approval: { id: number; summary: ApprovalSummary; title: string } | null
+  /** Completed file changes that can still be undone. */
+  undoable: boolean
+  progress: string
+  error: string
+  result: string
+}
+
+export function taskView(task: Task): TaskView {
+  const done = terminal(task.status)
+  const waiting = task.status === 'waiting' && !!task.approval
+  return {
+    id: task.id,
+    status: task.status,
+    done,
+    approval: waiting && task.approval
+      ? { id: task.approval.id, summary: task.approval.summary, title: task.approval.title }
+      : null,
+    undoable: done && task.operations.some(o => o.state === 'applied' || o.state === 'applying'),
+    progress: task.progress ?? '',
+    error: typeof task.error === 'string' ? task.error : '',
+    result: task.result ?? '',
+  }
+}
+
+export const isTask = (update: BubbleUpdate): update is Task =>
+  typeof (update as Task).id === 'number' && typeof (update as Task).request === 'object'
+
+/** Height of the tail, and half its base width. */
+export const NOTCH = 16
+const HALF = 14
+const RADIUS = 20
+
+/** The whole bubble outline, tail included, as one closed path in CSS pixels
+ *  (y down): the border then carries across the tail's opening instead of
+ *  cutting the bubble in two. The tail tip is at `tailX`, clamped clear of the
+ *  rounded corners, on the bottom edge — or the top one with `tailUp`, for
+ *  when the bubble had to go below its pet. */
+export function bubblePath(w: number, h: number, tailX: number, tailUp: boolean): string {
+  const r = RADIUS, k = r * 0.55
+  const tip = Math.max(r + HALF + 4, Math.min(tailX, w - r - HALF - 4))
+  const f = (n: number) => Math.round(n * 100) / 100
+  const p = (...points: number[]) => points.map(f).join(' ')
+  if (tailUp) {
+    const t = NOTCH
+    return [
+      `M${p(tip - HALF, t)}`, `L${p(tip, 0)}`, `L${p(tip + HALF, t)}`, `L${p(w - r, t)}`,
+      `C${p(w - k, t, w, t + k, w, t + r)}`, `L${p(w, h - r)}`,
+      `C${p(w, h - k, w - k, h, w - r, h)}`, `L${p(r, h)}`,
+      `C${p(k, h, 0, h - k, 0, h - r)}`, `L${p(0, t + r)}`,
+      `C${p(0, t + k, k, t, r, t)}`, 'Z',
+    ].join(' ')
+  }
+  const b = h - NOTCH
+  return [
+    `M${p(tip + HALF, b)}`, `L${p(tip, h)}`, `L${p(tip - HALF, b)}`, `L${p(r, b)}`,
+    `C${p(k, b, 0, b - k, 0, b - r)}`, `L${p(0, r)}`,
+    `C${p(0, k, k, 0, r, 0)}`, `L${p(w - r, 0)}`,
+    `C${p(w - k, 0, w, k, w, r)}`, `L${p(w, b - r)}`,
+    `C${p(w, b - k, w - k, b, w - r, b)}`, 'Z',
+  ].join(' ')
+}
+
+/** The end of a long path, which is the part that tells folders apart. */
+export function shortPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean)
+  return parts.length > 2 ? `…${path.includes('\\') ? '\\' : '/'}${parts.slice(-2).join(path.includes('\\') ? '\\' : '/')}` : path
+}

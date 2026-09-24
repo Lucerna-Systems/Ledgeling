@@ -26,7 +26,7 @@ export async function startTasks() {
   const stop = await listen<Task>('task:changed', ({ payload }) => {
     tasks.value = [payload, ...tasks.value.filter(t => t.id !== payload.id)].sort((a, b) => b.id - a.id)
   })
-  // Model picks can also happen in the native pet bubble; keep the web state truthful.
+  // Model picks can also happen in the pet bubble; keep the dashboard state truthful.
   const stopConnections = await listen('connections:changed', async () => {
     connections.value = await taskCall<Connections>('task_connections')
   })

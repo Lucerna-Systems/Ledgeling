@@ -6,25 +6,31 @@ One task runs at a time, including while awaiting approval; additional tasks que
 
 ## Start from a pet
 
-On macOS, right-click a desktop pet for a native speech bubble. It takes keyboard
-input without activating the dashboard. The dashboard starts hidden; open it
-explicitly from the tray menu, Cmd+1 while Perch is active, or the bubble's
-Connections button. Pet overlays and the bubble are auxiliary panels across
-Spaces; neither can become the application's main window.
+Right-click a desktop pet for its speech bubble. It is the same bubble on every
+platform: a small transparent window (`src/bubble`) placed next to the pet with
+its tail pointing at it, above the pet when there is room and below it
+otherwise. If the window the pet stands on moves, the bubble moves with it. It
+takes keyboard input without bringing the dashboard forward. On macOS it is a
+non-activating panel, so typing into it does not activate Perch either; on
+Windows it is a tool window, so it has no taskbar button, no Alt+Tab entry, and
+pets never perch on it. Clicking anywhere else, the close button, or Escape
+closes it. Cmd/Ctrl+Enter runs the request.
 
-There is no bubble on Windows yet. Right-clicking a pet there opens the
-dashboard on the Assistant, set up for that pet. The pet is not held in place,
-and dragging a pet onto a folder is macOS-only too.
+The dashboard starts hidden; open it explicitly from the tray menu, Cmd+1 while
+Perch is active, or the bubble's Connections button. On macOS, pet overlays and
+the bubble are auxiliary panels across Spaces; neither can become the
+application's main window.
 
-Drag a pet into an open Finder folder or onto a Finder folder icon to give that
-pet a working folder. The drop uses a native file promise, not window inspection.
+On macOS only, you can also drag a pet into an open Finder folder or onto a
+Finder folder icon to give that pet a working folder. The drop uses a native
+file promise, not window inspection.
 Finder briefly receives a uniquely named hidden `.perch-handoff-*` file, removed
 one second after completion. No existing file is overwritten. A crash during this
 handoff can leave that harmless hidden file behind; it can be removed manually.
 The folder binding is session-only, preventing a different pet from inheriting
 access after a restart. The chosen folder is visible in the bubble. Choosing a
-folder through its ellipsis button is an alternative. Hold Shift while dragging
-to move a pet normally without initiating a Finder handoff.
+folder with the bubble's folder row works on every platform. Hold Shift while
+dragging to move a pet normally without initiating a Finder handoff.
 
 The **Actions / Ask** toggle determines execution:
 
@@ -88,7 +94,7 @@ task history, since those are the user's own paths.
 
 When a model is connected, the bubble also shows a quiet **Select another model**
 link. Clicking it fetches the models of this pet's effective provider and swaps
-the link for a native picker; a choice is saved immediately as that pet's
+the link for a picker; a choice is saved immediately as that pet's
 override and applies from the next task (a running task keeps the connection it
 started with). The web panel's connection state refreshes through the
 `connections:changed` event when the bubble changes it.

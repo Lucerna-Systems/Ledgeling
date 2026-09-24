@@ -228,7 +228,12 @@ pub async fn task_pick(window: WebviewWindow, folders: bool) -> Result<Vec<Strin
 #[tauri::command]
 pub async fn task_open_url(window: WebviewWindow, url: String) -> Result<(), String> {
     main_only(&window)?;
-    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+    open_web_url(&url)
+}
+/// Open a result's link in the browser. Web links only: the dashboard and the
+/// pet bubble both route through this one check.
+pub fn open_web_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
     if !matches!(parsed.scheme(), "https" | "http")
         || !parsed.username().is_empty()
         || parsed.password().is_some()
