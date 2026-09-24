@@ -34,7 +34,7 @@ impl Platform for NativePlatform {
     fn cursor(&self) -> Option<Point> {
         None
     }
-    fn mouse_down(&self) -> bool {
-        false
+    fn mouse_down(&self) -> Option<bool> {
+        None
     }
 }

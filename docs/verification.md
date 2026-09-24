@@ -184,10 +184,18 @@ Stated plainly, because these are the difference between "built" and "shipped":
   `duplicates`), and no soak has been run with a server resident. `npm run prepare:sidecar` has run on this
   machine, but the Node bridge has not been exercised end-to-end and the
   bundle-size cost has not been measured.
-- **Windows.** The Win32 adapter is written to the APIs the architecture doc
-  names — `EnumWindows`, `DWMWA_EXTENDED_FRAME_BOUNDS`, `DWMWA_CLOAKED`,
-  `GetLastInputInfo`, `QueryFullProcessImageNameW` — but it has never been
-  compiled or run, because this is a Mac. Treat it as unreviewed code.
+- **Windows — first run only.** On 2026-09-24 the build was compiled and run
+  in dev mode on one Windows 11 Pro machine (one 1920×1080 display at 100%
+  scale, taskbar auto-hidden). What was checked by hand: the pet renders,
+  perches on window tops and the screen bottom, hovers into a clickable state,
+  can be grabbed and dragged and falls when released; the auto-hidden taskbar
+  still reveals; no title bar is painted over the screen. The full Rust suite
+  passes on Windows. Not checked: right-click opening the dashboard on the
+  Assistant (written, not yet tried), an installed NSIS build, window riding while a window is dragged,
+  occlusion with overlapping windows beyond casual use, multiple monitors,
+  scaling other than 100%, fullscreen suspension, the task layer against real
+  files, CPU and RAM against the budget, and any soak. There is no pet bubble
+  on Windows, and folder drag-and-drop is macOS-only.
 - **Multi-monitor on real hardware, post-fix.** The engine remains
   multi-monitor-capable and the timeline tests prove it, but the shipped
   product is single-screen by design. The fixed build has not been run by hand

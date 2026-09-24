@@ -266,7 +266,7 @@ impl Engine {
         let held_by_mouse = platform.mouse_down();
         let mut pets = std::mem::take(&mut self.pets);
         for pet in &mut pets {
-            if pet.is_held() && !held_by_mouse {
+            if pet.is_held() && held_by_mouse == Some(false) {
                 pet.release();
                 events.push(Event::Released);
             }

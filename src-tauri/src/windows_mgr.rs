@@ -160,7 +160,7 @@ impl PetSurface for NativeSurface {
             return Ok(());
         }
         if let Some(window) = self.windows.get(&monitor) {
-            window.set_ignore_cursor_events(!interactive)?;
+            crate::platform::pet_ui::click_through(window, !interactive)?;
         }
         self.interactive.insert(monitor, interactive);
         Ok(())
@@ -169,9 +169,11 @@ impl PetSurface for NativeSurface {
         if self.visible == visible {
             return Ok(());
         }
-        for window in self.windows.values() {
+        for (monitor, window) in &self.windows {
             if visible {
                 window.show()?;
+                let interactive = self.interactive.get(monitor).copied().unwrap_or(false);
+                crate::platform::pet_ui::restore_overlay(window, !interactive);
             } else {
                 window.hide()?;
             }

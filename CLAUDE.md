@@ -11,8 +11,9 @@ the awareness layer and the nudge ladder, settings persistence and the tray
 lifecycle all exist and are tested. Three bundled species — budgie, squirrel,
 gecko — differ only in data.
 
-What is genuinely outstanding is not code: the Windows adapter has never been
-compiled or run (this is a Mac), nothing is signed, the performance budget has not
+What is genuinely outstanding is not code: the Windows build has had only a
+first hand-run on one Windows 11 machine (see `docs/verification.md`), nothing
+is signed, the performance budget has not
 been re-certified and the soak has not been run for this build, no outside author
 has shipped a pack, and nothing has been released. `docs/verification.md` is the
 honest account; keep it that way and do not let README or docs drift ahead of it.

@@ -356,8 +356,31 @@ pub fn overlay(window: &tauri::WebviewWindow) {
             perch_overlay_panel(pointer);
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    if let Ok(handle) = window.hwnd() {
+        super::windows::quiet_overlay_frame(handle.0 as isize);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = window;
+}
+
+/// Showing a window lets the toolkit rewrite its extended styles; put the
+/// click-through state back. Only Windows needs this.
+pub fn restore_overlay(window: &tauri::WebviewWindow, click_through: bool) {
+    #[cfg(target_os = "windows")]
+    let _ = self::click_through(window, click_through);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (window, click_through);
+}
+
+/// Let clicks pass through the overlay, or catch them while over a pet.
+pub fn click_through(window: &tauri::WebviewWindow, click_through: bool) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    if let Ok(handle) = window.hwnd() {
+        super::windows::set_click_through(handle.0 as isize, click_through);
+        return Ok(());
+    }
+    window.set_ignore_cursor_events(click_through)
 }
 #[tauri::command]
 pub async fn pet_folder(pet_id: u64) -> Option<String> {
@@ -424,10 +447,22 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         }
         Ok(())
     }
+    // No native bubble outside macOS yet: open the companion window on the
+    // Assistant, set up for this pet, the same way the bubble's settings
+    // button does.
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (app, name);
-        Err("Pet speech bubbles are currently available on macOS only.".into())
+        let _ = name;
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            if let Some(main) = handle.get_webview_window("main") {
+                let _ = main.unminimize();
+                let _ = main.show();
+                let _ = main.set_focus();
+                let _ = handle.emit_to("main", "assistant:open", Some(pet_id));
+            }
+        })
+        .map_err(|e| e.to_string())
     }
 }
 #[cfg(test)]

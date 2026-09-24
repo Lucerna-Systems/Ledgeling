@@ -127,11 +127,14 @@ function move(event: PointerEvent) {
   if (!dragging || nativeDragging || !dragPet || event.shiftKey) return
   if (Math.hypot(event.clientX - pressedX, event.clientY - pressedY) < 12) return
   nativeDragging = true
-  void invoke('pet_folder_drag', { petId: dragPet }).catch(() => { nativeDragging = false })
+  // Where the native drag is unavailable the pet simply follows the cursor;
+  // it is tried once per press, not on every move.
+  void invoke('pet_folder_drag', { petId: dragPet }).catch(() => {})
 }
 function up(event: PointerEvent) {
   if (!dragging) return
   dragging = false
+  nativeDragging = false
   act('release')
   if (event.timeStamp - pressedAt < 250) act('click')
 }

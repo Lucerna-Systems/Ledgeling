@@ -798,6 +798,14 @@ fn pet_monitor(screen: &Screen) -> MonitorInfo {
 /// webview (a visible flash) and closing the old one is asynchronous, so a
 /// rebuild-per-change storm leaves several dying overlays each still showing
 /// its last painted scene — pets appeared duplicated across screens.
+/// Windows treats a topmost window that exactly covers a monitor as a
+/// fullscreen app and stops an auto-hidden taskbar from revealing. One
+/// physical pixel short on the right edge is enough to avoid that.
+#[cfg(target_os = "windows")]
+const OVERLAY_INSET: f64 = 1.;
+#[cfg(not(target_os = "windows"))]
+const OVERLAY_INSET: f64 = 0.;
+
 fn ensure_overlay(
     app: &tauri::AppHandle,
     monitor: &MonitorInfo,
@@ -812,8 +820,10 @@ fn ensure_overlay(
         let scale = monitor.scale;
         let position =
             tauri::LogicalPosition::new(monitor.bounds.x / scale, monitor.bounds.y / scale);
-        let size =
-            tauri::LogicalSize::new(monitor.bounds.width / scale, monitor.bounds.height / scale);
+        let size = tauri::LogicalSize::new(
+            (monitor.bounds.width - OVERLAY_INSET) / scale,
+            monitor.bounds.height / scale,
+        );
         if let Err(error) = window.set_position(position) {
             eprintln!("Perch could not move the overlay: {error}");
         }
@@ -829,7 +839,7 @@ fn ensure_overlay(
     )
     .title("Perch")
     .inner_size(
-        monitor.bounds.width / monitor.scale,
+        (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
         monitor.bounds.height / monitor.scale,
     )
     .position(
