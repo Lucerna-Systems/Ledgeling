@@ -23,8 +23,8 @@ last_diag() { grep '"scanMs"' "$1" | tail -1; }
 toplevel() {
   local w=$1 parent
   while :; do
-    parent=$(xwininfo -tree -id "$w" | sed -n 's/.*Parent window id: \(0x[0-9a-f]*\).*/\1/p')
-    [ $((parent)) -eq $((root)) ] && break
+    parent=$(xwininfo -tree -id "$w" 2>/dev/null | sed -n 's/.*Parent window id: \(0x[0-9a-f]*\).*/\1/p')
+    [ -z "$parent" ] || [ $((parent)) -eq $((root)) ] && break
     w=$parent
   done
   echo $((w))
@@ -42,10 +42,11 @@ openbox & pids+=($!)
 wait_for "xprop -root _NET_SUPPORTING_WM_CHECK | grep -q window"
 picom --backend xrender --no-fading-openclose & pids+=($!)
 root=$(xwininfo -root | sed -n 's/.*Window id: \(0x[0-9a-f]*\).*/\1/p')
-xterm -bg '#fdf6e3' -fg black -geometry 110x32+200+320 & xa=$!; pids+=($xa)
-xterm -bg '#eee8d5' -fg black -geometry 80x24+1150+180 & xb=$!; pids+=($xb)
-term_a="$(xdotool search --sync --pid $xa | head -1)"
-term_b="$(xdotool search --sync --pid $xb | head -1)"
+xterm -name terma -bg '#fdf6e3' -fg black -geometry 110x32+200+320 & pids+=($!)
+xterm -name termb -bg '#eee8d5' -fg black -geometry 80x24+1150+180 & pids+=($!)
+wait_for "xdotool search --classname '^termb$'"
+term_a="$(xdotool search --classname '^terma$' | head -1)"
+term_b="$(xdotool search --classname '^termb$' | head -1)"
 
 export HOME="$(mktemp -d)"
 PERCH_DIAGNOSTICS=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 "$app" >"$out/x11-app.log" 2>&1 &

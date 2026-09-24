@@ -35,6 +35,7 @@ jobs:
         working-directory: sidecar
       - run: npx tauri build --debug --no-bundle
       - run: dbus-run-session -- scripts/temp_linux-desktop.sh desktop-run
+        timeout-minutes: 10
       - if: always()
         run: cat desktop-run/summary.txt || true
       - if: always()
