@@ -109,8 +109,11 @@ jobs:
         run: |
           # --config replaces TAURI_CONFIG for the build, so fold it in.
           base="${TAURI_CONFIG:-}"; [ -n "$base" ] || base='{}'
-          override=$(jq -n --argjson base "$base" --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
-            '$base * {version: $v, bundle: {macOS: {bundleVersion: $b}}}')
+          # Passed as a file: on Windows npx is a .cmd shim, and cmd.exe mangles
+          # inline JSON (it cut the argument at the first newline).
+          override="$RUNNER_TEMP/tauri-override.json"
+          jq -n --argjson base "$base" --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
+            '$base * {version: $v, bundle: {macOS: {bundleVersion: $b}}}' > "$override"
           npx tauri build --target ${{ matrix.target }} --config "$override"
       - name: Collect artifacts
         env:
