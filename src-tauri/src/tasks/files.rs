@@ -117,6 +117,11 @@ pub fn no_links(path: &Path) -> Result<(), String> {
             return Err("Relative path traversal is not allowed.".into());
         }
         current.push(part);
+        // Windows cannot stat a bare drive prefix like `\\?\C:`, and neither
+        // a prefix nor the root can be a link.
+        if !matches!(part, Component::Normal(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&current) {
             Ok(m) if m.file_type().is_symlink() => {
                 return Err(format!(
