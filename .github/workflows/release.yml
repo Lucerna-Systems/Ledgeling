@@ -174,3 +174,44 @@ jobs:
         run: |
           gh release create "$TAG" out/* --prerelease --target "$GITHUB_SHA" \
             --title "Alpha $VERSION" --notes-file notes.md --generate-notes
+
+  # Off until the repo variable ITCH_ENABLED is "true". Only alphas go to itch;
+  # pre-alphas stay on GitHub. Setup is in docs/development.md.
+  itch:
+    needs: [plan, publish]
+    if: vars.ITCH_ENABLED == 'true' && needs.plan.outputs.channel == 'alpha'
+    runs-on: ubuntu-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+      ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      # butler comes straight from itch.io's own download server rather than a
+      # third-party action, so the API key is only ever handed to itch's tool.
+      - name: Install butler
+        run: |
+          curl -fsSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler && chmod +x butler/butler
+          echo "$PWD/butler" >> "$GITHUB_PATH"
+          ./butler/butler -V
+      - name: Stage channels
+        run: |
+          # itch installs and updates the app itself, so macOS gets the .app
+          # rather than the DMG, and Windows gets the installer.
+          for arch in aarch64 x86_64; do
+            mkdir -p "itch/macos-$arch"
+            tar -xzf "out/Perch_${VERSION}_macos-$arch.app.tar.gz" -C "itch/macos-$arch"
+          done
+          mkdir -p itch/windows-x86_64
+          cp "out/Perch_${VERSION}_windows-x86_64-setup.exe" itch/windows-x86_64/
+      - name: Push to itch.io
+        run: |
+          [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set."; exit 1; }
+          [ -n "$ITCH_TARGET" ] || { echo "::error::Variable ITCH_TARGET (user/game) is not set."; exit 1; }
+          for channel in macos-aarch64 macos-x86_64 windows-x86_64; do
+            butler push "itch/$channel" "$ITCH_TARGET:$channel" --userversion "$VERSION"
+          done
