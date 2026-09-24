@@ -19,7 +19,17 @@ wait_for() {
   return 1
 }
 last_diag() { grep '"scanMs"' "$1" | tail -1; }
-pid_of_window() { xprop -id "$1" _NET_WM_PID 2>/dev/null | awk '{print $3}'; }
+# The root's child that contains a window: the WM frame, or the window itself.
+toplevel() {
+  local w=$1 parent
+  while :; do
+    parent=$(xwininfo -tree -id "$w" | sed -n 's/.*Parent window id: \(0x[0-9a-f]*\).*/\1/p')
+    [ $((parent)) -eq $((root)) ] && break
+    w=$parent
+  done
+  echo $((w))
+}
+under_pointer() { toplevel "$(xdotool getmouselocation --shell | sed -n 's/^WINDOW=//p')"; }
 
 # ------------------------------------------------------------------ X11
 note "== X11: Xvfb 1920x1080, openbox, picom (xrender)"
@@ -31,13 +41,11 @@ wait_for "xdpyinfo"
 openbox & pids+=($!)
 wait_for "xprop -root _NET_SUPPORTING_WM_CHECK | grep -q window"
 picom --backend xrender --no-fading-openclose & pids+=($!)
-xsetroot -solid '#3a6ea5'
-xterm -bg '#fdf6e3' -fg black -geometry 110x32+200+320 -title A & pids+=($!)
-sleep 1
-xterm -bg '#eee8d5' -fg black -geometry 80x24+1150+180 -title B & pids+=($!)
-wait_for "xdotool search --name '^B$'"
-term_a="$(xdotool search --name '^A$' | head -1)"
-term_b="$(xdotool search --name '^B$' | head -1)"
+root=$(xwininfo -root | sed -n 's/.*Window id: \(0x[0-9a-f]*\).*/\1/p')
+xterm -bg '#fdf6e3' -fg black -geometry 110x32+200+320 & xa=$!; pids+=($xa)
+xterm -bg '#eee8d5' -fg black -geometry 80x24+1150+180 & xb=$!; pids+=($xb)
+term_a="$(xdotool search --sync --pid $xa | head -1)"
+term_b="$(xdotool search --sync --pid $xb | head -1)"
 
 export HOME="$(mktemp -d)"
 PERCH_DIAGNOSTICS=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 "$app" >"$out/x11-app.log" 2>&1 &
@@ -45,15 +53,21 @@ perch=$!; pids+=($perch)
 sleep 30
 import -window root "$out/x11-1-settled.png"
 note "diagnostics after 30 s: $(last_diag "$out/x11-app.log")"
-note "perch windows: $(for w in $(xdotool search --pid $perch 2>/dev/null); do printf '%s[%s] ' "$w" "$(xprop -id "$w" _NET_WM_STATE 2>/dev/null | cut -d= -f2)"; done)"
+overlay=""
+for w in $(xdotool search --pid $perch 2>/dev/null); do
+  state="$(xprop -id "$w" _NET_WM_STATE 2>/dev/null)"
+  note "perch window $w:${state#*:}"
+  case "$state" in *ABOVE*) overlay=$(toplevel "$w") ;; esac
+done
+note "overlay frame: $overlay; A frame: $(toplevel "$term_a"); B frame: $(toplevel "$term_b")"
 
 # Click-through: with B focused, a click on A's body must reach A.
 xdotool windowactivate --sync "$term_b"; sleep 0.5
 xdotool mousemove 700 700; sleep 0.5
-under="$(xdotool getmouselocation --shell | sed -n 's/^WINDOW=//p')"
+under="$(under_pointer)"
 xdotool click 1; sleep 0.8
 active="$(xdotool getactivewindow)"
-note "click-through: pointer over window $under (pid $(pid_of_window "$under")), after click active=$active, A=$term_a -> $([ "$active" = "$term_a" ] && echo PASS || echo FAIL)"
+note "click-through: pointer over frame $under, after the click active=$active (A=$term_a) -> $([ "$active" = "$term_a" ] && [ "$under" != "$overlay" ] && echo PASS || echo FAIL)"
 
 # Hover: the pointer over a pet's opaque pixel must be caught by the overlay.
 hover=FAIL
@@ -62,18 +76,23 @@ for attempt in $(seq 24); do
   [ -z "$point" ] && { sleep 2.5; continue; }
   set -- $point
   xdotool mousemove "${1%.*}" "${2%.*}"; sleep 0.6
-  under="$(xdotool getmouselocation --shell | sed -n 's/^WINDOW=//p')"
-  if [ "$(pid_of_window "$under")" = "$perch" ]; then
+  if [ "$(under_pointer)" = "$overlay" ]; then
     hover="PASS at $1,$2 on attempt $attempt"
-    import -window root "$out/x11-2-hover.png"
+    # Drag it: the release comes from the overlay's pointer capture.
+    xdotool mousedown 1; sleep 0.3
+    for step in $(seq 10); do xdotool mousemove_relative -- -30 30; sleep 0.05; done
+    sleep 0.5
+    import -window root "$out/x11-2-held.png"
+    note "while held: $(sleep 5; last_diag "$out/x11-app.log" | grep -o '"grab":[^]]*]]')"
+    xdotool mouseup 1; sleep 3
+    import -window root "$out/x11-3-dropped.png"
     break
   fi
   sleep 2
 done
 note "hover over pet catches the pointer: $hover"
 xdotool mousemove 20 1000; sleep 1
-under="$(xdotool getmouselocation --shell | sed -n 's/^WINDOW=//p')"
-note "pointer moved away: over window $under (pid $(pid_of_window "$under")) -> $([ "$(pid_of_window "$under")" != "$perch" ] && echo 'PASS (released)' || echo FAIL)"
+note "pointer moved off the pet: over frame $(under_pointer) -> $([ "$(under_pointer)" != "$overlay" ] && echo 'PASS (click-through again)' || echo FAIL)"
 
 # Fullscreen suspension.
 xdotool windowactivate --sync "$term_a"
@@ -81,7 +100,7 @@ wmctrl -i -r "$term_a" -b add,fullscreen; sleep 7
 note "A fullscreen: $(last_diag "$out/x11-app.log" | grep -o '"suspended":[a-z]*')"
 wmctrl -i -r "$term_a" -b remove,fullscreen; sleep 7
 note "A windowed:   $(last_diag "$out/x11-app.log" | grep -o '"suspended":[a-z]*')"
-import -window root "$out/x11-3-after.png"
+import -window root "$out/x11-4-after.png"
 note "resources (CI runner, not a budget measurement): $(ps -o rss=,%cpu= -p $perch | awk '{printf "RSS %d MB, lifetime CPU %s%%", $1/1024, $2}')"
 kill $perch; sleep 1
 cleanup; pids=()
@@ -107,7 +126,15 @@ PERCH_DIAGNOSTICS=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 "$app" >"$out/wayland-app.l
 perch=$!; pids+=($perch)
 sleep 30
 grim "$out/wayland-1-settled.png" 2>>"$out/sway.log"
-note "GDK_BACKEND seen by the app: $(tr '\0' '\n' </proc/$perch/environ 2>/dev/null | grep '^GDK_BACKEND=' || echo 'unset (set in-process)')"
 note "diagnostics after 30 s: $(last_diag "$out/wayland-app.log")"
-note "sway tree (perch): $(swaymsg -s "$runtime"/sway-ipc.* -t get_tree 2>/dev/null | grep -o '"pid": '$perch -c) nodes, shell: $(swaymsg -s "$runtime"/sway-ipc.* -t get_tree 2>/dev/null | grep -A3 "\"pid\": $perch" | grep -o '"shell": "[a-z_]*"' | sort -u | tr '\n' ' ')"
+note "sway sees Perch as: $(swaymsg -s "$(ls "$runtime"/sway-ipc.*)" -t get_tree -r | python3 -c '
+import json, sys
+def walk(n):
+    yield n
+    for c in n.get("nodes", []) + n.get("floating_nodes", []):
+        yield from walk(c)
+for n in walk(json.load(sys.stdin)):
+    if n.get("pid") == '"$perch"':
+        print(n.get("shell"), n.get("type"), n["rect"], end="; ")
+')"
 kill $perch

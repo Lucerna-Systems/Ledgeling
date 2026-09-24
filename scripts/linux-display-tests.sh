@@ -31,8 +31,11 @@ wait_for "xdpyinfo -display :91"
 DISPLAY=:91 openbox &
 pids+=($!)
 wait_for "xprop -display :91 -root _NET_SUPPORTING_WM_CHECK | grep -q window"
-env -u WAYLAND_DISPLAY DISPLAY=:91 XDG_SESSION_TYPE=x11 \
+(
+  unset WAYLAND_DISPLAY
+  export DISPLAY=:91 XDG_SESSION_TYPE=x11
   live_test x11_adapter_sees_the_desktop_as_a_person_does
+)
 
 echo "== Wayland: headless sway + XWayland"
 before="$(ls /tmp/.X11-unix 2>/dev/null || true)"
@@ -44,5 +47,8 @@ wait_for "ls $runtime/wayland-* | grep -v lock"
 wayland="$(basename "$(ls "$runtime"/wayland-* | grep -v lock | head -1)")"
 wait_for "[ \"\$(ls /tmp/.X11-unix)\" != \"$before\" ]"
 xwayland=":$(comm -13 <(echo "$before" | sort) <(ls /tmp/.X11-unix | sort) | head -1 | tr -d X)"
-XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$wayland" DISPLAY="$xwayland" \
-  XDG_SESSION_TYPE=wayland live_test wayland_session_degrades_to_screen_edges
+(
+  export XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$wayland" DISPLAY="$xwayland"
+  export XDG_SESSION_TYPE=wayland
+  live_test wayland_session_degrades_to_screen_edges
+)

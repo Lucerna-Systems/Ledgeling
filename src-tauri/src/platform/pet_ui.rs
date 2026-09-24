@@ -671,7 +671,11 @@ pub fn overlay(window: &tauri::WebviewWindow) {
     if let Ok(handle) = window.hwnd() {
         super::windows::quiet_overlay_frame(handle.0 as isize);
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    // GTK gives every window the app's menu bar, which would sit across the
+    // top of the pet screen as a stray "Perch" menu.
+    #[cfg(target_os = "linux")]
+    let _ = window.remove_menu();
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     let _ = window;
 }
 
