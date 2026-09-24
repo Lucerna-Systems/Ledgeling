@@ -56,6 +56,20 @@ What those tests actually cover:
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
 
+## Linux builds again (2026-09-24)
+
+- The Linux fallback platform did not compile: `app.rs` constructs
+  `NativePlatform` as a unit struct, which the macOS and Windows adapters are
+  and the fallback was not. It now keeps its monitor cache in a static, like
+  the Windows adapter, and the full Rust suite, UI tests, Clippy and the build
+  pass on Linux. `Verify` now runs on `ubuntu-latest` too, so it stays that
+  way.
+- **What Linux is today:** the fallback adapter. It reads no windows, so pets
+  live on the screen edges only, and it reports no idle time, foreground app,
+  cursor or fullscreen state, so awareness and nudges have nothing to go on.
+  The app has not been launched on a Linux desktop, and no Linux bundle is
+  built or released.
+
 ## One pet bubble on every platform (2026-09-24)
 
 - The right-click speech bubble is now a Vue page in its own transparent,
