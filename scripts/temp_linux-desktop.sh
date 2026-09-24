@@ -22,9 +22,10 @@ last_diag() { grep '"scanMs"' "$1" | tail -1; }
 # The root's child that contains a window: the WM frame, or the window itself.
 toplevel() {
   local w=$1 parent
-  while :; do
+  # xwininfo with no usable id waits for a click, so never hand it one.
+  while [ -n "$w" ] && [ $((w)) -ne 0 ] && [ $((w)) -ne $((root)) ]; do
     parent=$(xwininfo -tree -id "$w" 2>/dev/null | sed -n 's/.*Parent window id: \(0x[0-9a-f]*\).*/\1/p')
-    [ -z "$parent" ] || [ $((parent)) -eq $((root)) ] && break
+    [ -z "$parent" ] || [ $((parent)) -eq 0 ] || [ $((parent)) -eq $((root)) ] && break
     w=$parent
   done
   echo $((w))
