@@ -35,6 +35,28 @@ fn anthropic() {
 fn compatible() {
     model(ProviderKind::Compatible, "PERCH_TEST_COMPATIBLE_MODEL")
 }
+/// The on-device path end to end: starts `fm serve`, runs the structured
+/// readiness completion, and stops the server. Nothing leaves the machine, but
+/// it is slow and holds the model resident, so it stays opt-in.
+#[test]
+#[ignore = "Requires macOS 27 on Apple silicon with `sudo fm license` accepted"]
+fn apple_foundation() {
+    use perch::tasks::apple;
+    assert!(
+        apple::readiness().is_ready(),
+        "{}",
+        apple::readiness().detail()
+    );
+    let capabilities = HttpModel(Connection {
+        kind: ProviderKind::Apple,
+        ..Default::default()
+    })
+    .capabilities(&Cancel::default())
+    .unwrap();
+    assert_eq!(capabilities.models, vec![apple::MODEL.to_string()]);
+    assert!(capabilities.structured, "{}", capabilities.detail);
+    apple::shutdown();
+}
 #[test]
 #[ignore = "Requires installed Codex runtime"]
 fn codex_protocol() {

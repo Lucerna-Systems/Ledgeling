@@ -1,4 +1,4 @@
-use super::{types::*, Cancel};
+use super::{apple, types::*, Cancel};
 use reqwest::blocking::{Client, Response};
 use serde_json::{json, Value};
 use std::{io::Read, path::PathBuf, time::Duration};
@@ -91,13 +91,24 @@ pub fn base(config: &Connection) -> Result<String, String> {
     }
     Ok(value.into())
 }
+/// Whether task content would leave this machine. Apple's model is on-device
+/// and `fm` exposes no Private Cloud Compute backend, so it counts as local
+/// and never triggers the cloud confirmation.
 pub fn is_remote(config: &Connection) -> bool {
-    !matches!(config.kind, ProviderKind::None | ProviderKind::Ollama)
+    !matches!(
+        config.kind,
+        ProviderKind::None | ProviderKind::Ollama | ProviderKind::Apple
+    )
 }
 /// Lists a provider's model ids without running a completion probe, so the
 /// picker can populate before the user commits to anything. Model-listing
 /// endpoints are free; "test connection" is the part that spends tokens.
 pub fn list_models(config: &Connection) -> Result<Vec<String>, String> {
+    // The on-device model is the only one `fm` serves, so the picker can be
+    // populated without starting the server.
+    if config.kind == ProviderKind::Apple {
+        return Ok(vec![apple::MODEL.to_string()]);
+    }
     let endpoint = base(config)?;
     let http = client()?;
     let value = match config.kind {
@@ -203,6 +214,7 @@ fn configured(config: &Connections, kind: ProviderKind) -> Option<Connection> {
     config.per_pet.values().find(|c| c.kind == kind).cloned()
 }
 pub fn detect(config: &Connections) -> ProviderDetection {
+    let apple = apple::readiness();
     let codex = configured(config, ProviderKind::Codex)
         .map(|c| c.executable)
         .filter(|e| !e.trim().is_empty())
@@ -220,6 +232,9 @@ pub fn detect(config: &Connections) -> ProviderDetection {
         anthropic_key: has_secret("anthropic"),
         compatible_key: has_secret("compatible"),
         brave_key: has_secret("brave"),
+        apple_supported: apple::supported(),
+        apple_ready: apple.is_ready(),
+        apple_detail: apple.detail(),
     }
 }
 pub struct HttpModel(pub Connection);
@@ -227,8 +242,14 @@ impl ModelProvider for HttpModel {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
         cancel.check()?;
         let config = &self.0;
-        let endpoint = base(config)?;
-        if config.model.trim().is_empty() {
+        // Apple's endpoint is a server Perch starts on demand, not a saved
+        // address, and `system` is the only model it accepts.
+        let endpoint = if config.kind == ProviderKind::Apple {
+            apple::endpoint(cancel)?
+        } else {
+            base(config)?
+        };
+        if config.model.trim().is_empty() && config.kind != ProviderKind::Apple {
             return Err("Choose a model in Connections.".into());
         }
         let http = client()?;
@@ -259,6 +280,9 @@ impl ModelProvider for HttpModel {
                 let mut r = http.post(format!("{endpoint}/chat/completions")).json(&json!({"model":config.model,"messages":messages,"stream":false,"max_tokens":4096}));
                 if let Ok(key) = secret("compatible") { r = r.bearer_auth(key); } r
             }
+            // Local server, no credential: `fm serve` speaks Chat Completions
+            // and binds to loopback only.
+            ProviderKind::Apple => http.post(format!("{endpoint}/chat/completions")).json(&json!({"model":apple::MODEL,"messages":messages,"stream":false})),
             _ => return Err("Choose an AI model connection, or use a built-in preset without AI.".into()),
         };
         let v = response_json(request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?)?;
@@ -292,12 +316,20 @@ impl ModelProvider for HttpModel {
         }
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String> {
+        if self.0.kind == ProviderKind::Apple {
+            let ready = apple::readiness();
+            if !ready.is_ready() {
+                return Err(ready.detail());
+            }
+        }
         let models = if self.0.kind == ProviderKind::Ollama {
             list_models(&self.0)?
+        } else if self.0.kind == ProviderKind::Apple {
+            vec![apple::MODEL.to_string()]
         } else {
             vec![self.0.model.clone()]
         };
-        if self.0.model.is_empty() {
+        if self.0.model.is_empty() && self.0.kind != ProviderKind::Apple {
             return Ok(Capabilities {
                 models,
                 structured: false,
@@ -306,24 +338,50 @@ impl ModelProvider for HttpModel {
                     .into(),
             });
         }
-        let response = self.complete(
-            &[
-                Message {
-                    role: "system".into(),
-                    content:
-                        "Return only JSON: {\"tool\":\"finish\",\"args\":{\"text\":\"ready\"}}"
-                            .into(),
-                },
-                Message {
-                    role: "user".into(),
-                    content: "Check task capability.".into(),
-                },
-            ],
-            cancel,
-        )?;
-        let valid =
-            parse_call(&response).is_ok_and(|c| c.tool == "finish" && c.args["text"].is_string());
-        Ok(Capabilities { models, structured: valid, advanced:false, detail: if valid { "Connected. Structured task response verified." } else { "Connected, but this model failed the structured task response check. Choose another model." }.into() })
+        // Small local models drift off the envelope often enough that one miss
+        // is not evidence the model is unusable — the task loop retries too.
+        // Cloud attempts cost money, so only free local ones are repeated.
+        let attempts = if matches!(self.0.kind, ProviderKind::Apple | ProviderKind::Ollama) {
+            3
+        } else {
+            1
+        };
+        let mut valid = false;
+        for _ in 0..attempts {
+            let response = self.complete(
+                &[
+                    Message {
+                        role: "system".into(),
+                        content:
+                            "Return only JSON: {\"tool\":\"finish\",\"args\":{\"text\":\"ready\"}}"
+                                .into(),
+                    },
+                    Message {
+                        role: "user".into(),
+                        content: "Check task capability.".into(),
+                    },
+                ],
+                cancel,
+            )?;
+            valid = parse_call(&response)
+                .is_ok_and(|c| c.tool == "finish" && c.args["text"].is_string());
+            if valid {
+                break;
+            }
+        }
+        let detail = match (valid, self.0.kind == ProviderKind::Apple) {
+            (true, _) => "Connected. Structured task response verified.",
+            // There is no other on-device model to move to, so the advice has
+            // to be something the user can actually act on.
+            (false, true) => "Connected, but the on-device model did not return a usable task action in three attempts. Try again; if it keeps failing, use another connection for tasks.",
+            (false, false) => "Connected, but this model failed the structured task response check. Choose another model.",
+        };
+        Ok(Capabilities {
+            models,
+            structured: valid,
+            advanced: false,
+            detail: detail.into(),
+        })
     }
 }
 pub fn parse_call(text: &str) -> Result<ToolCall, String> {

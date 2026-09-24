@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => false, invoke: vi.fn() }
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
 beforeEach(() => {
   packs.value = []; snapshot.value = null; tasks.value = []; assignedPet.value = null
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {} }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } }
 })
 
 const pack = (name: string, kind: string): PackListing => ({

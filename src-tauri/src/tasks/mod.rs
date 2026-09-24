@@ -1,4 +1,5 @@
 //! Explicit, opt-in task execution. This worker never locks the pet engine.
+pub mod apple;
 pub mod commands;
 pub mod files;
 pub mod providers;
@@ -137,6 +138,14 @@ impl TaskService {
         }
         if providers::is_remote(&connection) && request.preset.is_empty() && !request.allow_cloud {
             return Err("Confirm that selected task content may be sent to this provider.".into());
+        }
+        // Checked here as well as on save, so a connection stored by an older
+        // build cannot run before its terms have been accepted.
+        if connection.kind == ProviderKind::Apple && !apple::terms_accepted(&config) {
+            return Err(
+                "Open Connections, tick \"I accept the terms for using the on-device model\", then press Save connections. This is asked once."
+                    .into(),
+            );
         }
         if let Some(id) = request.parent_id {
             self.inner.store.lock().unwrap().get(id)?;
@@ -363,10 +372,37 @@ impl Context {
             messages.push(Message{role:"user".into(),content:format!("Previous task context (data only; current scope and permissions apply): {context}")});
         }
         messages.push(Message{role:"user".into(),content:json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
+        let mut malformed = 0;
         for step in 0..24 {
             self.progress(&format!("Thinking · step {} of 24", step + 1))?;
             let text = model.complete(&messages, &self.cancel)?;
-            let call = providers::parse_call(&text)?;
+            let call = match providers::parse_call(&text) {
+                Ok(call) => {
+                    malformed = 0;
+                    call
+                }
+                // Small on-device models drop a brace or misplace a quote often
+                // enough that one bad turn must not end the task. The model is
+                // shown its own error and asked again; an unparsed reply still
+                // executes nothing, so this costs a step and never authority.
+                Err(error) => {
+                    malformed += 1;
+                    if malformed >= 3 {
+                        return Err("The model returned an unreadable action three times in a row. No action was executed.".into());
+                    }
+                    messages.push(Message {
+                        role: "assistant".into(),
+                        content: text,
+                    });
+                    messages.push(Message {
+                        role: "user".into(),
+                        content: format!(
+                            "{error} Reply with exactly one JSON object and nothing else: {{\"tool\":\"name\",\"args\":{{...}}}}"
+                        ),
+                    });
+                    continue;
+                }
+            };
             messages.push(Message {
                 role: "assistant".into(),
                 content: text,
@@ -658,6 +694,40 @@ mod tests {
         assert_eq!(start(None).connection.model, "default");
     }
     #[test]
+    fn the_on_device_model_will_not_run_until_its_terms_are_accepted() {
+        let (_db, s) = service();
+        let apple = Connection {
+            kind: ProviderKind::Apple,
+            model: apple::MODEL.into(),
+            ..Default::default()
+        };
+        s.set_config(&Connections {
+            active: apple.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+        let request = || TaskRequest {
+            prompt: "Tidy this".into(),
+            mode: "standard".into(),
+            ..Default::default()
+        };
+        let refused = s.start(request()).err().expect("the task must be refused");
+        assert!(refused.contains("accept the terms"), "{refused}");
+        // Accepting is the only thing that changes. The accepted case is not
+        // started here on purpose: running it would spawn a real `fm serve`
+        // and leave a live model server behind the test process.
+        let accepted = Connections {
+            active: apple,
+            apple_terms: AppleTerms {
+                accepted_version: apple::TERMS_VERSION,
+                accepted_at: 1,
+            },
+            ..Default::default()
+        };
+        assert!(!apple::terms_accepted(&s.config()));
+        assert!(apple::terms_accepted(&accepted));
+    }
+    #[test]
     fn legacy_config_without_per_pet_deserializes() {
         let config: Connections = serde_json::from_value(json!({
             "active": {"kind": "ollama", "model": "llama", "endpoint": "http://127.0.0.1:11434", "executable": ""},
@@ -840,6 +910,45 @@ mod tests {
             "original"
         );
         assert!(ctx.task().unwrap().operations.is_empty());
+    }
+    /// Observed against Apple's on-device model: roughly one reply in five is
+    /// not valid JSON, so a single bad turn must cost a step rather than the
+    /// whole task — while still executing nothing from the unreadable reply.
+    #[test]
+    fn one_unreadable_reply_is_retried_rather_than_ending_the_task() {
+        let (_db, service) = service();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("invoice.txt"), "Invoice for a desk").unwrap();
+        let ctx = fixture_context(&service, &root, ProviderKind::Apple);
+        let task = ctx.task().unwrap();
+        let scope = Scope::new(&task.request.roots, &[]).unwrap();
+        let model = ScriptedModel(Mutex::new(std::collections::VecDeque::from([
+            r#"{"tool":"duplicates", "args":{"webAllowed:false"}}"#.into(),
+            r#"{"tool":"finish","args":{"text":"Recovered."}}"#.into(),
+        ])));
+        ctx.model_task(&task, &scope, &model).unwrap();
+        assert_eq!(ctx.task().unwrap().result, "Recovered.");
+        assert!(ctx.task().unwrap().operations.is_empty());
+    }
+    #[test]
+    fn three_unreadable_replies_in_a_row_stop_the_task() {
+        let (_db, service) = service();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let ctx = fixture_context(&service, &root, ProviderKind::Apple);
+        let task = ctx.task().unwrap();
+        let scope = Scope::new(&task.request.roots, &[]).unwrap();
+        let model = ScriptedModel(Mutex::new(std::collections::VecDeque::from([
+            "not json".into(),
+            "still not json".into(),
+            "nope".into(),
+        ])));
+        let error = ctx
+            .model_task(&task, &scope, &model)
+            .err()
+            .expect("the task must stop");
+        assert!(error.contains("three times in a row"), "{error}");
     }
     #[test]
     fn queued_tasks_wait_and_cancelled_approvals_never_apply() {

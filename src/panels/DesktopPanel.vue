@@ -8,10 +8,13 @@ const view = computed(() => {
   const bounds = snapshot.value?.bounds
   return bounds ? `${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}` : '0 0 100 100'
 })
-const colours: Record<string, string> = {
-  window_top: '#6d9569', taskbar_top: '#6d9569', monitor_bottom: '#6d9569',
-  window_bottom: '#8aa9c0', monitor_top: '#8aa9c0',
-  window_left: '#c9a24d', window_right: '#c9a24d', monitor_left: '#c9a24d', monitor_right: '#c9a24d',
+// Surface strokes follow the kind: top edges one colour, under-edges another,
+// sides a third. Classes rather than inline fills so the map tokens in
+// style.css can flip with the theme.
+const edgeClass: Record<string, string> = {
+  window_top: 'edge-top', taskbar_top: 'edge-top', monitor_bottom: 'edge-top',
+  window_bottom: 'edge-under', monitor_top: 'edge-under',
+  window_left: 'edge-side', window_right: 'edge-side', monitor_left: 'edge-side', monitor_right: 'edge-side',
 }
 const screens = computed(() => snapshot.value?.screens ?? [])
 // The select shows the screen pets are actually on. A saved pick can name a
@@ -51,17 +54,17 @@ function pick(event: Event) {
       </select>
     </div>
     <svg v-if="snapshot" class="desktop-map" :viewBox="view" role="img" aria-label="Live window geometry and available surfaces">
-      <rect v-for="m in snapshot.monitors" :key="`m${m.id}`" :x="m.bounds.x" :y="m.bounds.y" :width="m.bounds.width" :height="m.bounds.height" fill="#edece2" stroke="#dcded2" stroke-width="4" />
-      <rect v-for="win in [...snapshot.windows].reverse()" :key="win.id" :x="win.rect.x" :y="win.rect.y" :width="win.rect.width" :height="win.rect.height" rx="10" fill="#fbfaf5" stroke="#d4d8cb" stroke-width="3" />
-      <line v-for="(s, i) in snapshot.surfaces" :key="i" :x1="s.x1" :y1="s.y1" :x2="s.x2" :y2="s.y2" :stroke="colours[s.kind] ?? '#9aa08e'" stroke-width="6" stroke-linecap="round" />
-      <circle v-for="pet in snapshot.pets" :key="pet.id" :cx="pet.x" :cy="pet.y - 18" r="16" fill="#c78e52" stroke="#fff" stroke-width="4" />
+      <rect v-for="m in snapshot.monitors" :key="`m${m.id}`" class="map-monitor" :x="m.bounds.x" :y="m.bounds.y" :width="m.bounds.width" :height="m.bounds.height" />
+      <rect v-for="win in [...snapshot.windows].reverse()" :key="win.id" class="map-window" :x="win.rect.x" :y="win.rect.y" :width="win.rect.width" :height="win.rect.height" rx="10" />
+      <line v-for="(s, i) in snapshot.surfaces" :key="i" :class="edgeClass[s.kind] ?? 'edge-fallback'" :x1="s.x1" :y1="s.y1" :x2="s.x2" :y2="s.y2" stroke-width="6" stroke-linecap="round" />
+      <circle v-for="pet in snapshot.pets" :key="pet.id" class="map-pet" :cx="pet.x" :cy="pet.y - 18" r="16" />
     </svg>
     <div v-else class="map-empty"><Monitor :size="40" :stroke-width="1" /><p>Your live desktop will appear in the native app.</p></div>
     <div class="map-legend">
-      <span><i style="background:#6d9569" /> Stand on top</span>
-      <span><i style="background:#c9a24d" /> Climb the sides</span>
-      <span><i style="background:#8aa9c0" /> Hang underneath</span>
-      <span><i style="background:#c78e52" /> A pet</span>
+      <span><i class="edge-top legend" /> Stand on top</span>
+      <span><i class="edge-side legend" /> Climb the sides</span>
+      <span><i class="edge-under legend" /> Hang underneath</span>
+      <span><i class="map-pet legend" /> A pet</span>
     </div>
   </section>
 

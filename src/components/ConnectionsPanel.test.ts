@@ -19,7 +19,7 @@ beforeEach(() => {
     if (command === 'task_account') return { account: { email: 'dirk@example.com' } }
     return null
   })
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {} }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } }
   snapshot.value = null
 })
 

@@ -10,7 +10,7 @@ use crate::{
     },
     pet::{Attend, Motion},
     platform::{NativePlatform, Platform},
-    settings::{self, Settings},
+    settings::{self, Settings, ThemeMode},
     windows_mgr::{self, hit_test, DebugOverlay, Label, NativeSurface, PetSurface, Scene},
     world::{MonitorInfo, Point, Rect},
 };
@@ -305,6 +305,7 @@ async fn set_settings(
     let mut settings = settings;
     settings.sanitize();
     let screen_changed = settings.pet_screen != app.engine.settings.pet_screen;
+    let theme_changed = settings.theme != app.engine.settings.theme;
     app.engine
         .awareness
         .apply(settings.awareness.clone(), settings.category_map());
@@ -321,6 +322,7 @@ async fn set_settings(
         }
     }
     app.engine.settings = settings;
+    let theme = app.engine.settings.theme;
     if screen_changed {
         app.rescan_screens = true;
     }
@@ -334,7 +336,21 @@ async fn set_settings(
     app.dirty = true;
     let snapshot = app.snapshot();
     let _ = app.persist();
+    drop(app);
+    if theme_changed {
+        // `System` hands control back to the OS appearance, not a stored copy
+        // of whatever it happened to be when the user opened the menu.
+        let _ = window.set_theme(theme_to_option(theme));
+    }
     Ok(snapshot)
+}
+
+fn theme_to_option(theme: ThemeMode) -> Option<tauri::Theme> {
+    match theme {
+        ThemeMode::Light => Some(tauri::Theme::Light),
+        ThemeMode::Dark => Some(tauri::Theme::Dark),
+        ThemeMode::System => None,
+    }
 }
 
 #[tauri::command]
@@ -511,6 +527,8 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_models,
             task_detect_providers,
             task_test_connection,
+            task_apple_terms,
+            task_apple_open_settings,
             task_account,
             task_pick,
             task_open_url,
@@ -571,6 +589,9 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             }
             let packs_dir = config_dir.join("packs");
             let (settings, note) = settings::load(&config_dir);
+            // Applied before the window can be shown so native scrollbars and
+            // form controls never flash the wrong appearance.
+            let _ = main.set_theme(theme_to_option(settings.theme));
             let mut notes: Vec<String> = note.into_iter().collect();
             if let Err(error) = builtin::restore(&packs_dir, &settings.uninstalled_builtins) {
                 notes.push(error);
@@ -646,14 +667,23 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 }
                 _ => {}
             });
+            // A server orphaned by a previous crash would still hold the model.
+            crate::tasks::apple::reap_stale();
             // The dashboard is opened explicitly from the tray or Connections.
             main.hide()?;
             let handle = app.handle().clone();
             std::thread::spawn(move || run_loop(shared, handle));
             Ok(())
         })
-        .run(context)
-        .expect("Unable to start Perch");
+        .build(context)
+        .expect("Unable to start Perch")
+        .run(|_, event| {
+            // `fm serve` is a child process holding the on-device model; it
+            // must not outlive Perch.
+            if matches!(event, tauri::RunEvent::Exit) {
+                crate::tasks::apple::shutdown();
+            }
+        });
 }
 
 fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBuf>) {

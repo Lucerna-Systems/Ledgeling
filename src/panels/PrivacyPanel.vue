@@ -1,6 +1,20 @@
 <script setup lang="ts">
-import { ShieldCheck, Check, X, Power, Heart } from '@lucide/vue'
+import { ShieldCheck, Check, X, Power, Heart, Palette } from '@lucide/vue'
 import { call, saveSettings, settings, native } from '../state'
+import { ACCENT_PRESETS, presetFor } from '../theme'
+import type { ThemeMode } from '../types'
+
+const themeChoices: { value: ThemeMode; label: string }[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'Auto' },
+]
+function pickTheme(value: ThemeMode) {
+  if (settings.value) void saveSettings({ ...settings.value, theme: value })
+}
+function pickAccent(accent: string) {
+  if (settings.value) void saveSettings({ ...settings.value, accent })
+}
 
 const collected = [
   'How many seconds since you last touched the keyboard or mouse',
@@ -55,6 +69,31 @@ const never = [
       <p class="muted">Privacy tests prohibit passive window-title, screen-capture and key-state APIs. Network code is confined to explicit task connections; the pet engine has no network access.</p>
     </section>
   </div>
+
+  <section class="controls-card">
+    <div class="section-label"><Palette :size="15" /> Appearance</div>
+    <div class="desktop-details">
+      <div><h3>Theme</h3><p>Auto follows your system appearance and switches when it does.</p></div>
+      <div class="segmented" role="radiogroup" aria-label="Theme">
+        <button v-for="choice in themeChoices" :key="choice.value" type="button" role="radio"
+                :aria-checked="settings?.theme === choice.value" @click="pickTheme(choice.value)">
+          {{ choice.label }}
+        </button>
+      </div>
+    </div>
+    <div class="desktop-details">
+      <div><h3>Accent colour</h3><p>Tints buttons, highlights and the pet's favourite spots.</p></div>
+      <div class="swatches" role="radiogroup" aria-label="Accent colour">
+        <button v-for="preset in ACCENT_PRESETS" :key="preset.id" type="button" class="swatch" role="radio"
+                :style="{ background: preset.base }" :title="preset.label" :aria-label="preset.label"
+                :aria-checked="settings?.accent?.toLowerCase() === preset.base" @click="pickAccent(preset.base)" />
+        <span class="swatch custom" role="radio" title="Custom" aria-label="Custom colour"
+              :aria-checked="!!settings?.accent && !presetFor(settings.accent)">
+          <input type="color" :value="settings?.accent ?? '#31725b'" @change="pickAccent(($event.target as HTMLInputElement).value)" />
+        </span>
+      </div>
+    </div>
+  </section>
 
   <section class="controls-card">
     <div class="desktop-details">

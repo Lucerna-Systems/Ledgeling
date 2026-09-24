@@ -13,11 +13,28 @@ const models = ref<string[]>([])
 const loadingModels = ref(false)
 const accountNote = ref('')
 const loginUrl = ref('')
+/** Perch's own terms for the on-device model, served by the backend so the
+ *  version shown is always the version the gate checks. */
+const appleTerms = ref<{ version: number; text: string; accepted: boolean } | null>(null)
+const appleAgreed = ref(false)
+const appleTermsOpen = ref(false)
+// Selecting Apple is not enough; the terms gate is enforced in the backend too.
+const appleBlocked = computed(() => active.value.kind === 'apple' && !appleAgreed.value)
+async function loadAppleTerms() {
+  try {
+    appleTerms.value = await taskCall<{ version: number; text: string; accepted: boolean }>('task_apple_terms')
+    appleAgreed.value = appleTerms.value.accepted
+  } catch { /* shared error */ }
+}
+async function openAppleSettings() {
+  try { await taskCall('task_apple_open_settings') } catch { /* shared error */ }
+}
 const defaults: Record<ProviderKind, Partial<Connection>> = {
   none: {}, ollama: { endpoint: 'http://127.0.0.1:11434' }, openai: {}, anthropic: {},
   compatible: { endpoint: 'https://your-provider.example/v1' }, codex: { executable: 'codex' }, claude: {},
+  apple: { model: 'system' },
 }
-const installedKinds: ProviderKind[] = ['none', 'codex', 'claude', 'ollama']
+const installedKinds: ProviderKind[] = ['none', 'apple', 'codex', 'claude', 'ollama']
 const active = computed(() => connections.value.active)
 function choose(kind: ProviderKind) {
   connections.value.active = { kind, model: '', endpoint: '', executable: '', ...defaults[kind] }
@@ -37,10 +54,14 @@ const apiChoice = computed({
 const showCodex = computed(() => detection.value?.codexInstalled || active.value.kind === 'codex')
 const showClaude = computed(() => detection.value?.claudeBridge || active.value.kind === 'claude')
 const showOllama = computed(() => detection.value?.ollamaApp || detection.value?.ollamaReachable || active.value.kind === 'ollama')
+// Offered on any Mac that could run it, so the reason it is not ready is
+// visible rather than the option silently missing.
+const showApple = computed(() => detection.value?.appleSupported || active.value.kind === 'apple')
 const providerStatus = computed(() => {
   const d = detection.value
   if (!d) return ''
   switch (active.value.kind) {
+    case 'apple': return d.appleDetail
     case 'codex': return d.codexInstalled ? 'Codex was found on this computer.' : 'Codex was not found — check the executable path below.'
     case 'claude': return d.anthropicKey ? 'Claude runtime included with Perch. Anthropic key saved.' : 'Claude runtime included with Perch. Add an Anthropic key below.'
     case 'ollama': return d.ollamaReachable ? 'Ollama is running.' : d.ollamaApp ? 'Ollama is installed but not running.' : 'Ollama was not detected on this computer.'
@@ -73,7 +94,9 @@ async function save() {
     const kind = active.value.kind
     if (key.value) await taskCall('task_secret', { name: kind === 'claude' ? 'anthropic' : kind, value: key.value })
     if (braveKey.value) await taskCall('task_secret', { name: 'brave', value: braveKey.value })
+    connections.value.appleTerms = { acceptedVersion: appleAgreed.value ? (appleTerms.value?.version ?? 0) : 0, acceptedAt: 0 }
     await taskCall('task_save_connections', { config: connections.value })
+    await loadAppleTerms()
     feedback.value = 'Connections saved. Keys are kept in your OS credential store.'
   } catch { /* shared error */ } finally { key.value = ''; braveKey.value = ''; busy.value = false }
 }
@@ -148,6 +171,7 @@ onMounted(async () => {
   try { detection.value = await taskCall<ProviderDetection>('task_detect_providers') } catch { /* shared error */ }
   await loadModels()
   await checkStatus()
+  await loadAppleTerms()
 })
 </script>
 <template>
@@ -162,12 +186,13 @@ onMounted(async () => {
         <label>Use an installed app
           <select v-model="installedChoice">
             <option value="">No AI · built-in actions</option>
+            <option v-if="showApple" value="apple">Apple Intelligence · on this Mac</option>
             <option v-if="showCodex" value="codex">ChatGPT · Codex</option>
             <option v-if="showClaude" value="claude">Claude · included runtime</option>
             <option v-if="showOllama" value="ollama">Ollama · local models</option>
           </select>
         </label>
-        <p v-if="!showCodex && !showClaude && !showOllama" class="detection-note">Nothing detected yet. Install an app and reopen this panel.</p>
+        <p v-if="!showApple && !showCodex && !showClaude && !showOllama" class="detection-note">Nothing detected yet. Install an app and reopen this panel.</p>
       </div>
       <div class="connection-section">
         <h4>API keys</h4>
@@ -185,7 +210,17 @@ onMounted(async () => {
     <template v-if="active.kind !== 'none'">
       <p v-if="providerStatus" class="provider-status" role="status">{{ providerStatus }}</p>
       <p v-if="accountNote" class="provider-status">{{ accountNote }}</p>
-      <label>Model<SearchSelect v-model="active.model" :options="models" :placeholder="modelPlaceholder" /></label>
+      <label v-if="active.kind !== 'apple'">Model<SearchSelect v-model="active.model" :options="models" :placeholder="modelPlaceholder" /></label>
+      <template v-if="active.kind === 'apple'">
+        <p>Runs Apple's on-device model through the built-in Foundation Models tool. Nothing is sent off this Mac, and no API key or account is needed.</p>
+        <button v-if="detection && !detection.appleReady" class="text-link" @click="openAppleSettings">Open System Settings</button>
+        <div class="apple-terms">
+          <label class="check-label"><input v-model="appleAgreed" type="checkbox"> I accept the terms for using the on-device model</label>
+          <button class="text-link" @click="appleTermsOpen = !appleTermsOpen">{{ appleTermsOpen ? 'Hide terms' : 'Read the terms' }}</button>
+          <pre v-if="appleTermsOpen" class="apple-terms-text">{{ appleTerms?.text }}</pre>
+          <p v-if="appleBlocked" class="detection-note">Accept these terms to save and use this connection.</p>
+        </div>
+      </template>
       <label v-if="['ollama', 'compatible'].includes(active.kind)">Endpoint<input v-model="active.endpoint" spellcheck="false"></label>
       <label v-if="active.kind === 'codex'">Codex executable<input v-model="active.executable" placeholder="codex or an absolute path"></label>
       <template v-if="['openai', 'anthropic', 'compatible', 'claude'].includes(active.kind)">
@@ -210,6 +245,7 @@ onMounted(async () => {
         <label>Provider
           <select v-model="overrideKind">
             <option value="none">No AI · built-in actions</option>
+            <option v-if="showApple" value="apple">Apple Intelligence · on this Mac</option>
             <option v-if="showCodex" value="codex">ChatGPT · Codex</option>
             <option v-if="showClaude" value="claude">Claude</option>
             <option v-if="showOllama" value="ollama">Ollama · local models</option>
@@ -218,7 +254,7 @@ onMounted(async () => {
             <option value="compatible">OpenAI-compatible endpoint</option>
           </select>
         </label>
-        <label v-if="overrideKind !== 'none'">Model<SearchSelect v-model="overrideModel" :options="overrideModels" placeholder="Search or type a model ID" /></label>
+        <label v-if="!['none', 'apple'].includes(overrideKind)">Model<SearchSelect v-model="overrideModel" :options="overrideModels" placeholder="Search or type a model ID" /></label>
         <div class="task-actions"><button class="primary-button" :disabled="busy" @click="saveOverride(pet.id)">Set for {{ pet.name }}</button></div>
       </div>
     </div>
@@ -226,7 +262,7 @@ onMounted(async () => {
     <label class="check-label"><input v-model="connections.searchEnabled" type="checkbox"> Enable Brave web search</label>
     <label v-if="connections.searchEnabled">Brave Search API key<input v-model="braveKey" type="password" autocomplete="off" placeholder="Leave empty to keep the saved key"></label>
     <button v-if="connections.searchEnabled" class="text-link" @click="forget('brave')">Remove search key</button>
-    <div class="task-actions"><button class="primary-button" :disabled="busy" @click="save">Save connections</button><button :disabled="busy || active.kind === 'none'" @click="test">{{ busy ? 'Working…' : 'Test connection' }}</button></div>
+    <div class="task-actions"><button class="primary-button" :disabled="busy || appleBlocked" @click="save">Save connections</button><button :disabled="busy || active.kind === 'none' || appleBlocked" @click="test">{{ busy ? 'Working…' : 'Test connection' }}</button></div>
     <p role="status">{{ feedback }}</p>
   </section>
 </template>

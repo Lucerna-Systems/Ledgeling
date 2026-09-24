@@ -9,7 +9,7 @@ what has actually been run, and — more importantly — what has not.
 
 | Check | Result |
 |---|---|
-| `npm test` (`cargo test`) | 118 tests pass: 101 unit, 10 integration timeline, 7 privacy; plus 10 ignored (1 local-Ollama, 9 credential-gated connections) |
+| `npm test` (`cargo test`) | 122 tests pass: 105 unit, 10 integration timeline, 7 privacy; plus 11 ignored (1 local-Ollama, 9 credential-gated connections, 1 Apple on-device) |
 | `cargo clippy -- -D warnings` (in `npm run check`) | passes |
 | `cargo fmt --check` | passes |
 | `npm run build` (`vue-tsc` + Vite) | passes |
@@ -42,7 +42,7 @@ What those tests actually cover:
 - **Privacy** — the build fails if any source file references a window-title,
   screen-capture, key-state or clipboard API; if any file outside the three
   explicit task adapters (`tasks/providers.rs`, `tasks/search.rs`,
-  `tasks/commands.rs`) references a network API; if a telemetry or frontend
+  `tasks/commands.rs`, `tasks/apple.rs`) references a network API; if a telemetry or frontend
   network crate is in `Cargo.toml`; or if the Tauri capability list grants
   anything beyond local window events. The source walk covers `.m` files in
   `native/`.
@@ -170,7 +170,18 @@ Stated plainly, because these are the difference between "built" and "shipped":
 - **Live provider connections.** The opt-in tests in
   `tests/task_connections.rs` have not been run; no live call to Ollama,
   OpenAI, Anthropic, a Compatible endpoint, Codex, the Claude sidecar or Brave
-  has been made from this build. `npm run prepare:sidecar` has run on this
+  has been made from this build.
+- **Apple Foundation Models — partly verified.** `sudo fm license` is accepted
+  on this Mac (macOS 27.0, build 26A5425a), and `apple_foundation` in
+  `tests/task_connections.rs` passes: `fm serve` starts, `/health` and
+  `/v1/models` answer, a real completion runs and its envelope parses, in under
+  3 seconds. What is **not** verified is a full multi-step task against real
+  files through the UI — every run so far has been the single-step capability
+  probe or a scripted transcript. Measured envelope drift is roughly 1 reply in
+  5 (4/5 valid, then 7/7 on a second pass), which the retry in `model_task` is
+  sized for; sustained behaviour over 24 steps has not been observed. Tool
+  choice is visibly weak on this model (two unrelated requests both chose
+  `duplicates`), and no soak has been run with a server resident. `npm run prepare:sidecar` has run on this
   machine, but the Node bridge has not been exercised end-to-end and the
   bundle-size cost has not been measured.
 - **Windows.** The Win32 adapter is written to the APIs the architecture doc

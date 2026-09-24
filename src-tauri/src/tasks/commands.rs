@@ -1,4 +1,5 @@
 use super::{
+    apple,
     providers::{self, ModelProvider},
     runtimes,
     types::*,
@@ -71,9 +72,38 @@ pub async fn task_connections(
 pub async fn task_save_connections(
     window: WebviewWindow,
     state: State<'_, TaskService>,
-    config: Connections,
+    mut config: Connections,
 ) -> Result<(), String> {
     main_only(&window)?;
+    // Acceptance is recorded here rather than trusted from the frontend: the
+    // version is clamped to what this build can show, and the timestamp is
+    // stamped on the transition so it records a real moment of consent.
+    let stored = state.config();
+    config.apple_terms.accepted_version = config
+        .apple_terms
+        .accepted_version
+        .min(apple::TERMS_VERSION);
+    config.apple_terms.accepted_at =
+        if config.apple_terms.accepted_version > stored.apple_terms.accepted_version {
+            chrono::Utc::now().timestamp()
+        } else {
+            stored.apple_terms.accepted_at
+        };
+    // `fm` accepts only one model, so a model id left over from a previously
+    // chosen provider would otherwise be stored and shown as if it were in use.
+    for connection in std::iter::once(&mut config.active).chain(config.per_pet.values_mut()) {
+        if connection.kind == ProviderKind::Apple {
+            connection.model = apple::MODEL.into();
+        }
+    }
+    let uses_apple = std::iter::once(&config.active)
+        .chain(config.per_pet.values())
+        .any(|c| c.kind == ProviderKind::Apple);
+    if uses_apple && !apple::terms_accepted(&config) {
+        return Err(
+            "Accept the Apple Intelligence terms before choosing the on-device model.".into(),
+        );
+    }
     // Per-pet overrides must clear the same endpoint bar as the default,
     // or they would become a bypass for the HTTPS/localhost rules.
     for connection in std::iter::once(&config.active).chain(config.per_pet.values()) {
@@ -121,9 +151,14 @@ pub async fn task_detect_providers(
 #[tauri::command]
 pub async fn task_test_connection(
     window: WebviewWindow,
+    state: State<'_, TaskService>,
     config: Connection,
 ) -> Result<Capabilities, String> {
     main_only(&window)?;
+    // Testing runs a real completion, so it is gated exactly like a task.
+    if config.kind == ProviderKind::Apple && !apple::terms_accepted(&state.config()) {
+        return Err("Accept the Apple Intelligence terms before testing this connection.".into());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         if matches!(config.kind, ProviderKind::Codex | ProviderKind::Claude) {
             runtimes::capabilities(&config)
@@ -144,6 +179,27 @@ pub async fn task_account(
     tauri::async_runtime::spawn_blocking(move || runtimes::account(&config, &action))
         .await
         .map_err(|_| "Account operation failed".to_string())?
+}
+/// Perch's own terms for the on-device provider, plus whether they have been
+/// accepted, so the panel never has to hardcode the text or the version.
+#[tauri::command]
+pub async fn task_apple_terms(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+) -> Result<Value, String> {
+    main_only(&window)?;
+    let config = state.config();
+    Ok(serde_json::json!({
+        "version": apple::TERMS_VERSION,
+        "text": apple::TERMS,
+        "accepted": apple::terms_accepted(&config),
+        "acceptedAt": config.apple_terms.accepted_at,
+    }))
+}
+#[tauri::command]
+pub async fn task_apple_open_settings(window: WebviewWindow) -> Result<(), String> {
+    main_only(&window)?;
+    apple::open_system_settings()
 }
 #[tauri::command]
 pub async fn task_pick(window: WebviewWindow, folders: bool) -> Result<Vec<String>, String> {

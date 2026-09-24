@@ -97,6 +97,7 @@ export interface AwarenessConfig {
   categoryDebounce: number
 }
 export interface PetSetting { packId: string; x: number | null; y: number | null }
+export type ThemeMode = 'light' | 'dark' | 'system'
 export interface Settings {
   version: number
   pets: PetSetting[]
@@ -111,6 +112,9 @@ export interface Settings {
   uninstalledBuiltins: string[]
   /** Hardware name of the one screen pets live on; null means the main display. */
   petScreen: string | null
+  theme: ThemeMode
+  /** Accent colour as `#rrggbb`; variants are derived, so only the base travels. */
+  accent: string
 }
 
 export interface SessionSummary {

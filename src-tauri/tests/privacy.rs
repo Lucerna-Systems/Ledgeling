@@ -118,9 +118,14 @@ fn networking_is_confined_to_explicit_task_adapters() {
     ];
     for (path, text) in read_all() {
         if path.ends_with("privacy.rs")
-            || ["tasks/providers.rs", "tasks/search.rs", "tasks/commands.rs"]
-                .iter()
-                .any(|p| path.ends_with(p))
+            || [
+                "tasks/providers.rs",
+                "tasks/search.rs",
+                "tasks/commands.rs",
+                "tasks/apple.rs",
+            ]
+            .iter()
+            .any(|p| path.ends_with(p))
         {
             continue;
         }

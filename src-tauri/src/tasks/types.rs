@@ -13,6 +13,7 @@ pub enum ProviderKind {
     Compatible,
     Codex,
     Claude,
+    Apple,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -32,6 +33,15 @@ impl Default for Connection {
         }
     }
 }
+/// A record of the user accepting Perch's terms for the on-device provider.
+/// Both fields are written by the backend, never taken from the frontend, so a
+/// stored acceptance always reflects text this build actually showed.
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AppleTerms {
+    pub accepted_version: u32,
+    pub accepted_at: i64,
+}
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Connections {
@@ -39,6 +49,7 @@ pub struct Connections {
     pub search_enabled: bool,
     /// Per-companion overrides; pets without an entry use `active`.
     pub per_pet: BTreeMap<u64, Connection>,
+    pub apple_terms: AppleTerms,
 }
 /// The connection a task for `pet_id` actually runs on: the pet's override
 /// when one is set, otherwise the global default.
@@ -60,6 +71,11 @@ pub struct ProviderDetection {
     pub anthropic_key: bool,
     pub compatible_key: bool,
     pub brave_key: bool,
+    /// Apple silicon on macOS 27+: whether the option can exist at all, as
+    /// distinct from whether it is set up yet.
+    pub apple_supported: bool,
+    pub apple_ready: bool,
+    pub apple_detail: String,
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]

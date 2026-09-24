@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
 pub const SETTINGS_FILE: &str = "settings.json";
+pub const DEFAULT_ACCENT: &str = "#31725b";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -15,6 +16,17 @@ pub struct PetSetting {
     pub x: Option<f64>,
     pub y: Option<f64>,
 }
+/// How the companion UI is coloured. `System` follows the OS appearance,
+/// resolved per-window on the frontend and via `set_theme(None)` natively.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    Light,
+    Dark,
+    #[default]
+    System,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -36,6 +48,10 @@ pub struct Settings {
     /// the main display until it returns, so unplugging and replugging the
     /// "workstation" screen round-trips.
     pub pet_screen: Option<String>,
+    pub theme: ThemeMode,
+    /// Accent colour as `#rrggbb`. Rust only validates the shape; the frontend
+    /// derives hover/soft variants so hand-tuned presets stay in one place.
+    pub accent: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -55,6 +71,8 @@ impl Default for Settings {
             category_overrides: BTreeMap::new(),
             uninstalled_builtins: Vec::new(),
             pet_screen: None,
+            theme: ThemeMode::default(),
+            accent: DEFAULT_ACCENT.into(),
         }
     }
 }
@@ -73,7 +91,20 @@ impl Settings {
         }
         self.pets.retain(|p| !p.pack_id.is_empty());
         self.pets.truncate(8);
+        self.accent = self.accent.to_lowercase();
+        if !is_hex_color(&self.accent) {
+            self.accent = DEFAULT_ACCENT.into();
+        }
     }
+}
+
+/// `#` followed by exactly six ASCII hex digits.
+fn is_hex_color(value: &str) -> bool {
+    let hex = match value.strip_prefix('#') {
+        Some(hex) => hex,
+        None => return false,
+    };
+    hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Load settings, returning a human-readable note when the file had to be
@@ -141,6 +172,53 @@ mod tests {
         let (loaded, note) = load(&dir);
         assert!(note.is_none());
         assert_eq!(loaded.speed_scale, 1.);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn theme_and_accent_round_trip() {
+        let dir = std::env::temp_dir().join(format!("perch-settings-theme-{}", std::process::id()));
+        let settings = Settings {
+            theme: ThemeMode::Dark,
+            accent: "#3A7BD5".into(),
+            ..Default::default()
+        };
+        save(&dir, &settings).unwrap();
+        let text = std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap();
+        assert!(text.contains(r#""theme": "dark""#));
+        let (loaded, _) = load(&dir);
+        assert_eq!(loaded.theme, ThemeMode::Dark);
+        assert_eq!(loaded.accent, "#3a7bd5");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn bad_accent_falls_back_to_default() {
+        let mut settings = Settings {
+            theme: ThemeMode::Light,
+            ..Default::default()
+        };
+        for bad in ["blue", "#1234", "#12345g", "31725b"] {
+            settings.accent = bad.into();
+            settings.sanitize();
+            assert_eq!(settings.accent, DEFAULT_ACCENT, "should reject {bad}");
+        }
+        assert_eq!(settings.theme, ThemeMode::Light);
+    }
+    #[test]
+    fn missing_theme_and_accent_read_as_defaults() {
+        // A settings.json written before the feature existed has neither key.
+        let dir = std::env::temp_dir().join(format!("perch-settings-mig-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            r#"{"version":1,"pets":[{"packId":"com.perch.budgie-classic"}],"paused":false,
+               "hidden":false,"speedScale":1,"debug":false,"sounds":false,"launchAtLogin":false,
+               "awareness":{},"categoryOverrides":{},"uninstalledBuiltins":[],"petScreen":null}"#,
+        )
+        .unwrap();
+        let (settings, note) = load(&dir);
+        assert!(note.is_none());
+        assert_eq!(settings.theme, ThemeMode::System);
+        assert_eq!(settings.accent, DEFAULT_ACCENT);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
