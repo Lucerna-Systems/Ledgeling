@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: write
-  # Read-only: lets `plan` see whether verify already passed on this commit.
-  checks: read
 
 defaults:
   run:
@@ -31,7 +29,6 @@ jobs:
       channel: ${{ steps.plan.outputs.channel }}
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
-      verified: ${{ steps.verified.outputs.verified }}
     steps:
       - uses: actions/checkout@v4
       - id: plan
@@ -57,41 +54,13 @@ jobs:
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Planned $version"
-      # An alpha promotes a commit that already went through the release on
-      # main, so repeating the whole matrix proves nothing new. Skip it only
-      # when verify has passed on all three platforms for this exact commit;
-      # anything else (a hotfix pushed straight to prod, a failed or missing
-      # run) still runs it. Pushes to main always verify: the PR that merged
-      # may have been tested against an older main.
-      - id: verified
-        if: ${{ github.ref_name == 'prod' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          passed=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-            --jq '[.check_runs[] | select(.name | test("verify \\((macos|ubuntu|windows)-latest\\)"))] as $v | if ([$v[] | select(.conclusion != "success")] | length) > 0 then 0 else [$v[].name | capture("verify \\((?<os>macos|ubuntu|windows)-latest\\)").os] | unique | length end' \
-            || echo 0)
-          if [ "$passed" = 3 ]; then
-            echo "verified=true" >> "$GITHUB_OUTPUT"
-            echo "Verify already passed on macOS, Ubuntu and Windows for $GITHUB_SHA; skipping it."
-          else
-            echo "verified=false" >> "$GITHUB_OUTPUT"
-            echo "Verify has not passed on all platforms for $GITHUB_SHA ($passed of 3); running it."
-          fi
 
   verify:
     needs: plan
-    if: ${{ needs.plan.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yml
 
   build:
     needs: [plan, verify]
-    # `verify` is skipped for an already-verified alpha; a skipped need would
-    # otherwise skip this job too. A failed or cancelled verify still stops it.
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
-    # The GitHub Environment named for the channel ("pre-alpha" or "alpha")
-    # holds that build's server addresses; see docs/development.md.
-    environment: ${{ needs.plan.outputs.channel }}
     strategy:
       fail-fast: false
       matrix:
@@ -137,35 +106,28 @@ jobs:
       - name: Build app
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-          # Baked into the binary: the only servers online features may reach.
-          # Unset means the feature is unavailable in this build.
-          LEDGELING_MARKETPLACE_HOSTS: ${{ vars.LEDGELING_MARKETPLACE_HOSTS }}
-          LEDGELING_ANALYTICS_HOSTS: ${{ vars.LEDGELING_ANALYTICS_HOSTS }}
         run: |
           # --config replaces TAURI_CONFIG for the build, so fold it in.
           base="${TAURI_CONFIG:-}"; [ -n "$base" ] || base='{}'
-          # Passed as a file: on Windows npx is a .cmd shim, and cmd.exe mangles
-          # inline JSON (it cut the argument at the first newline).
-          override="$RUNNER_TEMP/tauri-override.json"
-          jq -n --argjson base "$base" --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
-            '$base * {version: $v, bundle: {macOS: {bundleVersion: $b}}}' > "$override"
+          override=$(jq -n --argjson base "$base" --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
+            '$base * {version: $v, bundle: {macOS: {bundleVersion: $b}}}')
           npx tauri build --target ${{ matrix.target }} --config "$override"
       - name: Collect artifacts
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           bundle=src-tauri/target/${{ matrix.target }}/release/bundle
-          name="Ledgeling_${VERSION}_${{ matrix.label }}"
+          name="Perch_${VERSION}_${{ matrix.label }}"
           mkdir out
           if [ "$RUNNER_OS" = Windows ]; then
             cp "$bundle"/nsis/*-setup.exe "out/$name-setup.exe"
           else
             cp "$bundle"/dmg/*.dmg "out/$name.dmg"
-            tar -czf "out/$name.app.tar.gz" -C "$bundle/macos" Ledgeling.app
+            tar -czf "out/$name.app.tar.gz" -C "$bundle/macos" Perch.app
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ledgeling-${{ matrix.label }}
+          name: perch-${{ matrix.label }}
           path: out/*
           if-no-files-found: error
 
@@ -196,7 +158,7 @@ jobs:
             echo "Nothing is signed yet."
             echo
             echo "- **macOS:** \`macos-aarch64\` for Apple Silicon, \`macos-x86_64\` for Intel. Gatekeeper refuses the"
-            echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Ledgeling.app\`."
+            echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Perch.app\`."
             echo "- **Windows:** \`windows-x86_64-setup.exe\`. SmartScreen warns about the unknown publisher: More info → Run anyway."
             echo "  The Windows build has not been tested on real hardware."
           } > notes.md
@@ -242,10 +204,10 @@ jobs:
           # rather than the DMG, and Windows gets the installer.
           for arch in aarch64 x86_64; do
             mkdir -p "itch/macos-$arch"
-            tar -xzf "out/Ledgeling_${VERSION}_macos-$arch.app.tar.gz" -C "itch/macos-$arch"
+            tar -xzf "out/Perch_${VERSION}_macos-$arch.app.tar.gz" -C "itch/macos-$arch"
           done
           mkdir -p itch/windows-x86_64
-          cp "out/Ledgeling_${VERSION}_windows-x86_64-setup.exe" itch/windows-x86_64/
+          cp "out/Perch_${VERSION}_windows-x86_64-setup.exe" itch/windows-x86_64/
       - name: Push to itch.io
         run: |
           [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set."; exit 1; }
