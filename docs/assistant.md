@@ -12,6 +12,10 @@ explicitly from the tray menu, Cmd+1 while Perch is active, or the bubble's
 Connections button. Pet overlays and the bubble are auxiliary panels across
 Spaces; neither can become the application's main window.
 
+There is no bubble on Windows yet. Right-clicking a pet there opens the
+dashboard on the Assistant, set up for that pet. The pet is not held in place,
+and dragging a pet onto a folder is macOS-only too.
+
 Drag a pet into an open Finder folder or onto a Finder folder icon to give that
 pet a working folder. The drop uses a native file promise, not window inspection.
 Finder briefly receives a uniquely named hidden `.perch-handoff-*` file, removed

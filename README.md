@@ -44,10 +44,11 @@ npm run tauri build
 ```
 
 On macOS the bundle lands in `src-tauri/target/release/bundle/macos/Perch.app`.
-It is an unsigned local build, not a notarised release. On Windows, build the
-installers with `npm run tauri build -- --bundles nsis,msi`; they are configured
-as a per-user install and are not in the default target list, because those
-bundlers only run on Windows.
+It is an unsigned local build, not a notarised release. On Windows,
+`src-tauri/tauri.windows.conf.json` switches the bundle to a per-user NSIS
+installer and bundles `node.exe` for the Claude bridge. With it, `npm run tauri
+dev` works on Windows after `npm run prepare:sidecar`; a local installer build
+has not been tried yet.
 
 ## What is built
 
@@ -85,9 +86,10 @@ Everything in milestones M0–M4 that is code:
 
 ## What is not
 
-- **Windows has never been run.** The Win32 adapter is written to the documented
-  APIs but has not been compiled or tested; this was developed on a Mac. Perch on
-  Windows should be treated as unreviewed code until somebody runs it.
+- **Windows has only had a first run.** It has been compiled and run by hand in
+  dev mode on one Windows 11 machine; see `docs/verification.md` for exactly what
+  was and was not checked. There is no pet bubble on Windows yet, and folder
+  drag-and-drop onto a pet is macOS-only.
 - **No signing or notarisation.** No certificate is available, so bundles are
   unsigned. On Windows, SmartScreen will warn about an unknown publisher until the
   installer builds reputation or is signed; some antivirus tools flag unsigned
