@@ -1,6 +1,8 @@
 //! Opt-in launch at login. Off by default, and removable from the same switch
 //! that turned it on — Perch installs nothing behind the user's back.
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 
 pub const IDENTIFIER: &str = "com.perch.desktop";
 

@@ -1,8 +1,9 @@
 name: Release
 
-# Two channels, see docs/releasing.md:
+# Two channels:
 #   pre-alpha — every push to main (or a manual run) replaces one rolling prerelease.
-#   alpha     — pushing a tag like v0.1.0-alpha.1 publishes a permanent prerelease.
+#   alpha     — pushing a tag like v0.1.0-alpha.1 publishes a permanent prerelease;
+#               its base version must match tauri.conf.json.
 on:
   push:
     branches: [main]
@@ -69,6 +70,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      # Tauri merges TAURI_CONFIG over tauri.conf.json at compile time, so both
+      # cargo and the bundler pick up the Windows installer, icon and node.exe.
+      - name: Windows bundle config
+        if: runner.os == 'Windows'
+        run: |
+          echo 'TAURI_CONFIG={"bundle":{"targets":["nsis"],"icon":["icons/icon.png","icons/icon.ico"],"resources":{"../sidecar/node":null,"../sidecar/node.exe":"sidecar/node.exe"}}}' >> "$GITHUB_ENV"
       - run: npm ci
       # generate_context! refuses to compile if a bundled resource is missing.
       - run: npm ci && npm run prepare:sidecar --prefix ..
@@ -113,6 +120,12 @@ jobs:
         with:
           workspaces: src-tauri
           key: ${{ matrix.target }}
+      # Tauri merges TAURI_CONFIG over tauri.conf.json at compile time, so both
+      # cargo and the bundler pick up the Windows installer, icon and node.exe.
+      - name: Windows bundle config
+        if: runner.os == 'Windows'
+        run: |
+          echo 'TAURI_CONFIG={"bundle":{"targets":["nsis"],"icon":["icons/icon.png","icons/icon.ico"],"resources":{"../sidecar/node":null,"../sidecar/node.exe":"sidecar/node.exe"}}}' >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm ci
         working-directory: sidecar
@@ -120,8 +133,10 @@ jobs:
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          override=$(jq -n --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
-            '{version: $v, bundle: {macOS: {bundleVersion: $b}}}')
+          # --config replaces TAURI_CONFIG for the build, so fold it in.
+          base="${TAURI_CONFIG:-}"; [ -n "$base" ] || base='{}'
+          override=$(jq -n --argjson base "$base" --arg v "$VERSION" --arg b "$GITHUB_RUN_NUMBER" \
+            '$base * {version: $v, bundle: {macOS: {bundleVersion: $b}}}')
           npx tauri build --target ${{ matrix.target }} --config "$override"
       - name: Collect artifacts
         env:
@@ -171,7 +186,7 @@ jobs:
             echo "- **macOS:** \`macos-aarch64\` for Apple Silicon, \`macos-x86_64\` for Intel. Gatekeeper refuses the"
             echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Perch.app\`."
             echo "- **Windows:** \`windows-x86_64-setup.exe\`. SmartScreen warns about the unknown publisher: More info → Run anyway."
-            echo "  The Windows build has not been tested on real hardware; see docs/verification.md."
+            echo "  The Windows build has not been tested on real hardware."
           } > notes.md
       - name: Publish pre-alpha
         if: env.CHANNEL == 'pre-alpha'

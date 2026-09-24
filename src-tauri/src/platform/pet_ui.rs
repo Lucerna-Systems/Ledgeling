@@ -60,6 +60,8 @@ extern "C" fn event(raw: *const std::ffi::c_char) {
         }
     });
 }
+// Only the native macOS bubble delivers events; elsewhere this is unreachable.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), String> {
     let service = app.state::<TaskService>();
     let pet = v["petId"].as_u64().unwrap_or(0);
