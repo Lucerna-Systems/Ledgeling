@@ -21,16 +21,27 @@ Perch is active, or the bubble's Connections button. On macOS, pet overlays and
 the bubble are auxiliary panels across Spaces; neither can become the
 application's main window.
 
-On macOS only, you can also drag a pet into an open Finder folder or onto a
-Finder folder icon to give that pet a working folder. The drop uses a native
-file promise, not window inspection.
-Finder briefly receives a uniquely named hidden `.perch-handoff-*` file, removed
-one second after completion. No existing file is overwritten. A crash during this
-handoff can leave that harmless hidden file behind; it can be removed manually.
-The folder binding is session-only, preventing a different pet from inheriting
-access after a restart. The chosen folder is visible in the bubble. Choosing a
-folder with the bubble's folder row works on every platform. Hold Shift while
-dragging to move a pet normally without initiating a Finder handoff.
+Drag a pet into an open folder or onto a folder icon to give that pet a working
+folder: in Finder on macOS, and in Explorer or onto the desktop on Windows. The
+path comes from the drop itself, not from inspecting the window it landed in.
+The drop briefly leaves a uniquely named hidden `.perch-handoff-*` file in the
+folder, and the folder it landed in is the one bound. It is removed one second
+after completion. No existing file is overwritten.
+
+- **macOS:** the drag is a native file promise, and Finder reports where it
+  wrote the file.
+- **Windows:** the drag is an OLE drag offering one virtual file. Explorer does
+  not tell the drag where it wrote it, so for the length of the handoff Perch
+  listens to the shell's change notifications for that uniquely named file and
+  takes its parent directory. If none arrives within 15 seconds of the drop,
+  nothing is bound; choose the folder with the bubble's folder row instead. A
+  drop somewhere other than a folder, such as onto another app, binds nothing.
+
+A crash during the handoff can leave that harmless hidden file behind; it can
+be removed manually. The folder binding is session-only, preventing a different
+pet from inheriting access after a restart. The chosen folder is visible in the
+bubble. Choosing a folder with the bubble's folder row works on every platform.
+Hold Shift while dragging to move a pet normally without a handoff.
 
 The **Actions / Ask** toggle determines execution:
 

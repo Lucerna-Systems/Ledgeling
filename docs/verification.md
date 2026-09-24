@@ -316,8 +316,12 @@ Stated plainly, because these are the difference between "built" and "shipped":
   section above), an installed NSIS build, window riding while a window is dragged,
   occlusion with overlapping windows beyond casual use, multiple monitors,
   scaling other than 100%, fullscreen suspension, the task layer against real
-  files, CPU and RAM against the budget, and any soak. Folder drag-and-drop
-  onto a pet is macOS-only.
+  files, CPU and RAM against the budget, and any soak. The Windows folder
+  handoff (an OLE drag of a virtual `.perch-handoff-*` file, located through
+  shell change notifications) is written and type-checked for the Windows
+  target, and its path matching and cleanup are unit-tested, but it has **not
+  been run on Windows at all**: whether Explorer accepts the drop, reports the
+  file, and the pet keeps following the cursor during the drag are all untried.
 - **Linux on a real desktop.** The adapter and the app have run only under
   virtual display servers in CI; see the Linux adapter section above for
   exactly what that covered.
