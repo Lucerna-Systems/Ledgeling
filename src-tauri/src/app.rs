@@ -4,14 +4,9 @@ use crate::tasks::commands::*;
 use crate::{
     awareness::AwarenessSummary,
     engine::Engine,
-    net::{Consent, Mode as NetMode, Net, Scope, ScopeStatus},
     packs::{
-        builtin,
-        diagnostics::Report,
-        gallery,
-        loader::{self, InstallError, InstallMode},
-        manifest::Event,
-        sprites, LocomotionClass, PackListing, PackSummary,
+        builtin, diagnostics::Report, loader, manifest::Event, sprites, LocomotionClass,
+        PackListing, PackSummary,
     },
     pet::{Attend, Motion},
     platform::{NativePlatform, Platform},
@@ -38,9 +33,6 @@ pub struct App {
     pub notes: Vec<String>,
     pub lab_active: bool,
     pub dirty: bool,
-    /// This launch is a brand-new user's first: a pet is about to be dropped
-    /// in and the companion opens on the Pets page.
-    pub first_run: bool,
     /// Monitors whose overlay has just mounted and needs its spawn payloads
     /// re-sent: the first tick's sends land before the webview can listen.
     pub atlas_recheck: Vec<u64>,
@@ -83,8 +75,6 @@ pub struct PetView {
     pub energy: f64,
     pub mood: f64,
     pub surface: Option<String>,
-    pub days: u32,
-    pub affection: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -111,11 +101,6 @@ pub struct Snapshot {
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
-    /// Whether this build includes coding mode at all.
-    pub coding_available: bool,
-    /// True on the launch that welcomed a brand-new user, so the companion
-    /// opens on the Pets page once.
-    pub first_run: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -147,7 +132,7 @@ impl App {
                 .map(|pet| PetView {
                     id: pet.id,
                     pack_id: pet.pack.manifest.id.clone(),
-                    name: pet.display_name().to_string(),
+                    name: pet.pack.manifest.name.clone(),
                     class: pet.pack.manifest.locomotion.class.as_str().to_string(),
                     state: pet.state().to_string(),
                     clip: pet.clip().to_string(),
@@ -158,8 +143,6 @@ impl App {
                     energy: pet.energy,
                     mood: pet.mood,
                     surface: pet.perch.map(|p| p.key.kind.as_str().to_string()),
-                    days: pet.bond.days,
-                    affection: pet.bond.affection,
                 })
                 .collect(),
             packs: loader::scan(&self.packs_dir)
@@ -199,12 +182,10 @@ impl App {
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
-            coding_available: cfg!(feature = "coding"),
-            first_run: self.first_run,
         }
     }
 
-    pub(crate) fn persist(&mut self) -> Result<(), String> {
+    fn persist(&mut self) -> Result<(), String> {
         self.engine.remember_pets();
         settings::save(&self.config_dir, &self.engine.settings)
     }
@@ -223,25 +204,11 @@ pub fn task_attention(status: &str) -> Option<Attend> {
 
 /// The lock is only ever held for the length of one command, so a failure here
 /// means another thread panicked while holding it.
-/// The pack and name of a pet that is out right now, for stamping on its tasks.
-pub fn task_pet(
-    app: &tauri::AppHandle,
-    pet_id: Option<u64>,
-) -> Option<crate::tasks::types::TaskPet> {
-    let shared = app.try_state::<Shared>()?;
-    let state = shared.lock().ok()?;
-    let pet = state.engine.pets.iter().find(|p| Some(p.id) == pet_id)?;
-    Some(crate::tasks::types::TaskPet {
-        pack_id: pet.pack.manifest.id.clone(),
-        name: pet.display_name().to_string(),
-    })
-}
-
 fn locked<'a>(state: &'a State<'_, Shared>) -> Result<std::sync::MutexGuard<'a, App>, String> {
     state
         .inner()
         .lock()
-        .map_err(|_| "Ledgeling's state is unavailable. Restart the app.".to_string())
+        .map_err(|_| "Perch's state is unavailable. Restart the app.".to_string())
 }
 
 // ------------------------------------------------------------------- commands
@@ -269,7 +236,7 @@ async fn pet_action(
             app.engine.settings.paused = false;
             app.engine.settings.hidden = false;
             for pet in &mut app.engine.pets {
-                pet.relocate();
+                pet.queue(Event::SurfaceLost);
             }
         }
         "greet" => {
@@ -301,16 +268,9 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
                 }
             }
         }
-        "pet" => {
-            for pet in &mut app.engine.pets {
-                if pet.is_held() {
-                    pet.begin_tending();
-                }
-            }
-        }
         "release" => {
             for pet in &mut app.engine.pets {
-                if pet.is_held() || pet.is_tended() {
+                if pet.is_held() {
                     pet.release();
                 }
             }
@@ -332,51 +292,6 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-unsafe extern "C" {
-    fn perch_set_dock_icon(png: *const u8, length: std::ffi::c_ulong);
-}
-
-/// Repaints the running app's Dock/taskbar icon in the user's accent; icons
-/// shown while the app is closed never change.
-#[tauri::command]
-fn set_app_icon(png: Vec<u8>, window: WebviewWindow) -> Result<(), String> {
-    if window.label() != "main" {
-        return Err("The app icon can only be changed from the companion window.".into());
-    }
-    #[cfg(target_os = "macos")]
-    {
-        window
-            .run_on_main_thread(move || unsafe {
-                perch_set_dock_icon(png.as_ptr(), png.len() as std::ffi::c_ulong)
-            })
-            .map_err(|e| e.to_string())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let icon = decode_icon(&png)?;
-        window.set_icon(icon).map_err(|e| e.to_string())
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn decode_icon(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
-    let mut decoder = png::Decoder::new(bytes);
-    decoder.set_transformations(png::Transformations::normalize_to_color8());
-    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-    let mut buffer = vec![0; reader.output_buffer_size()];
-    let info = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
-    if info.color_type != png::ColorType::Rgba {
-        return Err("The app icon must be an RGBA PNG.".into());
-    }
-    buffer.truncate(info.buffer_size());
-    Ok(tauri::image::Image::new_owned(
-        buffer,
-        info.width,
-        info.height,
-    ))
-}
-
 #[tauri::command]
 async fn set_settings(
     settings: Settings,
@@ -391,7 +306,6 @@ async fn set_settings(
     settings.sanitize();
     let screen_changed = settings.pet_screen != app.engine.settings.pet_screen;
     let theme_changed = settings.theme != app.engine.settings.theme;
-    let developer_changed = settings.developer_mode != app.engine.settings.developer_mode;
     app.engine
         .awareness
         .apply(settings.awareness.clone(), settings.category_map());
@@ -418,23 +332,11 @@ async fn set_settings(
             app.engine.despawn(id);
         }
         app.engine.restore_pets();
-        crate::platform::pet_ui::seed_folders(app.engine.pet_folders());
     }
     app.dirty = true;
     let snapshot = app.snapshot();
     let _ = app.persist();
-    let developer = app.engine.settings.developer_mode;
     drop(app);
-    if developer_changed {
-        let handle = window.app_handle();
-        #[cfg(feature = "coding")]
-        if !developer {
-            crate::coding::commands::shut_down(handle);
-        }
-        if let Err(error) = set_menus(handle, developer) {
-            eprintln!("Ledgeling could not update its menus: {error}");
-        }
-    }
     if theme_changed {
         // `System` hands control back to the OS appearance, not a stored copy
         // of whatever it happened to be when the user opened the menu.
@@ -443,7 +345,7 @@ async fn set_settings(
     Ok(snapshot)
 }
 
-pub(crate) fn theme_to_option(theme: ThemeMode) -> Option<tauri::Theme> {
+fn theme_to_option(theme: ThemeMode) -> Option<tauri::Theme> {
     match theme {
         ThemeMode::Light => Some(tauri::Theme::Light),
         ThemeMode::Dark => Some(tauri::Theme::Dark),
@@ -471,135 +373,13 @@ async fn validate_pack(path: String, state: State<'_, Shared>) -> Result<Report,
     })
 }
 
-/// The packs directory, or an install error when the app state is unusable.
-fn packs_dir_for_install(state: &State<'_, Shared>) -> Result<PathBuf, InstallError> {
-    locked(state)
-        .map(|app| app.packs_dir.clone())
-        .map_err(|e| InstallError::new("io", e))
-}
-
-fn install_from(
-    path: &str,
-    expected_sha256: Option<&str>,
-    mode: InstallMode,
-    state: &State<'_, Shared>,
-) -> Result<PackSummary, InstallError> {
-    let dir = packs_dir_for_install(state)?;
-    if let Some(expected) = expected_sha256 {
-        loader::verify_hash(Path::new(path), expected)?;
-    }
-    let summary = loader::install_with(Path::new(path), &dir, mode)?;
-    locked(state)
-        .map_err(|e| InstallError::new("io", e))?
-        .engine
-        .reload_packs(&dir);
-    Ok(summary)
-}
-
-/// Install a `.petpack` or pack folder. With `expected_sha256` the file is
-/// checked against that hash before anything is unpacked.
 #[tauri::command]
-async fn install_pack(
-    path: String,
-    expected_sha256: Option<String>,
-    state: State<'_, Shared>,
-) -> Result<PackSummary, InstallError> {
-    install_from(&path, expected_sha256.as_deref(), InstallMode::New, &state)
-}
-
-/// Replace an installed pack with a strictly newer version of the same id.
-#[tauri::command]
-async fn update_pack(
-    path: String,
-    expected_sha256: Option<String>,
-    state: State<'_, Shared>,
-) -> Result<PackSummary, InstallError> {
-    install_from(
-        &path,
-        expected_sha256.as_deref(),
-        InstallMode::Update,
-        &state,
-    )
-}
-
-/// Download a pet from the marketplace and install it (or update it). Refused
-/// unless the user has switched the marketplace on, and only the companion
-/// window may ask.
-#[tauri::command]
-async fn gallery_install(
-    url: String,
-    expected_sha256: String,
-    gallery_id: String,
-    update: bool,
-    window: WebviewWindow,
-    state: State<'_, Shared>,
-    net: State<'_, Arc<Net>>,
-) -> Result<PackSummary, InstallError> {
-    if window.label() != "main" {
-        return Err(InstallError::new(
-            "refused",
-            "Pets can only be downloaded from the companion window.",
-        ));
-    }
-    let dir = packs_dir_for_install(&state)?;
-    let net = net.inner().clone();
-    let mode = if update {
-        InstallMode::Update
-    } else {
-        InstallMode::New
-    };
-    // The download blocks, so it runs off the async thread, and the engine lock
-    // is taken only for the reload afterwards.
-    let summary = tauri::async_runtime::spawn_blocking(move || {
-        gallery::download_and_install(&net, &dir, &url, &expected_sha256, &gallery_id, mode)
-    })
-    .await
-    .map_err(|_| InstallError::new("failed", "The download stopped unexpectedly."))??;
-    let dir = packs_dir_for_install(&state)?;
-    locked(&state)
-        .map_err(|e| InstallError::new("io", e))?
-        .engine
-        .reload_packs(&dir);
-    Ok(summary)
-}
-
-/// Where each marketplace-installed pack came from, keyed by pack id.
-#[tauri::command]
-async fn pack_sources(
-    state: State<'_, Shared>,
-) -> Result<std::collections::BTreeMap<String, gallery::Source>, String> {
+async fn install_pack(path: String, state: State<'_, Shared>) -> Result<PackSummary, String> {
     let dir = locked(&state)?.packs_dir.clone();
-    Ok(gallery::sources(&dir))
-}
-
-/// Every optional online feature, and whether the user has switched it on.
-#[tauri::command]
-async fn net_status(net: State<'_, Arc<Net>>) -> Result<Vec<ScopeStatus>, String> {
-    Ok(net.status())
-}
-
-/// Switch one online feature on or off. Only the companion window may: the
-/// choice belongs to the person, not to a page.
-#[tauri::command]
-async fn net_set(
-    scope: Scope,
-    mode: NetMode,
-    window: WebviewWindow,
-    net: State<'_, Arc<Net>>,
-) -> Result<Vec<ScopeStatus>, String> {
-    if window.label() != "main" {
-        return Err("Online features can only be changed from the companion window.".into());
-    }
-    net.set(scope, mode)?;
-    let status = net.status();
-    let _ = window.app_handle().emit("net-changed", &status);
-    Ok(status)
-}
-
-/// The stricter check a pack must pass before it is published to a gallery.
-#[tauri::command]
-async fn validate_pack_for_publish(path: String) -> Result<Report, String> {
-    Ok(loader::validate_for_publish(Path::new(&path)))
+    let summary = loader::install(Path::new(&path), &dir)?;
+    let mut app = locked(&state)?;
+    app.engine.reload_packs(&dir);
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -617,7 +397,6 @@ async fn uninstall_pack(id: String, state: State<'_, Shared>) -> Result<(), Stri
                 .unwrap_or_default()
         });
     loader::uninstall(&dir, &id)?;
-    gallery::forget_source(&dir, &id);
     if let Some(folder) = builtin_folder {
         // Remember the removal so the built-in is not written back on launch.
         app.engine.settings.uninstalled_builtins.push(folder);
@@ -650,49 +429,8 @@ async fn new_pack(class: String, name: String, state: State<'_, Shared>) -> Resu
     Ok(created.to_string_lossy().to_string())
 }
 
-/// Pet Studio: write the editor's design as a pack. Files are written outside
-/// the engine lock; only the reload takes it.
 #[tauri::command]
-async fn save_studio_pack(
-    manifest: String,
-    strips: Vec<crate::packs::studio::StudioImage>,
-    preview: crate::packs::studio::StudioImage,
-    window: WebviewWindow,
-    state: State<'_, Shared>,
-) -> Result<PackSummary, String> {
-    if window.label() != "main" {
-        return Err("Pets can only be saved from the companion window.".into());
-    }
-    let dir = locked(&state)?.packs_dir.clone();
-    let summary = crate::packs::studio::save(&dir, &manifest, &strips, &preview)?;
-    locked(&state)?.engine.reload_packs(&dir);
-    Ok(summary)
-}
-
-/// Pet Studio: hand a pack's manifest and decoded sprites to the editor.
-#[tauri::command]
-async fn studio_open_pack(
-    id: String,
-    state: State<'_, Shared>,
-) -> Result<crate::packs::studio::StudioPack, String> {
-    let dir = locked(&state)?.packs_dir.clone();
-    let listing = loader::scan(&dir)
-        .into_iter()
-        .find(|l| l.summary.id == id)
-        .ok_or_else(|| format!("No installed pack has the id `{id}`."))?;
-    crate::packs::studio::open(Path::new(&listing.summary.directory))
-}
-
-/// An exported `.petpack` and the SHA-256 of its bytes, which is what a
-/// marketplace publishes and a downloader checks.
-#[derive(Serialize)]
-struct ExportResult {
-    path: String,
-    sha256: String,
-}
-
-#[tauri::command]
-async fn export_pack(id: String, state: State<'_, Shared>) -> Result<ExportResult, String> {
+async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, String> {
     let app = locked(&state)?;
     let dir = app.packs_dir.clone();
     let listing = loader::scan(&dir)
@@ -707,11 +445,8 @@ async fn export_pack(id: String, state: State<'_, Shared>) -> Result<ExportResul
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or(id)
     ));
-    let exported = loader::export(&source, &destination)?;
-    Ok(ExportResult {
-        path: destination.to_string_lossy().to_string(),
-        sha256: exported.sha256,
-    })
+    loader::export(&source, &destination)?;
+    Ok(destination.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -721,17 +456,6 @@ async fn spawn_pet(pack_id: String, state: State<'_, Shared>) -> Result<u64, Str
     app.dirty = true;
     let _ = app.persist();
     Ok(id)
-}
-
-#[tauri::command]
-async fn rename_pet(pet_id: u64, name: String, state: State<'_, Shared>) -> Result<(), String> {
-    let mut app = locked(&state)?;
-    if !app.engine.rename_pet(pet_id, &name) {
-        return Err("That pet is not on the desktop.".into());
-    }
-    app.dirty = true;
-    let _ = app.persist();
-    Ok(())
 }
 
 #[tauri::command]
@@ -773,30 +497,6 @@ fn pet_surface_ready(monitor: u64, state: State<'_, Shared>) {
     }
 }
 
-/// Where the pointer is over the overlay, from the overlay's own pointer
-/// events. Only a Wayland layer overlay asks for these, because there the
-/// pointer cannot be read any other way; `None` means it left the pets.
-#[tauri::command]
-fn pet_pointer(point: Option<(f64, f64)>, window: WebviewWindow, state: State<'_, Shared>) {
-    #[cfg(target_os = "linux")]
-    {
-        let monitor = locked(&state)
-            .ok()
-            .and_then(|app| app.engine.monitors.first().cloned());
-        let point = point.zip(monitor).map(|((x, y), monitor)| {
-            Point::new(
-                monitor.bounds.x + x * monitor.scale,
-                monitor.bounds.y + y * monitor.scale,
-            )
-        });
-        if window.label() == "pet-0" {
-            crate::platform::set_overlay_pointer(point);
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    let _ = (point, window, state);
-}
-
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, window: WebviewWindow, state: State<'_, Shared>) {
     if window.label() == "main" {
@@ -810,22 +510,15 @@ fn quit_app(app: tauri::AppHandle, window: WebviewWindow, state: State<'_, Share
 // ---------------------------------------------------------------------- setup
 
 pub fn run(context: tauri::Context<tauri::Wry>) {
-    crate::platform::prepare_process();
     tauri::Builder::default()
         .on_menu_event(handle_menu)
         .invoke_handler(tauri::generate_handler![
-            rename_pet,
-            studio_open_pack,
             crate::platform::pet_ui::pet_folder,
             crate::platform::pet_ui::pet_folder_drag,
             crate::platform::pet_ui::show_pet_bubble,
-            crate::platform::pet_ui::pet_bubble,
             task_list,
             task_start,
-            task_rename,
-            task_delete,
             task_cancel,
-            task_force_stop,
             task_approve,
             task_undo,
             task_connections,
@@ -834,163 +527,37 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_models,
             task_detect_providers,
             task_test_connection,
-            task_provider_terms,
-            task_add_provider,
-            task_remove_provider,
+            task_apple_terms,
             task_apple_open_settings,
             task_account,
             task_pick,
             task_open_url,
             open_assistant,
-            crate::terminal::commands::terminal_state,
-            crate::terminal::commands::terminal_spawn,
-            crate::terminal::commands::terminal_io,
-            crate::terminal::commands::terminal_attach,
-            crate::terminal::commands::terminal_layout_save,
-            crate::terminal::commands::terminal_open_url,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_open,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_state,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_add_project,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_remove_project,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_select,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_branches,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_worktree_create,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_worktree_remove,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_bind,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_status,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_original,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_git,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_list,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_read,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_write,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_file_op,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_watch,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_pty_spawn,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_pty,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_pty_attach,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_run_setup,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_run_save,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_run_prompt,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_run_start,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_live,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_activate,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_launch,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_launch_open,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_layouts,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_notes,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_note,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_layout_save,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_open_url,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_tools,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_install,
-            #[cfg(feature = "coding")]
-            crate::coding::commands::code_window,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_status,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_list,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_view,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_diff,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_branch_pr,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_meta,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_act,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_pr_draft,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_create_pr,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_checkout,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_projects,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_board,
-            #[cfg(feature = "coding")]
-            crate::coding::gh_commands::code_gh_board_act,
             get_snapshot,
             pet_action,
             pet_interact,
             set_settings,
-            set_app_icon,
             list_packs,
             validate_pack,
             install_pack,
-            update_pack,
-            gallery_install,
-            pack_sources,
-            net_status,
-            net_set,
-            validate_pack_for_publish,
             uninstall_pack,
             new_pack,
-            save_studio_pack,
             export_pack,
             spawn_pet,
             despawn_pet,
             fire_event,
             set_lab,
             pet_surface_ready,
-            crate::companion::companion_ready,
-            crate::companion::companion_save_ui,
-            pet_pointer,
             quit_app
         ])
         .setup(|app| {
+            let main = app
+                .get_webview_window("main")
+                .ok_or("The companion window is missing")?;
             let config_dir = app
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
-            // Keys are only looked for on the launch that moves the folder, so a
-            // denied keychain prompt is asked once rather than on every start.
-            let mut migration_note = None;
-            match crate::migrate::move_app_dir(&config_dir) {
-                Ok(true) => crate::tasks::providers::migrate_legacy_secrets(),
-                Ok(false) => {}
-                Err(error) => migration_note = Some(error),
-            }
-            app.manage(crate::companion::CompanionState::new(&config_dir));
-            // Every optional online feature starts off; only choices the user
-            // chose to remember are read back.
-            app.manage(Arc::new(Net::new(Consent::load(&config_dir))));
             crate::platform::pet_ui::init(app.handle());
             let task_handle = app.handle().clone();
             let task_service =
@@ -1007,10 +574,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                         }
                     }
                     crate::platform::pet_ui::update(&task_handle, &task);
-                    crate::companion::emit_if_open(&task_handle, "task:changed", &task);
-                    #[cfg(feature = "coding")]
-                    let _ =
-                        task_handle.emit_to(crate::coding::window::LABEL, "task:changed", &task);
+                    let _ = task_handle.emit_to("main", "task:changed", &task);
                     let _ = task_handle.emit(
                         "task:indicator",
                         serde_json::json!({"petId":task.request.pet_id,"status":task.status}),
@@ -1025,7 +589,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             }
             let packs_dir = config_dir.join("packs");
             let (settings, note) = settings::load(&config_dir);
-            let mut notes: Vec<String> = note.into_iter().chain(migration_note).collect();
+            // Applied before the window can be shown so native scrollbars and
+            // form controls never flash the wrong appearance.
+            let _ = main.set_theme(theme_to_option(settings.theme));
+            let mut notes: Vec<String> = note.into_iter().collect();
             if let Err(error) = builtin::restore(&packs_dir, &settings.uninstalled_builtins) {
                 notes.push(error);
             }
@@ -1047,17 +614,12 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             if let Ok(executable) = std::env::current_exe() {
                 let _ = crate::autostart::apply(engine.settings.launch_at_login, &executable);
             }
-            engine.set_today(chrono::Local::now().date_naive());
             let missing = engine.restore_pets();
-            engine.request_welcome();
-            let first_run = engine.welcome_pending();
-            crate::platform::pet_ui::seed_folders(engine.pet_folders());
             for pack_id in missing {
                 notes.push(format!(
                     "The pack `{pack_id}` is no longer installed, so that pet did not come back."
                 ));
             }
-            let developer = engine.settings.developer_mode;
             let shared: Shared = Arc::new(Mutex::new(App {
                 engine,
                 config_dir,
@@ -1065,86 +627,63 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 notes,
                 lab_active: false,
                 dirty: false,
-                first_run,
                 atlas_recheck: Vec::new(),
                 screens: found,
                 pet_screen,
                 rescan_screens: false,
             }));
             app.manage(shared.clone());
-            // Terminal mode: empty until a pet opens its terminal. Event files
-            // from an earlier run belong to sessions that no longer exist.
-            crate::terminal::agent::reset(
-                &shared
-                    .lock()
-                    .map(|a| a.config_dir.clone())
-                    .unwrap_or_default(),
-            );
-            app.manage::<crate::terminal::SharedTerminal>(Default::default());
-            // Empty until Developer tools are on and the window is first opened.
-            #[cfg(feature = "coding")]
-            app.manage::<crate::coding::SharedCoding>(Default::default());
-            setup_tray(app, developer)?;
-            // The companion window is created on demand (see `companion`);
-            // only a first run opens it at launch, on the Pets page.
-            if first_run {
-                crate::companion::open_for_first_run(app.handle());
-            }
+            setup_tray(app)?;
+            let main_close = main.clone();
+            let dropped = shared.clone();
+            let dropped_handle = app.handle().clone();
+            main.on_window_event(move |event| match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Closing the companion leaves the pet on the desktop.
+                    api.prevent_close();
+                    let _ = main_close.hide();
+                }
+                // Dragging a .petpack or a pack folder onto the window installs it.
+                tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                    let packs: Vec<_> = paths
+                        .iter()
+                        .filter(|p| {
+                            p.extension().is_some_and(|e| e == "petpack")
+                                || p.join("manifest.json").is_file()
+                        })
+                        .cloned()
+                        .collect();
+                    let attachments: Vec<_> = paths
+                        .iter()
+                        .filter(|p| !packs.contains(p))
+                        .cloned()
+                        .collect();
+                    if !packs.is_empty() {
+                        install_dropped(&dropped, &dropped_handle, packs);
+                    }
+                    if !attachments.is_empty() {
+                        let _ = dropped_handle.emit_to("main", "assistant:drop", attachments);
+                    }
+                }
+                _ => {}
+            });
             // A server orphaned by a previous crash would still hold the model.
             crate::tasks::apple::reap_stale();
             // The dashboard is opened explicitly from the tray or Connections.
+            main.hide()?;
             let handle = app.handle().clone();
             std::thread::spawn(move || run_loop(shared, handle));
-            crate::platform::pet_ui::start_tour(app.handle().clone());
             Ok(())
         })
         .build(context)
-        .expect("Unable to start Ledgeling")
-        .run(|handle, event| {
-            // A tray app: destroying the idle companion must not end the process.
-            if let tauri::RunEvent::ExitRequested {
-                api, code: None, ..
-            } = &event
-            {
-                api.prevent_exit();
-            }
-            // `fm serve` is a child process holding the on-device model, and
-            // coding mode may have dev servers running; none may outlive Ledgeling.
+        .expect("Unable to start Perch")
+        .run(|_, event| {
+            // `fm serve` is a child process holding the on-device model; it
+            // must not outlive Perch.
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::tasks::apple::shutdown();
-                #[cfg(feature = "coding")]
-                crate::coding::commands::shut_down(handle);
-                #[cfg(not(feature = "coding"))]
-                let _ = handle;
             }
         });
-}
-
-/// Files dropped on the companion: packs install, anything else goes to the
-/// assistant as attachments.
-pub(crate) fn handle_drop(handle: &tauri::AppHandle, paths: &[PathBuf]) {
-    let Some(shared) = handle.try_state::<Shared>() else {
-        return;
-    };
-    let shared: Shared = shared.inner().clone();
-    let packs: Vec<_> = paths
-        .iter()
-        .filter(|p| {
-            p.extension().is_some_and(|e| e == "petpack") || p.join("manifest.json").is_file()
-        })
-        .cloned()
-        .collect();
-    let attachments: Vec<_> = paths
-        .iter()
-        .filter(|p| !packs.contains(p))
-        .cloned()
-        .collect();
-    if !packs.is_empty() {
-        install_dropped(&shared, handle, packs);
-    }
-    if !attachments.is_empty() {
-        crate::companion::send(handle, "assistant:drop", attachments);
-    }
 }
 
 fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBuf>) {
@@ -1158,7 +697,7 @@ fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBu
                 Ok(summary) => app
                     .notes
                     .push(format!("Installed {} by {}.", summary.name, summary.author)),
-                Err(problem) => app.notes.push(problem.to_string()),
+                Err(problem) => app.notes.push(problem),
             }
         }
         app.engine.reload_packs(&directory);
@@ -1169,7 +708,7 @@ fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBu
 /// Run something on the UI thread and wait for the answer. macOS only reports
 /// monitor geometry, and only creates windows, on the main thread; calling from
 /// the update loop silently returns nothing.
-pub(crate) fn on_main<T: Send + 'static>(
+fn on_main<T: Send + 'static>(
     handle: &tauri::AppHandle,
     work: impl FnOnce(&tauri::AppHandle) -> T + Send + 'static,
 ) -> Option<T> {
@@ -1188,10 +727,7 @@ pub(crate) fn on_main<T: Send + 'static>(
 fn screens(app: &tauri::AppHandle) -> Result<Vec<Screen>, String> {
     // Ask a real window: on macOS the app-level monitor list can come back
     // empty, while the window-level one is reliable.
-    // The companion may not exist; any live window will do, else the app.
-    let window = app
-        .get_webview_window(crate::companion::LABEL)
-        .or_else(|| app.webview_windows().into_values().next());
+    let window = app.get_webview_window("main");
     let primary = match &window {
         Some(window) => window.primary_monitor(),
         None => app.primary_monitor(),
@@ -1270,15 +806,6 @@ const OVERLAY_INSET: f64 = 1.;
 #[cfg(not(target_os = "windows"))]
 const OVERLAY_INSET: f64 = 0.;
 
-/// A layer overlay reports its own pointer; elsewhere the platform reads it.
-fn overlay_url() -> &'static str {
-    #[cfg(target_os = "linux")]
-    if crate::platform::layer::usable() {
-        return "index.html?pet&monitor=0&pointer";
-    }
-    "index.html?pet&monitor=0"
-}
-
 fn ensure_overlay(
     app: &tauri::AppHandle,
     monitor: &MonitorInfo,
@@ -1286,12 +813,6 @@ fn ensure_overlay(
 ) -> Option<(WebviewWindow, bool)> {
     const LABEL: &str = "pet-0";
     if let Some(window) = app.get_webview_window(LABEL) {
-        // A layer surface fills whichever output it is put on.
-        #[cfg(target_os = "linux")]
-        if crate::platform::layer::active() {
-            crate::platform::layer::set_monitor(&window, monitor.bounds);
-            return Some((window, false));
-        }
         // Logical coordinates are pre-converted against the target screen's
         // scale because tao converts `set_size` with the window's *current*
         // screen scale, and the move is applied only after both calls return.
@@ -1304,90 +825,58 @@ fn ensure_overlay(
             monitor.bounds.height / scale,
         );
         if let Err(error) = window.set_position(position) {
-            eprintln!("Ledgeling could not move the overlay: {error}");
+            eprintln!("Perch could not move the overlay: {error}");
         }
         if let Err(error) = window.set_size(size) {
-            eprintln!("Ledgeling could not resize the overlay: {error}");
+            eprintln!("Perch could not resize the overlay: {error}");
         }
         return Some((window, false));
     }
-    let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(overlay_url().into()))
-        .title("Ledgeling")
-        .inner_size(
-            (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
-            monitor.bounds.height / monitor.scale,
-        )
-        .position(
-            monitor.bounds.x / monitor.scale,
-            monitor.bounds.y / monitor.scale,
-        )
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(false)
-        .accept_first_mouse(true)
-        .visible_on_all_workspaces(true)
-        .focusable(false)
-        .visible(!hidden)
-        .build();
+    let built = WebviewWindowBuilder::new(
+        app,
+        LABEL,
+        WebviewUrl::App("index.html?pet&monitor=0".into()),
+    )
+    .title("Perch")
+    .inner_size(
+        (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
+        monitor.bounds.height / monitor.scale,
+    )
+    .position(
+        monitor.bounds.x / monitor.scale,
+        monitor.bounds.y / monitor.scale,
+    )
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .focused(false)
+    .accept_first_mouse(true)
+    .visible_on_all_workspaces(true)
+    .focusable(false)
+    .visible(!hidden)
+    .build();
     match built {
         Ok(window) => {
             crate::platform::pet_ui::overlay(&window);
-            #[cfg(target_os = "linux")]
-            if crate::platform::layer::usable() {
-                match crate::platform::layer::attach(&window, monitor.bounds) {
-                    Ok(()) => {
-                        if !hidden {
-                            let _ = window.show();
-                        }
-                        return Some((window, true));
-                    }
-                    Err(error) => eprintln!("Ledgeling could not make a layer overlay: {error}"),
-                }
-            }
             let _ = window.set_ignore_cursor_events(true);
             Some((window, true))
         }
         Err(error) => {
-            eprintln!("Ledgeling could not create an overlay: {error}");
+            eprintln!("Perch could not create an overlay: {error}");
             None
         }
     }
 }
 
-fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::tray::TrayIconBuilder;
-    set_app_menu(app.handle(), developer)?;
-    // macOS tints a template image to match the menu bar, like Apple's own
-    // icons; elsewhere a black silhouette would vanish on a dark taskbar.
-    #[cfg(target_os = "macos")]
-    let tray = TrayIconBuilder::with_id("ledgeling")
-        .icon(tauri::include_image!("icons/tray-template.png"))
-        .icon_as_template(true);
-    #[cfg(not(target_os = "macos"))]
-    let tray = TrayIconBuilder::with_id("ledgeling").icon(tauri::include_image!("icons/icon.png"));
-    tray.tooltip("Ledgeling · a little company")
-        .menu(&tray_menu(app.handle(), developer)?)
-        .build(app)?;
-    Ok(())
-}
-
-/// Coding mode appears in the menus only while Developer tools are on.
-fn set_menus(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
-    set_app_menu(app, developer)?;
-    if let Some(tray) = app.tray_by_id("ledgeling") {
-        tray.set_menu(Some(tray_menu(app, developer)?))?;
-    }
-    Ok(())
-}
-
-fn set_app_menu(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
-    use tauri::menu::{IsMenuItem, Menu, MenuItem, Submenu};
-    let show = MenuItem::with_id(app, "show", "Open Ledgeling", true, Some("CmdOrCtrl+1"))?;
-    let code = MenuItem::with_id(app, "code", "Coding mode", true, Some("CmdOrCtrl+Shift+E"))?;
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::{
+        menu::{Menu, MenuItem, Submenu},
+        tray::TrayIconBuilder,
+    };
+    let show = MenuItem::with_id(app, "show", "Open Perch", true, Some("CmdOrCtrl+1"))?;
     let pause = MenuItem::with_id(
         app,
         "pause",
@@ -1402,58 +891,40 @@ fn set_app_menu(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
         true,
         Some("CmdOrCtrl+Shift+H"),
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Ledgeling", true, Some("CmdOrCtrl+Q"))?;
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&show];
-    if developer {
-        items.push(&code);
-    }
-    items.extend([&pause as &dyn IsMenuItem<tauri::Wry>, &visibility, &quit]);
-    let submenu = Submenu::with_items(app, "Ledgeling", true, &items)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Perch", true, Some("CmdOrCtrl+Q"))?;
+    let submenu = Submenu::with_items(app, "Perch", true, &[&show, &pause, &visibility, &quit])?;
     app.set_menu(Menu::with_items(app, &[&submenu])?)?;
-    Ok(())
-}
-
-/// Tray items are separate so their accelerators do not double-fire.
-fn tray_menu(
-    app: &tauri::AppHandle,
-    developer: bool,
-) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{IsMenuItem, Menu, MenuItem};
-    let show = MenuItem::with_id(app, "tray-show", "Open Ledgeling", true, None::<&str>)?;
-    let code = MenuItem::with_id(app, "tray-code", "Coding mode", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
-    let visibility = MenuItem::with_id(
+    // Tray items are separate so their accelerators do not double-fire.
+    let tray_show = MenuItem::with_id(app, "tray-show", "Open Perch", true, None::<&str>)?;
+    let tray_pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
+    let tray_visibility = MenuItem::with_id(
         app,
         "tray-visibility",
         "Show / hide pets",
         true,
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "tray-quit", "Quit Ledgeling", true, None::<&str>)?;
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&show];
-    if developer {
-        items.push(&code);
-    }
-    items.extend([&pause as &dyn IsMenuItem<tauri::Wry>, &visibility, &quit]);
-    Menu::with_items(app, &items)
+    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Perch", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[&tray_show, &tray_pause, &tray_visibility, &tray_quit],
+    )?;
+    TrayIconBuilder::with_id("perch")
+        .icon(tauri::include_image!("icons/icon.png"))
+        .tooltip("Perch · a little company")
+        .menu(&menu)
+        .build(app)?;
+    Ok(())
 }
 
 fn handle_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     let kind = event.id.as_ref().trim_start_matches("tray-").to_string();
     match kind.as_str() {
         "show" => {
-            crate::companion::show(app);
-        }
-        #[cfg(feature = "coding")]
-        "code" => {
-            // Menu events arrive on the UI thread, which opening the window
-            // must not block on.
-            let handle = app.clone();
-            std::thread::spawn(move || {
-                if let Err(error) = crate::coding::commands::open_window(&handle, None) {
-                    eprintln!("Ledgeling could not open coding mode: {error}");
-                }
-            });
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
         }
         "pause" | "visibility" => {
             let shared = app.state::<Shared>().inner().clone();
@@ -1504,10 +975,7 @@ struct RenderPlan {
 }
 
 fn run_loop(shared: Shared, handle: tauri::AppHandle) {
-    // A unit struct everywhere but Linux, whose adapter holds its X
-    // connection and idle source.
-    #[allow(clippy::default_constructed_unit_structs)]
-    let platform = NativePlatform::default();
+    let platform = NativePlatform;
     let mut renderer = NativeSurface::new(HashMap::new());
     // The pet screen the engine and the overlay currently reflect, in
     // canonical form (id 0). `None` means no overlay window exists yet.
@@ -1516,11 +984,8 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
     let mut last_monitor_check = Instant::now() - Duration::from_secs(10);
     let mut last_watch = Instant::now();
     let mut last_save = Instant::now();
-    let mut last_companion_check = Instant::now();
     let mut watch_signature = String::new();
-    let diagnostics = std::env::var_os("LEDGELING_DIAGNOSTICS")
-        .or_else(|| std::env::var_os("PERCH_DIAGNOSTICS"))
-        .is_some();
+    let diagnostics = std::env::var_os("PERCH_DIAGNOSTICS").is_some();
     let mut last_diagnostic = Instant::now();
     loop {
         let now = Instant::now();
@@ -1541,7 +1006,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     // Locked session or sleeping display: keep what we know.
                     if let Ok(mut app) = shared.lock() {
                         if app.engine.screens_available && diagnostics {
-                            eprintln!("Ledgeling suspended: the screens are not readable.");
+                            eprintln!("Perch suspended: the screens are not readable.");
                         }
                         app.engine.screens_available = false;
                     }
@@ -1560,11 +1025,6 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         if let Ok(mut app) = shared.lock() {
                             app.screens = found;
                             app.pet_screen = Some(name.clone());
-                            // Readable again after a lock or display sleep. Only
-                            // `set_monitors` used to clear this, and it runs
-                            // only when the screen changed, so pets stayed
-                            // suspended for good once the session came back.
-                            app.engine.screens_available = true;
                             if changed {
                                 app.engine.set_monitors(vec![monitor]);
                             }
@@ -1579,9 +1039,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         }
                         if changed {
                             if diagnostics {
-                                eprintln!(
-                                    "Ledgeling's screen: {name} ({count} display(s) connected)."
-                                );
+                                eprintln!("Perch's screen: {name} ({count} display(s) connected).");
                             }
                             platform.set_monitors(vec![monitor]);
                             let hidden = shared
@@ -1606,7 +1064,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     }
                 }
                 Some(Err(error)) if diagnostics => {
-                    eprintln!("Ledgeling could not read screen geometry: {error}");
+                    eprintln!("Perch could not read screen geometry: {error}");
                 }
                 _ => {}
             }
@@ -1620,20 +1078,10 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         for monitor in std::mem::take(&mut app.atlas_recheck) {
             renderer.request_atlases(monitor);
         }
-        let today = chrono::Local::now().date_naive();
-        if today != app.engine.today() {
-            app.engine.set_today(today);
-            let _ = app.persist();
-        }
         app.engine.tick(dt, &platform);
-        if app.engine.take_settings_changed() {
-            app.dirty = true;
-        }
         let resting =
             app.engine.suspended || app.engine.settings.paused || app.engine.settings.hidden;
         let plan = plan_render(&mut app, &renderer, resting);
-        let bubble = crate::platform::pet_ui::open_pet()
-            .and_then(|pet| crate::platform::pet_ui::anchor(&app.engine, pet));
         let packs_dir = app.packs_dir.clone();
         let watch_due = last_watch.elapsed() > watch_interval(app.lab_active);
         let save_due = app.dirty && last_save.elapsed() > Duration::from_secs(5);
@@ -1653,11 +1101,8 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     "perches": app.engine.perch_count(),
                     "kinds": kind_counts(&app.engine.surfaces),
                     "scanMs": app.engine.scan_ms,
-                    "scanError": app.engine.scan_error,
-                    "grab": grab_points(&app.engine),
                     "suspended": app.engine.suspended,
                     "screens": app.engine.screens_available,
-                    "overlay": overlay_kind(),
                 })
             );
         }
@@ -1667,27 +1112,22 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         let _ = renderer.set_visible(plan.visible);
         for scene in &plan.scenes {
             if let Err(error) = renderer.render(scene) {
-                eprintln!("Ledgeling could not draw: {error}");
+                eprintln!("Perch could not draw: {error}");
             }
         }
         for entry in plan.sync {
             if let Err(error) = renderer.sync(entry.monitor, &entry.present, entry.payloads) {
-                eprintln!("Ledgeling could not send sprites: {error}");
+                eprintln!("Perch could not send sprites: {error}");
             }
         }
         for (monitor, interactive) in plan.interactive {
             let _ = renderer.set_interactive(monitor, interactive);
         }
-        crate::platform::pet_ui::follow(&handle, bubble);
         for sound in plan.sounds {
             let _ = handle.emit("pet:sound", sound);
         }
         if last_save.elapsed() > Duration::from_secs(5) {
             last_save = now;
-        }
-        if last_companion_check.elapsed() > Duration::from_secs(5) {
-            last_companion_check = now;
-            crate::companion::maintain(&handle);
         }
         if watch_due {
             last_watch = now;
@@ -1720,38 +1160,6 @@ fn kind_counts(surfaces: &[crate::world::Surface]) -> serde_json::Value {
         *counts.entry(surface.kind.as_str()).or_default() += 1;
     }
     serde_json::json!(counts)
-}
-
-/// How the overlay is shown, for the diagnostics line.
-fn overlay_kind() -> &'static str {
-    #[cfg(target_os = "linux")]
-    if crate::platform::layer::active() {
-        return "wayland-layer";
-    }
-    "window"
-}
-
-/// A point on each pet that catches the pointer, for the diagnostics line
-/// only: it lets a scripted run hover a pet without seeing the screen.
-fn grab_points(engine: &Engine) -> Vec<[f64; 2]> {
-    engine
-        .pets
-        .iter()
-        .filter_map(|pet| {
-            let scale = engine.scale_at(pet.position);
-            let rect = pet.sprite_rect(scale);
-            (1..8)
-                .flat_map(|i| (1..8).map(move |j| (i, j)))
-                .map(|(i, j)| {
-                    Point::new(
-                        rect.x + rect.width * i as f64 / 8.,
-                        rect.y + rect.height * j as f64 / 8.,
-                    )
-                })
-                .find(|point| hit_test(pet, *point, scale))
-                .map(|point| [point.x.round(), point.y.round()])
-        })
-        .collect()
 }
 
 fn watch_interval(lab: bool) -> Duration {

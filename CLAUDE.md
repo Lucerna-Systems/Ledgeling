@@ -12,9 +12,7 @@ lifecycle all exist and are tested. Three bundled species — budgie, squirrel,
 gecko — differ only in data.
 
 What is genuinely outstanding is not code: the Windows build has had only a
-first hand-run on one Windows 11 machine, the Linux adapter has run by hand only
-on one COSMIC (Wayland) desktop and otherwise under Xvfb and headless sway in CI
-(see `docs/verification.md`), nothing
+first hand-run on one Windows 11 machine (see `docs/verification.md`), nothing
 is signed, the performance budget has not
 been re-certified and the soak has not been run for this build, no outside author
 has shipped a pack, and nothing has been released. `docs/verification.md` is the
@@ -50,13 +48,11 @@ on other screens are clipped away before the graph is built.
 
 These are product-defining, not preferences. Violating one is a bug, not a tradeoff.
 
-1. **Window titles are never read.** Foreground detection goes `GetForegroundWindow` → `GetWindowThreadProcessId` → `QueryFullProcessImageNameW`, takes the process name, maps it to an `AppCategory`, and discards it. Titles contain email subjects, document names and URLs. M3-2 requires a test asserting no title API is called. On Wayland some window sources push titles unasked; they are dropped where they arrive, and `privacy.rs` asserts that too.
+1. **Window titles are never read.** Foreground detection goes `GetForegroundWindow` → `GetWindowThreadProcessId` → `QueryFullProcessImageNameW`, takes the process name, maps it to an `AppCategory`, and discards it. Titles contain email subjects, document names and URLs. M3-2 requires a test asserting no title API is called.
 2. **Pet packs are data, never code.** No JS, no Lua, no eval. Conditions use a fixed, non-Turing-complete grammar (`signal OP value` joined by `&&`/`||`) over a closed signal namespace. A malicious pack must at worst look wrong.
-3. **Zero network calls unless the user opts in, per scope, through one gate.** The passive companion makes zero network calls by default — no telemetry, no crash reporting, no update checks, nothing on launch. Every optional online feature is a `net::Scope` that is off until the user switches it on in the companion window, and all such traffic goes through `net::Net::send` (`src-tauri/src/net/`), the only file allowed an HTTP client (https only, per-scope host list, size cap, cancelled when switched off). Assistant task network access stays opt-in and confined to its four adapter files (`tasks/providers.rs`, `tasks/search.rs`, `tasks/commands.rs`, `tasks/apple.rs`) until they move onto the gate. Analytics, if ever sent, is opt-in only, remembered-only, and a closed typed event list with no free text. All of it is enforced by `src-tauri/tests/privacy.rs`. Tauri capabilities stay minimal — no `shell`, no `fs` beyond the packs directory and config file, no frontend HTTP plugin.
+3. **Nothing leaves the machine in v1.** No telemetry, no crash reporting, no network calls at all. Tauri capabilities stay minimal — no `shell`, no `fs` beyond the packs directory and config file.
 4. **Nudges are body language only.** No popups, toasts, text, or focus steals, ever. Cooldowns on everything; escalation caps at the third tier; suppressed in `game`/`media`.
-5. **Performance budget is a ceiling, not a goal.** < 0.5% CPU idle, < 2% moving, ~0% suspended; window scan < 3 ms. A companion app that eats battery gets uninstalled.
-   - **RAM** is the whole process tree's physical footprint (the Rust app plus the WebKit GPU, WebContent and Networking helpers), as reported by `python3 scripts/benchmark.py` (`footprint_by_process`), with one pet and the companion window closed. Ceiling: `<= 130 MiB total with one pet, companion closed; the Rust process alone < 25 MiB; do not regress it`. Measured 2026-10-24 on macOS at ~125 MiB (app ~19, GPU ~60, overlay WebContent ~40, Networking ~5), of which ~75 MiB is the WebKit floor for a transparent overlay (the GPU process, ~46 MiB, appears as soon as any image is painted; window size and drawing method do not change it). A new pet adds ~0.5 MiB. An open companion adds ~50 MiB while it exists (it is destroyed 60 s after being hidden).
-   - **CPU gap:** CPU was measured at ~2% mean with the app, which is OVER the idle ceiling and has been for a long time (see `docs/verification.md`). That is a known gap, not a pass.
+5. **Performance budget is a ceiling, not a goal.** < 0.5% CPU idle, < 2% moving, ~0% suspended; < 80 MB RAM for one pet; window scan < 3 ms. A companion app that eats battery gets uninstalled.
 6. **Milestones are hard gates.** Nothing from M3 is built during M1; nothing from the deferred list before M4 ships publicly. The likeliest failure mode for this project is an unshipped, half-built, over-ambitious version.
 
 ## Pack format design test
