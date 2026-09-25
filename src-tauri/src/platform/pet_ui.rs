@@ -326,6 +326,9 @@ fn ensure_bubble(app: &tauri::AppHandle) -> Option<WebviewWindow> {
         super::windows::quiet_overlay_frame(handle.0 as isize);
         super::windows::tool_window(handle.0 as isize);
     }
+    // As with the overlay, GTK would otherwise draw the app menu inside it.
+    #[cfg(target_os = "linux")]
+    let _ = window.remove_menu();
     let handle = app.clone();
     window.on_window_event(move |event| {
         // Clicking anywhere else dismisses the bubble, as a popover would —
@@ -671,7 +674,11 @@ pub fn overlay(window: &tauri::WebviewWindow) {
     if let Ok(handle) = window.hwnd() {
         super::windows::quiet_overlay_frame(handle.0 as isize);
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    // GTK gives every window the app's menu bar, which would sit across the
+    // top of the pet screen as a stray "Perch" menu.
+    #[cfg(target_os = "linux")]
+    let _ = window.remove_menu();
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     let _ = window;
 }
 

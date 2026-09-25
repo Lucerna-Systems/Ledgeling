@@ -42,11 +42,20 @@ pub use macos::NativePlatform;
 pub(crate) mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::NativePlatform;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{prepare_process, NativePlatform};
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod fallback;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub use fallback::NativePlatform;
 
+/// Runs before the window toolkit starts. Only Linux needs anything here.
+#[cfg(not(target_os = "linux"))]
+pub fn prepare_process() {}
+
 pub mod mock;
+pub mod x11_model;
 
 pub mod pet_ui;

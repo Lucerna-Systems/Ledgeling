@@ -12,7 +12,8 @@ lifecycle all exist and are tested. Three bundled species — budgie, squirrel,
 gecko — differ only in data.
 
 What is genuinely outstanding is not code: the Windows build has had only a
-first hand-run on one Windows 11 machine (see `docs/verification.md`), nothing
+first hand-run on one Windows 11 machine, the Linux adapter has run only under
+Xvfb and headless sway in CI (see `docs/verification.md`), nothing
 is signed, the performance budget has not
 been re-certified and the soak has not been run for this build, no outside author
 has shipped a pack, and nothing has been released. `docs/verification.md` is the
