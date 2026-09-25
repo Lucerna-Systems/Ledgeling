@@ -180,7 +180,7 @@ service, [`docs/assistant.md`](../docs/assistant.md)) was built before M4
 shipped, at the user's direction. It is opt-in, independent of pet animation
 and awareness, and its automated suites pass (90 Rust tests + 3 UI tests, plus
 7 ignored credential-gated connection tests that have never been run); its
-desktop behaviour — native bubble, Spaces, Finder handoff — has not been
+desktop behaviour — the pet bubble, Spaces, Finder handoff — has not been
 hand-verified. See `docs/verification.md`.
 
 ---

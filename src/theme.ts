@@ -130,12 +130,9 @@ export function applyTheme(theme: ThemeMode, accent: string) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ theme, accent })) } catch { /* private mode */ }
 }
 
-let started = false
-
-/** Called once from main.ts before mount. */
-export function initTheme() {
-  if (started) return
-  started = true
+/** Apply the theme the companion window last stored. Windows that never load
+ *  settings — the pet bubble — follow the companion this way. */
+export function applyCachedTheme() {
   try {
     const cached = localStorage.getItem(CACHE_KEY)
     if (cached) {
@@ -143,6 +140,15 @@ export function initTheme() {
       applyTheme(theme, accent)
     }
   } catch { /* fall through to settings-driven application */ }
+}
+
+let started = false
+
+/** Called once from main.ts before mount. */
+export function initTheme() {
+  if (started) return
+  started = true
+  applyCachedTheme()
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (currentTheme() === 'system') applyTheme('system', currentAccent())
   })

@@ -516,6 +516,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             crate::platform::pet_ui::pet_folder,
             crate::platform::pet_ui::pet_folder_drag,
             crate::platform::pet_ui::show_pet_bubble,
+            crate::platform::pet_ui::pet_bubble,
             task_list,
             task_start,
             task_cancel,
@@ -1082,6 +1083,8 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         let resting =
             app.engine.suspended || app.engine.settings.paused || app.engine.settings.hidden;
         let plan = plan_render(&mut app, &renderer, resting);
+        let bubble = crate::platform::pet_ui::open_pet()
+            .and_then(|pet| crate::platform::pet_ui::anchor(&app.engine, pet));
         let packs_dir = app.packs_dir.clone();
         let watch_due = last_watch.elapsed() > watch_interval(app.lab_active);
         let save_due = app.dirty && last_save.elapsed() > Duration::from_secs(5);
@@ -1123,6 +1126,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         for (monitor, interactive) in plan.interactive {
             let _ = renderer.set_interactive(monitor, interactive);
         }
+        crate::platform::pet_ui::follow(&handle, bubble);
         for sound in plan.sounds {
             let _ = handle.emit("pet:sound", sound);
         }

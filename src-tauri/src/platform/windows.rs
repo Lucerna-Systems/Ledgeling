@@ -6,10 +6,7 @@
 //! docs/verification.md for what has and has not been run on real hardware.
 use super::{Platform, ProcessInfo};
 use crate::world::{MonitorInfo, Point, Rect, WindowInfo};
-use std::sync::{
-    atomic::{AtomicIsize, Ordering},
-    Mutex, OnceLock,
-};
+use std::sync::{Mutex, OnceLock};
 
 type Handle = isize;
 type Bool = i32;
@@ -48,6 +45,8 @@ extern "system" {
     fn GetCursorPos(point: *mut PointW) -> Bool;
     fn GetAncestor(window: Handle, flags: u32) -> Handle;
     fn SetWindowLongPtrW(window: Handle, index: i32, value: isize) -> isize;
+    fn SetPropW(window: Handle, name: *const u16, data: isize) -> Bool;
+    fn GetPropW(window: Handle, name: *const u16) -> isize;
     fn CallWindowProcW(
         previous: isize,
         window: Handle,
@@ -116,7 +115,13 @@ const WM_NCACTIVATE: u32 = 0x0086;
 const WM_NCUAHDRAWCAPTION: u32 = 0x00AE;
 const WM_NCUAHDRAWFRAME: u32 = 0x00AF;
 
-static OVERLAY_PROC: AtomicIsize = AtomicIsize::new(0);
+/// Where each quieted window keeps the procedure it replaced: a window
+/// property, so the overlay and the bubble each chain to their own.
+fn previous_proc_name() -> *const u16 {
+    static NAME: OnceLock<Vec<u16>> = OnceLock::new();
+    NAME.get_or_init(|| "PerchPreviousProc\0".encode_utf16().collect())
+        .as_ptr()
+}
 
 extern "system" fn overlay_proc(
     window: Handle,
@@ -132,7 +137,7 @@ extern "system" fn overlay_proc(
     }
     unsafe {
         CallWindowProcW(
-            OVERLAY_PROC.load(Ordering::Relaxed),
+            GetPropW(window, previous_proc_name()),
             window,
             message,
             wparam,
@@ -146,14 +151,32 @@ extern "system" fn overlay_proc(
 /// non-client paint and activation it sends when the overlay is created draws
 /// that caption across the top of the screen, where it stays until something
 /// repaints it. The overlay has no frame to draw, so those messages are
-/// answered here and never reach the default handler.
+/// answered here and never reach the default handler. The pet bubble is the
+/// same kind of undecorated window, and gets the same treatment; unlike the
+/// overlay it is activated, which is exactly when the caption would appear.
 pub(super) fn quiet_overlay_frame(window: Handle) {
-    if OVERLAY_PROC.load(Ordering::Relaxed) != 0 {
-        return;
+    unsafe {
+        if GetPropW(window, previous_proc_name()) != 0 {
+            return;
+        }
+        let ours = overlay_proc as *const () as isize;
+        let previous = GetWindowLongPtrW(window, GWLP_WNDPROC);
+        // The property is set first: the next message may already arrive at
+        // the new procedure.
+        SetPropW(window, previous_proc_name(), previous);
+        SetWindowLongPtrW(window, GWLP_WNDPROC, ours);
     }
-    let previous =
-        unsafe { SetWindowLongPtrW(window, GWLP_WNDPROC, overlay_proc as *const () as isize) };
-    OVERLAY_PROC.store(previous, Ordering::Relaxed);
+}
+
+/// A tool window has no taskbar button and no Alt+Tab entry, and the window
+/// scan skips it, so pets never perch on the bubble.
+pub(super) fn tool_window(window: Handle) {
+    unsafe {
+        let style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+        if style & WS_EX_TOOLWINDOW == 0 {
+            SetWindowLongPtrW(window, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW);
+        }
+    }
 }
 
 pub struct NativePlatform;
