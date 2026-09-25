@@ -1,8 +1,8 @@
 //! The Windows folder handoff. Dragging a pet starts an OLE drag offering one
-//! virtual file, a hidden `.ledgeling-handoff-<guid>`. Explorer writes it wherever
+//! virtual file, a hidden `.perch-handoff-<guid>`. Explorer writes it wherever
 //! the pet is dropped: an open folder, a folder icon or the desktop. Explorer
 //! never tells the drag source where that was, so for the length of the
-//! handoff Ledgeling listens to the shell's own change notifications for a file
+//! handoff Perch listens to the shell's own change notifications for a file
 //! with that unique name, and takes its parent directory as the folder. No
 //! window is inspected, nothing is captured and no input is hooked.
 //!
@@ -532,7 +532,7 @@ unsafe extern "system" fn source_release(this: *mut DropSource) -> u32 {
     }
     left
 }
-/// OLE passes the button state it tracks for the drag; Ledgeling reads none itself.
+/// OLE passes the button state it tracks for the drag; Perch reads none itself.
 unsafe extern "system" fn source_continue(
     this: *mut DropSource,
     escape: Bool,

@@ -107,6 +107,10 @@ pub(super) fn set_click_through(window: Handle, click_through: bool) {
     }
 }
 
+pub(super) fn is_click_through(window: Handle) -> bool {
+    unsafe { GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TRANSPARENT != 0 }
+}
+
 const GWLP_WNDPROC: i32 = -4;
 const WM_NCPAINT: u32 = 0x0085;
 const WM_NCACTIVATE: u32 = 0x0086;

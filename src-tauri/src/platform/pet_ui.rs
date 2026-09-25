@@ -54,9 +54,14 @@ extern "C" fn event(raw: *const std::ffi::c_char) {
         return;
     }
     let text = unsafe { std::ffi::CStr::from_ptr(raw) }.to_string_lossy();
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return;
-    };
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+        deliver(value);
+    }
+}
+/// An event from native pet UI: the macOS bubble and folder drag, or the
+/// Windows folder drag.
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+pub(crate) fn deliver(value: serde_json::Value) {
     let Some(app) = APP.get().cloned() else {
         return;
     };
@@ -1085,9 +1090,28 @@ pub async fn pet_folder_drag(
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .map_err(|_| "Native drag did not start".to_string())?
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        {
+            let shared = app.state::<Shared>();
+            let state = shared.lock().map_err(|_| "Pet state unavailable")?;
+            if !state.engine.pets.iter().any(|p| p.id == pet_id) {
+                return Err("Pet not found".into());
+            }
+        }
+        let overlay = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(super::windows_drop::begin(overlay, pet_id));
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "Native drag did not start".to_string())?
+    }
+    // No native folder drop here: the pet just follows the cursor.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app, pet_id);
-        Err("Native folder drops are currently available on macOS only.".into())
+        Err("Folder drops are not available on this platform.".into())
     }
 }
