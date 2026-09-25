@@ -89,8 +89,8 @@ Everything in milestones M0–M4 that is code:
 - **Windows has only had a first run.** It has been compiled and run by hand in
   dev mode on one Windows 11 machine; see `docs/verification.md` for exactly what
   was and was not checked. The pet bubble is now the same webview on every
-  platform but has not been opened by hand on Windows, and folder
-  drag-and-drop onto a pet is macOS-only.
+  platform but has not been opened by hand on Windows, and the Windows folder
+  drag-and-drop is written but has not been run on Windows.
 - **No signing or notarisation.** No certificate is available, so bundles are
   unsigned. On Windows, SmartScreen will warn about an unknown publisher until the
   installer builds reputation or is signed; some antivirus tools flag unsigned

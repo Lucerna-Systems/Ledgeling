@@ -58,4 +58,8 @@ pub fn prepare_process() {}
 pub mod mock;
 pub mod x11_model;
 
+pub mod handoff;
+#[cfg(target_os = "windows")]
+mod windows_drop;
+
 pub mod pet_ui;
