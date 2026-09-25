@@ -50,9 +50,5 @@ xwayland=":$(comm -13 <(echo "$before" | sort) <(ls /tmp/.X11-unix | sort) | hea
 (
   export XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$wayland" DISPLAY="$xwayland"
   export XDG_SESSION_TYPE=wayland
-  # Once without sway's socket, where pets fall back to the screen edges, and
-  # once with it, where sway's IPC lists the windows.
-  (unset SWAYSOCK; live_test wayland_session_uses_the_compositor_it_finds)
-  SWAYSOCK="$(ls "$runtime"/sway-ipc.*.sock | head -1)" \
-    live_test wayland_session_uses_the_compositor_it_finds
+  live_test wayland_session_degrades_to_screen_edges
 )

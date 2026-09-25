@@ -60,6 +60,14 @@ by the M0 spike: per-pet window vs full overlay.
   (`EnumWindows`, `DWMWA_EXTENDED_FRAME_BOUNDS`, `DWMWA_CLOAKED`,
   `GetLastInputInfo`, `QueryFullProcessImageNameW`) but **has never been
   compiled or run** — this is a Mac. Treat it as unreviewed.
+- A **Linux adapter** (`platform/linux/`, decisions in `platform/x11_model.rs`)
+  was added on 2026-09-24 at the user's direction (see §5). On X11 it reads
+  the EWMH stacking order, frame extents, window type and state, XScreenSaver
+  idle time and the foreground executable. On Wayland other windows cannot be
+  seen, so pets keep to the screen edges and idle time comes from
+  `ext-idle-notify-v1` or GNOME's idle monitor. It has been run under Xvfb and
+  headless sway in CI, not on a physical Linux desktop; see
+  `docs/verification.md`.
 - **`engine.rs` is the headless core**: world scan, pets, awareness, packs with
   no Tauri. Timeline tests drive it through a mock `Platform`, which is how
   "the user dragged a window while the squirrel was climbing it" is repeatable.
@@ -175,6 +183,11 @@ parts code can do:
 77 tests cover it (61 unit, 7 privacy, 9 timeline integration), clippy and fmt
 clean on every change; `docs/verification.md` is the item-by-item account.
 
+**Linux support was also pulled forward** (2026-09-24, at the user's
+direction), although "macOS/Linux parity" sits on the deferred list below. It
+is an adapter behind the existing `Platform` trait, and it does not touch
+engine behaviour. Linux packaging and release remain out of scope.
+
 **One deferred item was pulled forward early:** the **AI layer** (now the task
 service, [`docs/assistant.md`](../docs/assistant.md)) was built before M4
 shipped, at the user's direction. It is opt-in, independent of pet animation
@@ -215,4 +228,5 @@ Nothing here enters the repo until M4 ships publicly: macOS/Linux parity
 beyond what exists, pets noticing each other, more species (cat, moth, bat,
 frog), sound design pass, pet actions, meeting detection,
 notification interception, pack marketplace. (The AI layer was on this list
-and was pulled forward early — see §5.)
+and was pulled forward early — see §5. Linux platform support was pulled
+forward too, packaging excepted.)

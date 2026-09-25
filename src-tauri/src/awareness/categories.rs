@@ -80,11 +80,6 @@ impl Default for CategoryMap {
             ("tilix", Code),
             ("terminator", Code),
             ("foot", Code),
-            // Wayland app ids where they differ from the executable: COSMIC's
-            // terminal and editor, GNOME Console.
-            ("cosmicterm", Code),
-            ("cosmicedit", Code),
-            ("console", Code),
             ("chrome", Browser),
             ("google chrome", Browser),
             ("firefox", Browser),
@@ -190,9 +185,6 @@ mod tests {
         assert_eq!(map.categorize("chromium-browser"), AppCategory::Browser);
         assert_eq!(map.categorize("telegram-desktop"), AppCategory::Comms);
         assert_eq!(map.categorize("krita"), AppCategory::Creative);
-        // Wayland app ids, as wayland_model::app_name shortens them.
-        assert_eq!(map.categorize("cosmicterm"), AppCategory::Code);
-        assert_eq!(map.categorize("nautilus"), AppCategory::Other);
     }
     #[test]
     fn longest_pattern_wins() {

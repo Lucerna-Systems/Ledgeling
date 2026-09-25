@@ -56,6 +56,12 @@ dbus = "0.9"
 gtk = "0.18"
 gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["screensaver", "res"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+dbus = "0.9"
+
 [dev-dependencies]
 tempfile = "3"
 serde_json = "1"

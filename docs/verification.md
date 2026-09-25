@@ -9,11 +9,12 @@ what has actually been run, and — more importantly — what has not.
 
 | Check | Result |
 |---|---|
-| `npm test` (`cargo test`) | 122 tests pass: 105 unit, 10 integration timeline, 7 privacy; plus 11 ignored (1 local-Ollama, 9 credential-gated connections, 1 Apple on-device) |
+| `npm test` (`cargo test`) | 149 tests pass: 132 unit, 10 integration timeline, 7 privacy; plus 11 ignored (1 local-Ollama, 9 credential-gated connections, 1 Apple on-device) and, on Linux, 2 ignored live display tests that `Verify` runs explicitly |
 | `cargo clippy -- -D warnings` (in `npm run check`) | passes |
 | `cargo fmt --check` | passes |
 | `npm run build` (`vue-tsc` + Vite) | passes |
-| `npm run test:ui` (vitest) | 28 tests pass (approvals and their plain-words summaries, refresh timing, drafts, collection search/filtering, assistant clip slots in the packs panel, history expansion, automatic task mode, and sanitized Markdown) |
+| Platforms | `Verify` runs all of the above on `macos-latest`, `windows-latest` and `ubuntu-latest`; the Linux leg also runs the live adapter tests against Xvfb + openbox and headless sway (`scripts/linux-display-tests.sh`) |
+| `npm run test:ui` (vitest) | 62 tests pass (approvals and their plain-words summaries, refresh timing, drafts, collection search/filtering, assistant clip slots in the packs panel, history expansion, automatic task mode, and sanitized Markdown) |
 
 What those tests actually cover:
 
@@ -56,6 +57,83 @@ What those tests actually cover:
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
 
+## Linux adapter (2026-09-24)
+
+`platform/linux/` replaces the stub for Linux. On X11 it reads
+`_NET_CLIENT_LIST_STACKING`, window type and state, `_NET_FRAME_EXTENTS` and
+`_GTK_FRAME_EXTENTS`, XScreenSaver idle time, the active window's process
+(X-Resource client PID, else `_NET_WM_PID`, then `/proc/<pid>/exe` or `comm`)
+and the pointer. It reads no titles, no key or button state, no command line
+and no pixels. On Wayland it reports window edges as unavailable, so pets use
+the screen edges. Idle time comes from `ext-idle-notify-v1`, or from GNOME's
+`org.gnome.Mutter.IdleMonitor`. The foreground category is not reported, and
+GDK is steered to XWayland so the overlay can be positioned and kept on top.
+The privacy scan now also rejects `WM_NAME`, icon and visible names,
+`/cmdline`, `/environ`, and X image, keymap, key-grab, record and XInput calls.
+
+**Nothing here has run on a physical Linux desktop.** Everything below ran on
+GitHub's `ubuntu-latest` runners (Ubuntu 24.04, x86_64) against virtual
+display servers.
+
+- **Automated, every PR:** `npm run check`, `npm test` and `npm run test:ui`
+  pass on Linux. Twelve model tests (any OS) cover the stacking reversal,
+  frame and GTK-shadow extents, which windows are skipped, Perch's own overlay,
+  fullscreen, process names and session detection. One of them builds the
+  engine's surfaces from a synthetic GNOME-like desktop.
+- **Live X11 test (Xvfb 1920×1080 + openbox), every PR:** real windows are
+  listed front to back. A dock, a utility palette and an always-on-top,
+  taskbar-skipping window with Perch's PID are excluded. The top edge includes
+  openbox's frame (left 1, top 20). Minimising removes a window and activating
+  one brings it to the front. The foreground process is named from its
+  executable, fullscreen is detected and so is its end, the cursor matches a
+  pointer warp, and idle time is read. **Scanning 22 windows took a median of
+  1.45 ms in a debug build** (budget 3 ms).
+- **Live Wayland test (headless sway 1.9 + XWayland), every PR:** enumeration
+  returns the Wayland message, and no foreground process is reported. Idle
+  time from `ext-idle-notify-v1` grew from 0 to 2.5 s with no input, and
+  `prepare_process` selects the X11 GDK backend.
+- **The app itself, run once in CI** (temporary workflow, since removed):
+  - Under Xvfb + openbox + picom (xrender), the transparent overlay composites
+    over the desktop. The budgie perched on an xterm's openbox title bar
+    rather than its client area.
+  - A click on a window body under the overlay reached that window
+    (click-through). With the pointer on a pet's opaque pixel, the overlay
+    caught it; moving off made it click-through again.
+  - A pet could be dragged and, on release, fell to the screen bottom. The
+    release came from the overlay's pointer capture, since `mouse_down` is
+    `None`.
+  - A fullscreen xterm suspended the pets, and leaving fullscreen resumed them.
+  - Scans took 0.36–0.58 ms with two windows.
+  - Under headless sway, sway reported the overlay as an `xwayland` floating
+    window at 0,0 1920×1080. It was transparent over a native Wayland terminal,
+    with the pet on the screen bottom.
+  - This run found, and the build now fixes, a GTK menu bar that Tauri
+    attached to the overlay: a stray "Perch" menu at the top-left of the screen.
+- **Not verified:**
+  - Any real distribution or desktop environment. GNOME/Mutter, KDE/KWin and
+    Xfwm have not run it, whether on X11 or on Wayland.
+  - The GNOME idle-monitor path, which has never been called. Also
+    `ext-idle-notify` version 2: sway offered version 1.
+  - Client-side-decorated GTK windows (`_GTK_FRAME_EXTENTS`), covered by unit
+    tests only.
+  - Whether the X-Resource PID or `_NET_WM_PID` answered: both gave the same PID
+    in the test, so sandboxed (Flatpak) apps are untested.
+  - Multiple monitors, HiDPI and fractional scaling.
+  - Hovering or grabbing a pet under Wayland. XWayland only learns the pointer
+    position over X windows, so over native Wayland windows the cursor is
+    stale and pets probably cannot be picked up there. Headless sway had no
+    pointer to try it with.
+  - CPU and RAM against the budget. One reading from the CI runner (debug
+    build, software rendering): the main process's RSS was 193 MB, which is
+    not evidence of meeting the 80 MB ceiling.
+  - Any soak.
+  - The pet bubble on Linux. The desktop run predates it on this branch, so
+    its transparency, placement and focus have not been seen under any X11
+    or Wayland compositor. The adapter skips it like the overlay (Perch's PID
+    plus always-on-top or skip-taskbar); that is covered only by the model
+    tests.
+  - Linux packaging, which remains out of scope.
+
 ## Linux builds again (2026-09-24)
 
 - The Linux fallback platform did not compile: `app.rs` constructs
@@ -64,11 +142,9 @@ What those tests actually cover:
   the Windows adapter, and the full Rust suite, UI tests, Clippy and the build
   pass on Linux. `Verify` now runs on `ubuntu-latest` too, so it stays that
   way.
-- **What Linux is today:** the fallback adapter. It reads no windows, so pets
-  live on the screen edges only, and it reports no idle time, foreground app,
-  cursor or fullscreen state, so awareness and nudges have nothing to go on.
-  The app has not been launched on a Linux desktop, and no Linux bundle is
-  built or released.
+- **What Linux was then:** the fallback adapter, with no windows, idle time,
+  foreground app, cursor or fullscreen state. The Linux adapter below
+  replaced it. No Linux bundle is built or released.
 
 ## One pet bubble on every platform (2026-09-24)
 
@@ -242,6 +318,9 @@ Stated plainly, because these are the difference between "built" and "shipped":
   scaling other than 100%, fullscreen suspension, the task layer against real
   files, CPU and RAM against the budget, and any soak. Folder drag-and-drop
   onto a pet is macOS-only.
+- **Linux on a real desktop.** The adapter and the app have run only under
+  virtual display servers in CI; see the Linux adapter section above for
+  exactly what that covered.
 - **Multi-monitor on real hardware, post-fix.** The engine remains
   multi-monitor-capable and the timeline tests prove it, but the shipped
   product is single-screen by design. The fixed build has not been run by hand
