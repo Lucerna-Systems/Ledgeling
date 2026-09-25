@@ -56,6 +56,52 @@ What those tests actually cover:
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
 
+## Linux builds again (2026-09-24)
+
+- The Linux fallback platform did not compile: `app.rs` constructs
+  `NativePlatform` as a unit struct, which the macOS and Windows adapters are
+  and the fallback was not. It now keeps its monitor cache in a static, like
+  the Windows adapter, and the full Rust suite, UI tests, Clippy and the build
+  pass on Linux. `Verify` now runs on `ubuntu-latest` too, so it stays that
+  way.
+- **What Linux is today:** the fallback adapter. It reads no windows, so pets
+  live on the screen edges only, and it reports no idle time, foreground app,
+  cursor or fullscreen state, so awareness and nudges have nothing to go on.
+  The app has not been launched on a Linux desktop, and no Linux bundle is
+  built or released.
+
+## One pet bubble on every platform (2026-09-24)
+
+- The right-click speech bubble is now a Vue page in its own transparent,
+  undecorated, always-on-top webview window, the same on macOS, Windows and
+  Linux. It replaces the ~1,500-line Objective-C panel and the Windows
+  stopgap that opened the dashboard instead. `native/pet_ui.m` keeps only the
+  overlay panel, a helper that makes the bubble a non-activating key panel,
+  and the Finder folder drag.
+- The backend owns placement (`pet_ui::place`): above the pet with the tail
+  down, below it with the tail up when the top of the work area is in the way,
+  clamped on-screen with the tail still aimed at the pet. Five Rust tests
+  cover the placement cases and the sprite-to-logical anchor conversion. The
+  update loop re-places the bubble when the pet's window moves.
+- Twenty-one UI tests (`src/bubble`) cover what each mode still needs before
+  it can run, the start event, progress, approvals rendered from the summary
+  and never the payload, undo, follow-ups, the model picker, Escape and
+  focus-loss closes (including a stale close not closing a newer opening), and
+  closing without a fade under reduced motion.
+- Automated verification on Linux: the Rust suite, 62 UI tests, `vue-tsc`,
+  the Vite build, Clippy and `cargo fmt --check`. Clippy also passes for the
+  Windows target cross-compiled from Linux (`x86_64-pc-windows-gnu`), which
+  compiles the Windows window-style code. The page was rendered in headless
+  Chromium with a mocked backend, in light and dark themes and both tail
+  positions.
+- **Not verified:** nothing about this has run in the real app on any
+  platform. In particular: the macOS panel conversion (the Objective-C was not
+  compiled here), keyboard focus without activating Perch on macOS, focus on
+  Windows and whether the tool-window style survives showing, the hidden-caption
+  handling on the bubble, transparency and the drop shadow in WKWebView and
+  WebView2, the folder dialog not dismissing the bubble, and the bubble
+  following a dragged window.
+
 ## Pets that stay with you, and readable approvals (2026-09-11)
 
 - A pet is pinned while its bubble is open and while its own task is running or
@@ -160,13 +206,13 @@ What those tests actually cover:
 
 Stated plainly, because these are the difference between "built" and "shipped":
 
-- **The task surface on the desktop.** The native speech bubble (right-click a
-  pet), typing into it without the dashboard activating, pet overlays and the
-  bubble behaving as auxiliary panels across macOS Spaces, and the Finder
-  folder handoff (drag a pet onto a folder, `.perch-handoff-*` file promise,
-  Shift-drag to move normally) are implemented and covered by the automated
-  suites where a GUI is not needed — but have **not been driven by hand on
-  this Mac**.
+- **The task surface on the desktop.** The speech bubble (right-click a pet,
+  now one webview window on every platform), typing into it without the
+  dashboard activating, pet overlays and the bubble behaving as auxiliary
+  panels across macOS Spaces, and the Finder folder handoff (drag a pet onto a
+  folder, `.perch-handoff-*` file promise, Shift-drag to move normally) are
+  implemented and covered by the automated suites where a GUI is not needed —
+  but have **not been driven by hand on macOS or Windows**.
 - **Live provider connections.** The opt-in tests in
   `tests/task_connections.rs` have not been run; no live call to Ollama,
   OpenAI, Anthropic, a Compatible endpoint, Codex, the Claude sidecar or Brave
@@ -190,12 +236,12 @@ Stated plainly, because these are the difference between "built" and "shipped":
   perches on window tops and the screen bottom, hovers into a clickable state,
   can be grabbed and dragged and falls when released; the auto-hidden taskbar
   still reveals; no title bar is painted over the screen. The full Rust suite
-  passes on Windows. Not checked: right-click opening the dashboard on the
-  Assistant (written, not yet tried), an installed NSIS build, window riding while a window is dragged,
+  passes on Windows. Not checked: the pet bubble (see the 2026-09-24 bubble
+  section above), an installed NSIS build, window riding while a window is dragged,
   occlusion with overlapping windows beyond casual use, multiple monitors,
   scaling other than 100%, fullscreen suspension, the task layer against real
-  files, CPU and RAM against the budget, and any soak. There is no pet bubble
-  on Windows, and folder drag-and-drop is macOS-only.
+  files, CPU and RAM against the budget, and any soak. Folder drag-and-drop
+  onto a pet is macOS-only.
 - **Multi-monitor on real hardware, post-fix.** The engine remains
   multi-monitor-capable and the timeline tests prove it, but the shipped
   product is single-screen by design. The fixed build has not been run by hand

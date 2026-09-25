@@ -8,7 +8,7 @@
 | `prod` | releases | merge-commit PRs from `main` only | a numbered **alpha**, e.g. `v0.1.0-alpha.3`, on every push |
 
 Nobody commits to `main` or `prod` directly, including agents. Every change goes
-through a PR, and the `Verify` workflow (checks on macOS and Windows) has to pass
+through a PR, and the `Verify` workflow (checks on macOS, Windows and Linux) has to pass
 before the PR can merge.
 
 `prod` is merged, not squashed, so it stays a strict ancestor-chain of `main`.

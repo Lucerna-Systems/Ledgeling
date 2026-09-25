@@ -21,11 +21,11 @@ const emit = async (name: string, payload: unknown) => {
   await flushPromises()
 }
 const sent = () => api.invoke.mock.calls.filter(([command]) => command === 'pet_bubble').map(([, args]) => (args as { event: Record<string, unknown> }).event)
-const show = (over = {}) => ({ session: 1, petId: 3, name: 'Budgie', runtime: 'none', model: '', folder: '/tmp/work', tailX: 80, tailUp: false, ...over })
+const show = (over = {}) => ({ session: 1, petId: 3, name: 'Budgie', runtime: 'none', remote: false, model: '', folder: '/tmp/work', tailX: 80, tailUp: false, ...over })
 const task = (over: Partial<Task> = {}): Task => ({
   id: 7, request: { prompt: 'p', petId: 3, roots: [], attachments: [], preset: '', mode: 'standard', parentId: null, allowCloud: false, allowWeb: false },
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status: 'running', progress: 'Sorting files', result: '', error: null,
-  approval: null, operations: [], sources: [], createdAt: 0, pet: null, title: '', ...over,
+  approval: null, operations: [], sources: [], createdAt: 0, ...over,
 })
 const button = (wrapper: ReturnType<typeof mount>, text: string) => wrapper.findAll('button').find(b => b.text() === text)
 
@@ -43,26 +43,6 @@ describe('the pet bubble', () => {
     await emit('bubble:show', show(over))
     return wrapper
   }
-
-  it('opens as the tour on a new install and reports when it is finished', async () => {
-    const wrapper = await opened({ tour: true })
-    expect(wrapper.text()).toContain('Hi, I live on your windows')
-    expect(wrapper.text()).not.toContain('Run action')
-    await button(wrapper, 'Next')!.trigger('click')
-    await button(wrapper, 'Next')!.trigger('click')
-    expect(wrapper.text()).toContain('Hand me a folder')
-    expect(sent().some(e => e.type === 'tourDone')).toBe(false)
-    await button(wrapper, 'Done')!.trigger('click')
-    expect(sent().filter(e => e.type === 'tourDone')).toEqual([{ type: 'tourDone', petId: 3 }])
-    expect(wrapper.text()).toContain('Ask Budgie')
-  })
-
-  it('lets the tour be skipped', async () => {
-    const wrapper = await opened({ tour: true })
-    await button(wrapper, 'Skip')!.trigger('click')
-    expect(sent().some(e => e.type === 'tourDone')).toBe(true)
-    expect(wrapper.text()).toContain('Ask Budgie')
-  })
 
   it('asks for the opening once it can listen, and names the pet', async () => {
     const wrapper = await opened()
@@ -189,11 +169,11 @@ describe('the pet bubble', () => {
     }
   })
 
-  it('switching to Ask keeps the folder it shares, hides the action menu and offers web research', async () => {
+  it('switching to Ask hides the folder and action menu and offers web research', async () => {
     const wrapper = await opened({ runtime: 'ollama' })
     expect(wrapper.find('.folder-row').exists()).toBe(true)
     await wrapper.find('[role="radio"][aria-checked="false"]').trigger('click')
-    expect(wrapper.find('.folder-row').exists()).toBe(true)
+    expect(wrapper.find('.folder-row').exists()).toBe(false)
     expect(wrapper.find('.action-select').exists()).toBe(false)
     expect(wrapper.text()).toContain('Allow web research')
     wrapper.unmount()

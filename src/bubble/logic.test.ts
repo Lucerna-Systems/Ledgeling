@@ -3,33 +3,28 @@ import { blocker, bubblePath, shortPath, startEvent, taskView, type Draft } from
 import type { Task } from '../assistant/types'
 
 const draft = (over: Partial<Draft> = {}): Draft => ({ mode: 'actions', action: 0, prompt: '', allowCloud: false, allowWeb: false, ...over })
-const offline = { runtime: 'none', folder: '' }
+const offline = { runtime: 'none', remote: false, folder: '' }
 
 describe('what a mode still needs', () => {
   it('asking needs a connection and a question', () => {
-    expect(blocker(offline, draft({ mode: 'ask', prompt: 'hi' }))).toMatch(/Set up an AI provider/)
+    expect(blocker(offline, draft({ mode: 'ask', prompt: 'hi' }))).toMatch(/Connect a model/)
     expect(blocker({ ...offline, runtime: 'ollama' }, draft({ mode: 'ask', prompt: '  ' }))).toMatch(/Type a question/)
     expect(blocker({ ...offline, runtime: 'ollama' }, draft({ mode: 'ask', prompt: 'why?' }))).toBeNull()
   })
   it('offline built-in actions need a folder, and free-form text needs a model', () => {
     expect(blocker(offline, draft())).toMatch(/Choose a folder/)
     expect(blocker({ ...offline, folder: '/tmp/x' }, draft())).toBeNull()
-    expect(blocker({ ...offline, folder: '/tmp/x' }, draft({ action: 5, prompt: 'tidy' }))).toMatch(/set up an AI provider/)
+    expect(blocker({ ...offline, folder: '/tmp/x' }, draft({ action: 5, prompt: 'tidy' }))).toMatch(/connect a model/)
   })
-  it('Apple runs the built-in actions and answers only in Ask', () => {
-    const apple = { runtime: 'apple', folder: '' }
-    expect(blocker(apple, draft())).toMatch(/Choose a folder/)
-    expect(blocker({ ...apple, folder: '/tmp/x' }, draft())).toBeNull()
-    expect(blocker({ ...apple, folder: '/tmp/x' }, draft({ action: 5, prompt: 'tidy' }))).toMatch(/can't change files/)
-    expect(blocker(apple, draft({ mode: 'ask', prompt: 'what is here?' }))).toBeNull()
-  })
-  it('a connected model takes over actions without asking for consent again', () => {
-    const local = { runtime: 'ollama', folder: '' }
+  it('a connected model takes over actions, and only a remote one needs the content box', () => {
+    const local = { runtime: 'ollama', remote: false, folder: '' }
     expect(blocker(local, draft())).toBeNull()
     expect(blocker(local, draft({ action: 5 }))).toMatch(/Describe what to do/)
-    // Cloud consent was given when the provider was added.
-    expect(blocker({ runtime: 'model', folder: '' }, draft())).toBeNull()
-    expect(blocker({ runtime: 'codex', folder: '' }, draft())).toBeNull()
+    const remote = { runtime: 'model', remote: true, folder: '' }
+    expect(blocker(remote, draft())).toMatch(/Tick the box/)
+    expect(blocker(remote, draft({ allowCloud: true }))).toBeNull()
+    // An agent's start approval is its consent.
+    expect(blocker({ runtime: 'codex', remote: false, folder: '' }, draft())).toBeNull()
   })
 })
 
@@ -48,7 +43,7 @@ describe('the start event', () => {
 const task = (over: Partial<Task>): Task => ({
   id: 7, request: { prompt: 'p', petId: 3, roots: [], attachments: [], preset: '', mode: 'standard', parentId: null, allowCloud: false, allowWeb: false },
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status: 'running', progress: 'Working', result: '', error: null,
-  approval: null, operations: [], sources: [], createdAt: 0, pet: null, title: '', ...over,
+  approval: null, operations: [], sources: [], createdAt: 0, ...over,
 })
 
 describe('what the bubble shows of a task', () => {

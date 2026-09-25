@@ -5,14 +5,12 @@ export interface BubbleShow {
   session: number
   petId: number
   name: string
-  /** `none`, `ollama`, `codex`, `claude`, `apple`, or `model` for any other API. */
+  /** `none`, `ollama`, `codex`, `claude`, or `model` for any other API. */
   runtime: string
+  /** A cloud API model, whose Actions need the content checkbox. */
+  remote: boolean
   model: string
   folder: string
-  /** Developer tools are on, so the bubble offers coding mode. */
-  developer?: boolean
-  /** First run: the bubble opens as the tour until it is finished or skipped. */
-  tour?: boolean
   tailX: number | null
   tailUp: boolean
 }
@@ -32,7 +30,7 @@ export const ACTIONS = [
   { preset: '', label: 'My instructions' },
 ] as const
 
-export type Mode = 'actions' | 'ask' | 'terminal'
+export type Mode = 'actions' | 'ask'
 
 export interface Draft {
   mode: Mode
@@ -43,29 +41,33 @@ export interface Draft {
 }
 
 export const connected = (runtime: string) => runtime !== '' && runtime !== 'none'
+export const agent = (runtime: string) => runtime === 'codex' || runtime === 'claude'
 
 /** What the current mode still needs before it could possibly run, or null.
  *  Saying so here beats letting the task start and fail a second later. At
  *  most one thing is ever missing, so the user is never handed a list of
  *  conditions. Mirrors `compose_request`, which has the final word. */
-export function blocker(show: Pick<BubbleShow, 'runtime' | 'folder'>, draft: Draft): string | null {
+export function blocker(show: Pick<BubbleShow, 'runtime' | 'remote' | 'folder'>, draft: Draft): string | null {
   const text = draft.prompt.trim()
   if (draft.mode === 'ask') {
-    if (!connected(show.runtime)) return 'Set up an AI provider to ask.'
+    if (!connected(show.runtime)) return 'Connect a model in Connections to ask.'
     if (!text) return 'Type a question first.'
     return null
   }
   const custom = ACTIONS[draft.action]?.preset === ''
-  // Apple's model answers in one turn and cannot act on files, so its Actions are the built-in ones.
-  if (show.runtime === 'apple' && custom) return "Apple Intelligence can't change files. Pick a built-in action, or use Ask."
-  if (!connected(show.runtime) || show.runtime === 'apple') {
+  if (!connected(show.runtime)) {
     // Built-in actions run offline, so they need neither a model nor consent —
     // but they do need a folder, and free-form instructions need a model.
-    if (custom) return 'Pick a built-in action, or set up an AI provider.'
+    if (custom) return 'Pick a built-in action, or connect a model in Connections.'
     if (!show.folder) return 'Choose a folder for built-in actions.'
     return null
   }
   if (custom && !text) return 'Describe what to do, or pick a built-in action.'
+  // A remote API model reading folder content is the one case the checkbox
+  // exists for; an agent's start approval is its consent.
+  if (!agent(show.runtime) && show.remote && !draft.allowCloud) {
+    return "Tick the box to allow this folder's content to reach the model."
+  }
   return null
 }
 
@@ -78,7 +80,7 @@ export function startEvent(petId: number, draft: Draft, parentId: number | null)
     prompt: draft.prompt,
     preset: ask ? '' : ACTIONS[draft.action]?.preset ?? '',
     mode: draft.mode,
-    // Asking is the consent: the question goes, with the pet's folder if it has one.
+    // Asking is the consent: only the question itself is sent.
     allowCloud: ask ? true : draft.allowCloud,
     allowWeb: ask && draft.allowWeb,
     parentId,
@@ -159,10 +161,3 @@ export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)
   return parts.length > 2 ? `…${path.includes('\\') ? '\\' : '/'}${parts.slice(-2).join(path.includes('\\') ? '\\' : '/')}` : path
 }
-
-/** The first-run tour, one card per thing to try. The pet says it in its own voice. */
-export const TOUR = [
-  { title: 'Hi, I live on your windows', text: 'Drag me anywhere and I will hang on where you let go. I climb and perch on window edges by myself.' },
-  { title: 'Click me for a chat', text: 'Right-click me to open this bubble. Actions like sorting or finding files, and questions, start here.' },
-  { title: 'Hand me a folder', text: 'Choose a folder here, or drag me onto one in your file manager where that is supported. I only work in the folder you give me.' },
-] as const
