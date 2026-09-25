@@ -977,7 +977,7 @@ struct RenderPlan {
 }
 
 fn run_loop(shared: Shared, handle: tauri::AppHandle) {
-    // A unit struct on macOS and Windows; the Linux adapter holds its X
+    // A unit struct everywhere but Linux, whose adapter holds its X
     // connection and idle source.
     #[allow(clippy::default_constructed_unit_structs)]
     let platform = NativePlatform::default();

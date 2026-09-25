@@ -38,12 +38,14 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      # Tauri's Linux webview and tray need the GTK/WebKit development files.
+      # Tauri's Linux webview and tray need the GTK/WebKit development files;
+      # the display servers and their tools are for the live adapter tests.
       - name: Linux system libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
+            libssl-dev libdbus-1-dev xvfb openbox x11-utils sway xwayland
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -56,15 +58,6 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo 'TAURI_CONFIG={"bundle":{"targets":["nsis"],"icon":["icons/icon.png","icons/icon.ico"],"resources":{"../sidecar/node":null,"../sidecar/node.exe":"sidecar/node.exe"}}}' >> "$GITHUB_ENV"
-      # WebKitGTK and the tray for the app; the display servers and their
-      # tools for the live adapter tests.
-      - name: Linux packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev \
-            xvfb openbox x11-utils sway xwayland
       - run: npm ci
       # generate_context! refuses to compile if a bundled resource is missing.
       - run: npm ci && npm run prepare:sidecar --prefix ..

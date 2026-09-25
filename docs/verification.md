@@ -9,12 +9,12 @@ what has actually been run, and — more importantly — what has not.
 
 | Check | Result |
 |---|---|
-| `npm test` (`cargo test`) | 144 tests pass: 127 unit, 10 integration timeline, 7 privacy; plus 11 ignored (1 local-Ollama, 9 credential-gated connections, 1 Apple on-device) and, on Linux, 2 ignored live display tests that `Verify` runs explicitly |
+| `npm test` (`cargo test`) | 149 tests pass: 132 unit, 10 integration timeline, 7 privacy; plus 11 ignored (1 local-Ollama, 9 credential-gated connections, 1 Apple on-device) and, on Linux, 2 ignored live display tests that `Verify` runs explicitly |
 | `cargo clippy -- -D warnings` (in `npm run check`) | passes |
 | `cargo fmt --check` | passes |
 | `npm run build` (`vue-tsc` + Vite) | passes |
 | Platforms | `Verify` runs all of the above on `macos-latest`, `windows-latest` and `ubuntu-latest`; the Linux leg also runs the live adapter tests against Xvfb + openbox and headless sway (`scripts/linux-display-tests.sh`) |
-| `npm run test:ui` (vitest) | 41 tests pass (approvals and their plain-words summaries, refresh timing, drafts, collection search/filtering, assistant clip slots in the packs panel, history expansion, automatic task mode, and sanitized Markdown) |
+| `npm run test:ui` (vitest) | 62 tests pass (approvals and their plain-words summaries, refresh timing, drafts, collection search/filtering, assistant clip slots in the packs panel, history expansion, automatic task mode, and sanitized Markdown) |
 
 What those tests actually cover:
 
