@@ -127,6 +127,7 @@
 .app-shell .provider-actions .text-link.danger { color: var(--danger); }
 .provider-missing, .provider-feedback { margin: 0 !important; font-size: 12px; color: var(--muted); }
 .popover-note.warn { color: var(--ink); }
+.apple-note { margin: 6px 12px 0 !important; font-size: 12px; color: var(--muted); }
 .connection-hint .text-link, .task-problem .text-link { font-size: inherit; }
 .load-more { width: 100%; margin-top: 8px; }
 .history-group .group-title { margin-top: 22px !important; }

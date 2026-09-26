@@ -11,7 +11,7 @@ const names: Record<Kind, string> = {
   anthropic: 'Anthropic', openai: 'OpenAI', compatible: 'Custom endpoint',
 }
 const blurbs: Record<Kind, string> = {
-  apple: "Apple's on-device model. Runs entirely on this Mac, with no account or key.",
+  apple: "Apple's on-device model. Runs entirely on this Mac, with no account or key. Basic: it answers questions from one look at your folder, and can't change files.",
   codex: 'Your ChatGPT account through the Codex app. Works as an agent you approve step by step.',
   claude: 'Your Claude Code sign-in. Development builds only.',
   ollama: 'Local models from Ollama. Nothing leaves this computer.',

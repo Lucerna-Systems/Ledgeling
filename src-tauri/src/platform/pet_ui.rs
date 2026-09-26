@@ -592,7 +592,9 @@ pub fn compose_request(
             allow_web,
         });
     }
-    if connected {
+    // The on-device model answers in one turn and cannot act on files, so
+    // Actions with it run the built-in actions as they would with no AI.
+    if connected && kind != ProviderKind::Apple {
         let instruction = action_texts(preset).map(|(_, i)| i);
         let prompt = match (instruction, text.trim()) {
             (Some(i), "") => i.into(),
@@ -625,6 +627,11 @@ pub fn compose_request(
     }
     // Without a connection the built-in actions run deterministically and
     // offline, and need a folder the user chose.
+    if kind == ProviderKind::Apple && action_texts(preset).is_none() {
+        return Err(
+            "Apple Intelligence can't change files. Pick a built-in action, or use Ask.".into(),
+        );
+    }
     let (title, _) = action_texts(preset)
         .ok_or("Pick a built-in action, or set up an AI provider in Ledgeling.")?;
     let folder = folder.ok_or("Choose a folder for built-in actions.")?;
@@ -737,6 +744,7 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         ProviderKind::Ollama => "ollama",
         ProviderKind::Codex => "codex",
         ProviderKind::Claude => "claude",
+        ProviderKind::Apple => "apple",
         _ => "model",
     };
     let (payload, placement) = {
@@ -866,6 +874,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(bound.roots, vec!["/tmp/bound".to_string()]);
+    }
+
+    #[test]
+    fn actions_with_apple_run_offline_and_never_hand_it_files_to_change() {
+        let sort = compose_request(
+            ProviderKind::Apple,
+            1,
+            "actions",
+            "sort_date",
+            "",
+            Some("/tmp/bound".into()),
+            false,
+            false,
+            None,
+            fixed_root,
+        )
+        .unwrap();
+        assert_eq!(sort.preset, "sort_date", "a built-in action, not the model");
+        let custom = req(ProviderKind::Apple, "actions", "", "tidy my folder")
+            .err()
+            .unwrap();
+        assert!(custom.contains("can't change files"), "{custom}");
     }
 
     #[test]

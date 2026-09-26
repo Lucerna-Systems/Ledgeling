@@ -5,7 +5,7 @@ export interface BubbleShow {
   session: number
   petId: number
   name: string
-  /** `none`, `ollama`, `codex`, `claude`, or `model` for any other API. */
+  /** `none`, `ollama`, `codex`, `claude`, `apple`, or `model` for any other API. */
   runtime: string
   model: string
   folder: string
@@ -52,7 +52,9 @@ export function blocker(show: Pick<BubbleShow, 'runtime' | 'folder'>, draft: Dra
     return null
   }
   const custom = ACTIONS[draft.action]?.preset === ''
-  if (!connected(show.runtime)) {
+  // Apple's model answers in one turn and cannot act on files, so its Actions are the built-in ones.
+  if (show.runtime === 'apple' && custom) return "Apple Intelligence can't change files. Pick a built-in action, or use Ask."
+  if (!connected(show.runtime) || show.runtime === 'apple') {
     // Built-in actions run offline, so they need neither a model nor consent —
     // but they do need a folder, and free-form instructions need a model.
     if (custom) return 'Pick a built-in action, or set up an AI provider.'

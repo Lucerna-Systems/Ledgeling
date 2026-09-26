@@ -12,10 +12,10 @@ pub trait ModelProvider {
         self.complete(messages, cancel)
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String>;
-    /// How many characters of transcript the model can take, when that is
-    /// small enough for a task to overflow it.
-    fn context_chars(&self) -> Option<usize> {
-        None
+    /// Whether the model answers in one turn from context Ledgeling gathers,
+    /// instead of exploring with tools.
+    fn single_turn(&self) -> bool {
+        false
     }
 }
 pub fn secret_name(kind: &ProviderKind) -> &'static str {
@@ -332,7 +332,8 @@ impl HttpModel {
             // Local server, no credential: `fm serve` speaks Chat Completions
             // and binds to loopback only.
             ProviderKind::Apple => {
-                let mut body = json!({"model":apple::MODEL,"messages":messages,"stream":false});
+                // Bounded so a model that copies a listing out cannot take a minute.
+                let mut body = json!({"model":apple::MODEL,"messages":messages,"stream":false,"max_tokens":600});
                 if let Some(format) = format {
                     body["response_format"] = format;
                 }
@@ -385,9 +386,10 @@ impl ModelProvider for HttpModel {
             self.complete(messages, cancel)
         }
     }
-    // `fm` refuses a transcript over about 4,000 tokens outright.
-    fn context_chars(&self) -> Option<usize> {
-        (self.0.kind == ProviderKind::Apple).then_some(apple::CONTEXT_CHARS)
+    // Measured on the real model: exploring with tools answered 1 of 20
+    // folder questions, one look at a gathered overview 15 of 16.
+    fn single_turn(&self) -> bool {
+        self.0.kind == ProviderKind::Apple
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String> {
         if self.0.kind == ProviderKind::Apple {

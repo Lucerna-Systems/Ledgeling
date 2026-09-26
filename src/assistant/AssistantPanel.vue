@@ -137,6 +137,7 @@ function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1)
       <li v-for="path in roots" :key="path" :title="path"><FolderPlus :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="roots = roots.filter(p => p !== path)"><X :size="11" /></button></li>
       <li v-for="path in attachments" :key="path" :title="path"><Paperclip :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="attachments = attachments.filter(p => p !== path)"><X :size="11" /></button></li>
     </ul>
+    <p v-if="effective.kind === 'apple' && !preset" class="apple-note">Apple Intelligence answers from a look at your folder. It can't change files; use a built-in action or another AI for that.</p>
     <p v-if="mode === 'advanced'" class="task-problem">This AI can run commands on your computer. You'll approve each step, but some can't be undone.</p>
     <p v-if="termsDue" class="task-problem">{{ provider }} needs its terms accepted once before it can run. <button type="button" class="text-link" @click="emit('providers')">Open AI providers</button></p>
     <div class="composer-toolbar">

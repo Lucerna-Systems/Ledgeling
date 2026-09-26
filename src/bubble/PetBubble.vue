@@ -273,7 +273,7 @@ onUnmounted(() => {
 
       <label v-if="ask" class="check"><input v-model="draft.allowWeb" type="checkbox">Allow web research</label>
 
-      <div v-if="isConnected" class="model-row">
+      <div v-if="isConnected && show.runtime !== 'apple'" class="model-row">
         <Dropdown v-if="models.state === 'picking'" :model-value="models.index" class="model-select" label="Model" :options="models.list" @update:model-value="chooseModel" />
         <template v-else>
           <span v-if="show.model" class="model-name" :title="show.model">{{ show.model }}</span>

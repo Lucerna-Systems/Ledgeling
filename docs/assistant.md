@@ -175,17 +175,23 @@ for the Claude sidecar, Apple silicon for Apple Intelligence — and credential-
 look-ups for saved API keys. An added provider stays listed even when detection
 misses it (a stopped Ollama, a Codex at a custom path).
 
-**Apple Intelligence** replies are constrained with `fm serve`'s guided
-generation: each step sends a `json_schema` response format admitting only the
-actions open at that step, so the on-device model cannot return an unreadable
-action. File tools are offered only with a folder or attachment, web tools only
-when web access is allowed, and a tool without arguments only until it has run.
-Other providers get the same list in the system prompt only. The on-device
-model's context is about 4,000 tokens, so its transcript is held to 10,000
-characters: each tool result is cut to a third of that with a note saying so,
-and the oldest steps are dropped when needed, never the instructions or the
-request. For every provider, a call identical to one already made is answered
-with "already done" instead of running again.
+**Apple Intelligence** is basic, and labelled so on the providers page and in
+the composer. Measured on the real model, exploring a folder with tools answered
+1 of 20 folder questions, while one look at a gathered overview answered 15 of
+16. So it does not run the tool loop: Ledgeling gathers what the request can see
+— the shared folder as relative paths, shallow levels first and deeper ones
+while about 4,000 characters remain (app bundles count as one entry), attached
+files' text, web results when allowed, the last two turns — and the model
+answers once, in plain text, within its 4,000-token context. It cannot change
+files. Actions with it run the built-in actions as they would with no AI; free
+instructions there are refused with a pointer to Ask. `fm serve` offers no
+native tool calling (it ignores `tools`, and forcing one fails).
+
+Other providers run the tool loop. Its folder tool shows one folder's own
+entries, so large folders can be explored; the whole-tree listing refuses more
+than 2,000 files and points to it. A call identical to one already made is
+answered with "already done" instead of running again, and a tool without
+arguments is offered only until it has been called.
 
 For every provider, a request with no folder or attachment tells the model it
 cannot see the disk, and to say a folder is needed only when the request is

@@ -16,6 +16,13 @@ describe('what a mode still needs', () => {
     expect(blocker({ ...offline, folder: '/tmp/x' }, draft())).toBeNull()
     expect(blocker({ ...offline, folder: '/tmp/x' }, draft({ action: 5, prompt: 'tidy' }))).toMatch(/set up an AI provider/)
   })
+  it('Apple runs the built-in actions and answers only in Ask', () => {
+    const apple = { runtime: 'apple', folder: '' }
+    expect(blocker(apple, draft())).toMatch(/Choose a folder/)
+    expect(blocker({ ...apple, folder: '/tmp/x' }, draft())).toBeNull()
+    expect(blocker({ ...apple, folder: '/tmp/x' }, draft({ action: 5, prompt: 'tidy' }))).toMatch(/can't change files/)
+    expect(blocker(apple, draft({ mode: 'ask', prompt: 'what is here?' }))).toBeNull()
+  })
   it('a connected model takes over actions without asking for consent again', () => {
     const local = { runtime: 'ollama', folder: '' }
     expect(blocker(local, draft())).toBeNull()

@@ -116,6 +116,79 @@ impl Scope {
         }
         Ok(serde_json::Value::Array(listed))
     }
+    /// The shared folders as paths relative to each, shallow levels first and
+    /// deeper ones while `budget` characters remain, for a model that gets one
+    /// look instead of exploring. Paths rather than an indented tree, because a
+    /// small model misreads indentation and invents entries.
+    pub fn overview(&self, budget: usize, cancel: &Cancel) -> Result<String, String> {
+        const PER_FOLDER: usize = 25;
+        // Bundles are folders on disk but single things to a person.
+        const OPAQUE: [&str; 5] = ["app", "bundle", "framework", "xcodeproj", "photoslibrary"];
+        let mut out = Vec::new();
+        let mut used = 0;
+        for root in &self.roots {
+            no_links(root)?;
+            out.push(format!("{}/", root.display()));
+            let mut queue = std::collections::VecDeque::from([PathBuf::new()]);
+            'folders: while let Some(relative) = queue.pop_front() {
+                cancel.check()?;
+                let Ok(entries) = fs::read_dir(root.join(&relative)) else {
+                    continue;
+                };
+                let mut folders = Vec::new();
+                let mut files = Vec::new();
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let Ok(ty) = entry.file_type() else { continue };
+                    if name.starts_with('.') || ty.is_symlink() {
+                        continue;
+                    }
+                    if ty.is_dir() {
+                        folders.push(name)
+                    } else {
+                        files.push(name)
+                    }
+                }
+                folders.sort();
+                files.sort();
+                let total = folders.len() + files.len();
+                let mut lines = Vec::new();
+                for name in folders.iter().chain(&files).take(PER_FOLDER) {
+                    let path = relative.join(name);
+                    let folder = folders.contains(name);
+                    lines.push(format!(
+                        "{}{}",
+                        path.display(),
+                        if folder { "/" } else { "" }
+                    ));
+                    let bundle = Path::new(name)
+                        .extension()
+                        .is_some_and(|e| OPAQUE.contains(&e.to_string_lossy().as_ref()));
+                    if folder && !bundle {
+                        queue.push_back(path);
+                    }
+                }
+                if total > PER_FOLDER {
+                    lines.push(format!(
+                        "{}… and {} more",
+                        if relative.as_os_str().is_empty() {
+                            String::new()
+                        } else {
+                            format!("{}/", relative.display())
+                        },
+                        total - PER_FOLDER
+                    ));
+                }
+                let cost: usize = lines.iter().map(|l| l.len() + 1).sum();
+                if used + cost > budget {
+                    break 'folders;
+                }
+                used += cost;
+                out.extend(lines);
+            }
+        }
+        Ok(out.join("\n"))
+    }
     /// The shared folder `input` names, in the loose forms a model writes it:
     /// its full path, `~/…`, its own name, or the tail of its path.
     fn shared_folder(&self, input: &str) -> Option<PathBuf> {
@@ -445,6 +518,35 @@ pub fn undo(scope: &Scope, op: &mut Operation, cancel: &Cancel) -> Result<(), St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_overview_lists_shallow_levels_first_as_paths_and_skips_bundle_insides() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap().join("games");
+        for dir in [
+            "minecraft/Instances/Re-Console/saves/deep",
+            "Tool.app/Contents/MacOS",
+        ] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        std::fs::write(root.join("notes.txt"), "hi").unwrap();
+        let scope = super::Scope::new(&[root.to_string_lossy().into()], &[]).unwrap();
+        let full = scope.overview(10_000, &super::Cancel::default()).unwrap();
+        let lines: Vec<&str> = full.lines().collect();
+        assert!(lines.contains(&"minecraft/Instances/Re-Console/"), "{full}");
+        assert!(lines.contains(&"Tool.app/"));
+        assert!(!full.contains("Contents"), "a bundle is one thing: {full}");
+        let at = |line: &str| lines.iter().position(|l| *l == line).unwrap();
+        assert!(
+            at("notes.txt") < at("minecraft/Instances/"),
+            "shallow levels come first"
+        );
+        // A tight budget keeps the shallow levels and drops the deep ones.
+        let short = scope.overview(40, &super::Cancel::default()).unwrap();
+        assert!(
+            short.contains("minecraft/") && !short.contains("Re-Console"),
+            "{short}"
+        );
+    }
     #[test]
     fn a_folder_can_be_named_the_ways_a_model_writes_it() {
         let d = tempfile::tempdir().unwrap();
