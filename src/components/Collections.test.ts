@@ -12,7 +12,7 @@ vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => false, invoke: vi.fn() }
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
 beforeEach(() => {
   packs.value = []; snapshot.value = null; tasks.value = []; assignedPet.value = null
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } }
 })
 
 const pack = (name: string, kind: string): PackListing => ({
@@ -126,5 +126,48 @@ it('selects the supported agent mode automatically and keeps built-in actions lo
   await wrapper.findAll('.task-shortcuts button').find(button => button.text() === 'Organise files')!.trigger('click')
   expect(wrapper.find('.task-composer .task-problem').exists()).toBe(false)
   expect(wrapper.get('.preset-pill').text()).toContain('runs on this computer')
+  wrapper.unmount()
+})
+
+it('the carousel picks a pet and the model bar edits that pet, falling back to the default', async () => {
+  connections.value.active = { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' }
+  connections.value.perPet = { 1: { kind: 'codex', model: 'gpt-5.2-codex', endpoint: '', executable: 'codex' } }
+  snapshot.value = {
+    settings: { paused: false, hidden: false, speedScale: 1 }, notes: [], packs: [], perchCount: 0,
+    pets: [{ id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'rest', energy: 1, mood: .7, surface: null }],
+  } as unknown as Snapshot
+  const wrapper = mount(AssistantPanel)
+  const provider = () => wrapper.get('.model-provider .dropdown-button').text()
+  const chooseProvider = async (label: string) => {
+    await wrapper.get('.model-provider .dropdown-button').trigger('click')
+    await wrapper.findAll('.model-provider li').find(li => li.text() === label)!.trigger('click')
+  }
+  expect(wrapper.get('.model-chip').text()).toBe('llama')
+  await wrapper.get('.model-chip').trigger('click')
+  expect(wrapper.get('.model-popover').text()).toContain('Default AI for your pets')
+  expect(provider()).toBe('Ollama · on this computer')
+  await wrapper.findAll('.pet-choice').find(choice => choice.text().includes('Pip'))!.trigger('click')
+  expect(assignedPet.value).toBe(1)
+  expect(wrapper.get('.model-chip').text()).toBe('gpt-5.2-codex')
+  expect(wrapper.find('.model-popover').exists()).toBe(false)
+  await wrapper.get('.model-chip').trigger('click')
+  expect(wrapper.get('.model-popover').text()).toContain('Pip uses')
+  expect(provider()).toBe('ChatGPT · Codex')
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(true)
+  await chooseProvider('Default · Ollama')
+  expect(connections.value.perPet[1]).toBeUndefined()
+  expect(provider()).toBe('Default · Ollama')
+  expect(wrapper.get('.model-chip').text()).toBe('llama')
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('choosing a provider for "Any pet" changes the default connection', async () => {
+  const wrapper = mount(AssistantPanel)
+  await wrapper.get('.model-chip').trigger('click')
+  await wrapper.get('.model-provider .dropdown-button').trigger('click')
+  await wrapper.findAll('.model-provider li').find(li => li.text().startsWith('Anthropic'))!.trigger('click')
+  expect(connections.value.active.kind).toBe('anthropic')
+  expect(wrapper.text()).toContain('Let Anthropic read this request')
   wrapper.unmount()
 })

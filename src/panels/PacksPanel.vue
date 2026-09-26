@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, Brush, Check, Download, FolderOpen, MoreHorizontal, Package, PawPrint, Search, Trash2, X } from '@lucide/vue'
-import { call, packs, pets, refreshPacks, saveSettings, settings, snapshot } from '../state'
+import { call, packs, pets, refreshPacks, snapshot } from '../state'
 import type { PackSummary } from '../types'
-import { openInStudio } from '../studio/state'
 import DiagnosticList from './DiagnosticList.vue'
 import FilterPill from '../components/FilterPill.vue'
 import FilterTabs from '../components/FilterTabs.vue'
@@ -25,8 +24,6 @@ const classes = [
 ]
 const moves: Record<string, string> = Object.fromEntries(classes.map(c => [c.value, c.label]))
 const spawnedFor = computed(() => new Set(pets.value.map(p => p.packId)))
-
-const petFor = (packId: string) => pets.value.find(p => p.packId === packId)
 
 const needsAttention = (pack: PackSummary) => !pack.loadable || pack.errors > 0 || pack.warnings > 0
 const sorted = <T,>(values: T[]) => [...new Set(values)].sort()
@@ -68,21 +65,6 @@ function diagnosticLabel(pack: PackSummary) {
   return counted.length ? counted.join(' · ') : 'Details'
 }
 
-const tipVisible = computed(() => !!settings.value && !settings.value.tipsDismissed)
-async function dismissTip() {
-  if (settings.value) await saveSettings({ ...settings.value, tipsDismissed: true })
-}
-
-async function rename(packId: string, event: Event) {
-  const input = event.target as HTMLInputElement
-  const pet = petFor(packId)
-  if (!pet) return
-  await call('rename_pet', { petId: pet.id, name: input.value.trim() })
-  input.value = petFor(packId)?.name ?? input.value.trim()
-}
-async function editInStudio(id: string) {
-  if (await openInStudio(id, false)) emit('go', 'studio')
-}
 async function spawn(id: string) { await call('spawn_pet', { packId: id }) }
 async function despawn(id: string) {
   const pet = pets.value.find(p => p.packId === id)
@@ -93,16 +75,12 @@ async function uninstall(id: string) {
   await refreshPacks()
 }
 async function exportPack(id: string) {
-  const result = await call<{ path: string; sha256: string }>('export_pack', { id })
-  if (result) exported.value = result.path
+  const path = await call<string>('export_pack', { id })
+  if (path) exported.value = path
 }
 </script>
 
 <template>
-  <div v-if="tipVisible" class="tip-card" role="note">
-    <p><strong>Meet your pet.</strong> Pick it up and throw it. Rub the pointer back and forth over it to pet it.</p>
-    <button class="icon-button" aria-label="Dismiss tip" @click="dismissTip"><X :size="14" /></button>
-  </div>
   <div class="sticky-top">
   <section class="page-heading">
     <div>
@@ -149,11 +127,6 @@ async function exportPack(id: string) {
         </header>
         <p class="pack-description">{{ listing.summary.description }}</p>
         <p v-if="!listing.summary.loadable" class="pack-problem"><AlertTriangle :size="13" /> This pet can't be brought out right now.</p>
-        <div v-if="petFor(listing.summary.id)" class="pack-bond">
-          <input class="pet-name" maxlength="24" :value="petFor(listing.summary.id)!.name" :aria-label="`Name for ${listing.summary.name}`" @change="rename(listing.summary.id, $event)" @keydown.enter="($event.target as HTMLInputElement).blur()">
-          <span class="bond-days">Together {{ petFor(listing.summary.id)!.days }} {{ petFor(listing.summary.id)!.days === 1 ? 'day' : 'days' }}</span>
-          <meter class="affection" min="0" max="1" :value="petFor(listing.summary.id)!.affection" aria-label="How fond it is of you" />
-        </div>
         <div class="pack-actions">
           <button v-if="!spawnedFor.has(listing.summary.id)" class="primary-button" :disabled="!listing.summary.loadable" @click="spawn(listing.summary.id)"><PawPrint :size="15" /> Bring out</button>
           <button v-else @click="despawn(listing.summary.id)">Send home</button>
@@ -161,7 +134,6 @@ async function exportPack(id: string) {
             <summary :aria-label="`More about ${listing.summary.name}`"><MoreHorizontal :size="16" /></summary>
             <div class="pack-menu">
               <p class="pack-meta">By {{ listing.summary.author }} · version {{ listing.summary.version }}<span v-if="listing.summary.builtin"> · comes with Ledgeling</span></p>
-              <button v-if="!listing.summary.builtin && listing.summary.loadable" type="button" class="text-link" @click="editInStudio(listing.summary.id)"><Brush :size="13" /> Edit in Studio</button>
               <ul v-if="listing.summary.assistantClips.length" class="pack-clips">
                 <li v-for="clip in listing.summary.assistantClips" :key="clip.slot">
                   <span>{{ clip.when[0]!.toUpperCase() + clip.when.slice(1) }}</span>

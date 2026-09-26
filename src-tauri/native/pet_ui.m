@@ -37,7 +37,7 @@ static NSMutableSet *drags;
   // A hidden, unique handoff file satisfies Finder's native promise protocol.
   // It is removed after Finder completes the transfer; no user file is replaced.
   NSError *error = nil;
-  NSData *data = [@"Ledgeling folder handoff\n" dataUsingEncoding:NSUTF8StringEncoding];
+  NSData *data = [@"Perch folder handoff\n" dataUsingEncoding:NSUTF8StringEncoding];
   BOOL wrote = [data writeToURL:url options:NSDataWritingWithoutOverwriting error:&error];
   completion(error);
   if (wrote) {
@@ -96,7 +96,7 @@ int perch_begin_folder_drag(void *pointer, unsigned long long pet, const char *i
   NSEvent *event = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDragged location:[window convertPointFromScreen:NSEvent.mouseLocation] modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
   PerchDrag *source = [PerchDrag new];
   source.pet = @(pet);
-  source.filename = [NSString stringWithFormat:@".ledgeling-handoff-%@", NSUUID.UUID.UUIDString];
+  source.filename = [NSString stringWithFormat:@".perch-handoff-%@", NSUUID.UUID.UUIDString];
   if (!drags) drags = [NSMutableSet new];
   [drags addObject:source];
   NSFilePromiseProvider *provider = [[NSFilePromiseProvider alloc] initWithFileType:@"public.data" delegate:source];
@@ -118,18 +118,4 @@ int perch_begin_folder_drag(void *pointer, unsigned long long pet, const char *i
   NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:length]];
   // A nil image would blank the Dock tile in dev builds, which have no bundle icon.
   if (image) [NSApp setApplicationIconImage:image];
-}
-
-// Coding mode: bring forward an app the user started from one of its
-// terminals, such as a desktop app under `tauri dev`. Only pids Rust found
-// under its own terminals are asked about.
-int perch_app_is_gui(int pid) {
-  NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-  return app != nil && app.activationPolicy == NSApplicationActivationPolicyRegular;
-}
-int perch_app_activate(int pid) {
-  NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-  if (!app) return 0;
-  if (app.hidden) [app unhide];
-  return [app activateWithOptions:NSApplicationActivateAllWindows] ? 1 : 0;
 }

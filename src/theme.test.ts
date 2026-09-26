@@ -76,7 +76,7 @@ describe('applyTheme', () => {
   it('caches the applied pair for the next launch', () => {
     fakeMatchMedia(false)
     applyTheme('dark', '#5b5bd6')
-    expect(JSON.parse(localStorage.getItem('ledgeling:appearance') ?? '{}')).toEqual({
+    expect(JSON.parse(localStorage.getItem('perch:appearance') ?? '{}')).toEqual({
       theme: 'dark',
       accent: '#5b5bd6',
     })
@@ -115,19 +115,9 @@ describe('accentVariants', () => {
 describe('initTheme', () => {
   it('paints the cached pair before the first snapshot arrives', async () => {
     fakeMatchMedia(false)
-    localStorage.setItem('ledgeling:appearance', JSON.stringify({ theme: 'dark', accent: '#2563d9' }))
+    localStorage.setItem('perch:appearance', JSON.stringify({ theme: 'dark', accent: '#2563d9' }))
     const { initTheme } = await import('./theme')
     initTheme()
-    expect(root().dataset.theme).toBe('dark')
-    expect(root().style.getPropertyValue('--accent')).toBe('#2563d9')
-  })
-
-  it('paints the legacy cached pair if ledgeling:appearance is not set', async () => {
-    fakeMatchMedia(false)
-    localStorage.removeItem('ledgeling:appearance')
-    localStorage.setItem('perch:appearance', JSON.stringify({ theme: 'dark', accent: '#2563d9' }))
-    const { applyCachedTheme } = await import('./theme')
-    applyCachedTheme()
     expect(root().dataset.theme).toBe('dark')
     expect(root().style.getPropertyValue('--accent')).toBe('#2563d9')
   })

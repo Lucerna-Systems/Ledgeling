@@ -201,8 +201,6 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .sidebar nav > button:hover { background: var(--nav-hover) !important; }
 .sidebar nav > button.selected { background: var(--surface) !important; color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 650 !important; }
 .sidebar nav > button.selected svg { color: var(--accent); }
-.sidebar nav > button.code-entry { margin-top: 6px; color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent); }
-.sidebar nav > button.code-entry:hover { background: var(--accent-soft) !important; }
 .pet-face { display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px #0000000f; }
 /* Pack previews are a scene with the pet in its upper middle; zoom onto the pet. */
 .pet-face img { width: 100%; height: 100%; object-fit: cover; transform: scale(2); transform-origin: 53% 30%; image-rendering: pixelated; }
@@ -223,16 +221,6 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .app-shell .chat-rename { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); min-height: 22px; width: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); opacity: 0; }
 .chat-row:hover .chat-rename, .app-shell .chat-rename:focus-visible { opacity: 1; }
 .app-shell .chat-rename:not(:disabled):hover { background: var(--soft); color: var(--ink); }
-/* Chats hang under the pet they were with; the guide line runs down from its face. */
-.pet-chats { min-width: 0; }
-.pet-chats-head { position: relative; }
-.pet-chats-head:hover .chat-rename { opacity: 1; }
-.app-shell .pet-chats-toggle { font-weight: 600; color: var(--ink); }
-.pet-chats-count { font-size: 11px; font-weight: 500; color: var(--muted); }
-.pet-chats-chevron { flex-shrink: 0; color: var(--muted); transition: transform 160ms; }
-.pet-chats-toggle[aria-expanded="false"] .pet-chats-chevron { transform: rotate(-90deg); }
-.pet-chats-list { list-style: none; margin: 1px 0 4px 18px; padding: 0 0 0 9px; border-left: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
-.app-shell .pet-chats-list .chat-item { min-height: 28px; padding-left: 8px; font-size: 12px; }
 .chat-item.editing { padding-right: 7px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .app-shell .chat-item.editing input { flex: 1; min-width: 0; min-height: 22px; padding: 0; border: 0; background: transparent; font-size: 12.5px; outline: none; }
 .sidebar-bottom { margin-top: auto; padding: 24px 8px 0; display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
@@ -329,7 +317,6 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .setting-row:last-child { border-bottom: 0; }
 .setting-row p { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 60ch; }
 .setting-row.dimmed > div:first-child { opacity: .55; }
-.experimental-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--warn-soft); color: var(--muted); font-size: 11px; font-weight: 600; vertical-align: 1px; }
 .row-controls { display: flex; align-items: center; gap: 12px; }
 .link-row { display: flex; align-items: center; gap: 14px; width: calc(100% + 40px); margin: 0 -20px; padding: 14px 20px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .link-row:first-child { border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
@@ -489,11 +476,3 @@ details[open] > summary { margin-bottom: 12px; color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
-
-.tip-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding: 10px 14px; border: 1px solid var(--border, rgba(128,128,128,.25)); border-radius: 10px; background: var(--accent-soft, rgba(91,91,214,.1)); font-size: 14px; }
-.tip-card p { margin: 0; }
-
-.pack-bond { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
-.pack-bond .pet-name { flex: 1 1 120px; min-width: 0; padding: 4px 8px; border: 1px solid var(--border, rgba(128,128,128,.25)); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
-.pack-bond .bond-days { opacity: .75; }
-.pack-bond .affection { width: 64px; height: 10px; }

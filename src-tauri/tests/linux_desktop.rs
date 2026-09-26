@@ -5,7 +5,7 @@
 //! your hands off the mouse while the windows flash past.
 #![cfg(target_os = "linux")]
 
-use perch::{
+use ledgeling::{
     platform::{NativePlatform, Platform},
     world::{MonitorInfo, Rect, WindowInfo},
 };
@@ -383,7 +383,7 @@ fn wayland_session_degrades_to_screen_edges() {
 
     if std::env::var_os("DISPLAY").is_some() {
         std::env::remove_var("GDK_BACKEND");
-        perch::platform::prepare_process();
+        ledgeling::platform::prepare_process();
         assert_eq!(std::env::var("GDK_BACKEND").as_deref(), Ok("x11"));
         eprintln!("cursor via XWayland: {:?}", platform.cursor());
     }

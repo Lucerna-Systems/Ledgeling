@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Folder, X } from '@lucide/vue'
 import MarkdownResult from '../assistant/MarkdownResult.vue'
-import BubbleSelect from './BubbleSelect.vue'
+import Dropdown from '../components/Dropdown.vue'
 import { applyCachedTheme } from '../theme'
 import {
   ACTIONS, NOTCH, agent, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
@@ -255,7 +255,7 @@ onUnmounted(() => {
           <button type="button" role="radio" :aria-checked="ask" :class="{ on: ask }" @click="draft.mode = 'ask'">Ask</button>
           <span class="pill" :class="{ right: ask }" aria-hidden="true" />
         </div>
-        <BubbleSelect v-if="!ask" v-model="draft.action" class="action-select" label="Action" :options="ACTIONS.map(a => a.label)" />
+        <Dropdown v-if="!ask" v-model="draft.action" class="action-select" label="Action" :options="ACTIONS.map(a => a.label)" />
       </div>
 
       <p v-if="hint" class="hint" role="status">{{ hint }}</p>
@@ -276,7 +276,7 @@ onUnmounted(() => {
       <label v-if="ask" class="check"><input v-model="draft.allowWeb" type="checkbox">Allow web research</label>
 
       <div v-if="isConnected" class="model-row">
-        <BubbleSelect v-if="models.state === 'picking'" :model-value="models.index" class="model-select" label="Model" :options="models.list" @update:model-value="chooseModel" />
+        <Dropdown v-if="models.state === 'picking'" :model-value="models.index" class="model-select" label="Model" :options="models.list" @update:model-value="chooseModel" />
         <template v-else>
           <span v-if="show.model" class="model-name" :title="show.model">{{ show.model }}</span>
           <button type="button" class="link" :disabled="models.state === 'loading'" @click="pickModel">{{ models.state === 'loading' ? 'Loading models…' : 'Select another model' }}</button>
@@ -350,19 +350,10 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .bubble-mode .pill { position: absolute; top: 2.5px; bottom: 2.5px; left: 2.5px; width: calc(50% - 2.5px); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / .08); transition: transform 220ms cubic-bezier(.2, .8, .2, 1); }
 .bubble-mode .pill.right { transform: translateX(100%); }
 .action-select { flex: 1; min-width: 0; }
-.bubble-select { position: relative; z-index: 3; }
-.bubble-select-button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 28px; padding: 0 12px 0 14px; border-radius: 14px !important; border: 1px solid var(--line) !important; background: var(--soft) !important; text-align: left; }
-.bubble-select-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bubble-select .chevron { fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 220ms; }
-.bubble-select.open .chevron { transform: rotate(180deg); }
-.bubble-select-list {
-  position: absolute; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 3px; list-style: none; max-height: 164px; overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 6px 18px rgb(0 0 0 / .14); animation: bubble-fade 160ms ease-out;
-}
-.bubble-select.upward .bubble-select-list { top: auto; bottom: calc(100% + 4px); }
-.bubble-select-list li { padding: 5px 10px; border-radius: 9px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bubble-select-list li.active { background: var(--soft); }
-.bubble-select-list li[aria-selected=true] { color: var(--accent); font-weight: 500; }
+/* The bubble's dropdowns are a touch smaller and rounder than the window's. */
+.bubble .dropdown-button { height: 28px; border-radius: 14px; font-size: 12px; }
+.bubble .dropdown-list { max-height: 164px; }
+.bubble .dropdown-list li { padding: 5px 10px; font-size: 12px; }
 .hint { margin: -2px 0 0; font-size: 11.5px; color: var(--status-waiting-ink); }
 .prompt {
   display: block; width: 100%; height: 84px; resize: none; padding: 10px 12px; border-radius: 14px; font: inherit; line-height: 1.5;
@@ -381,8 +372,8 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions.start { justify-content: flex-start; }
 .actions button { min-width: 92px; height: 32px; padding: 0 16px; border-radius: 16px !important; font-size: 12px; font-weight: 500; }
-.actions .primary { background: var(--accent) !important; color: var(--on-accent); }
-.actions .primary:not(:disabled):hover { background: var(--accent-hover) !important; }
+.actions .primary { background: var(--accent-gradient) !important; color: var(--on-accent); }
+.actions .primary:not(:disabled):hover { filter: brightness(1.07); }
 .actions .secondary { background: var(--soft) !important; border: 1px solid var(--line) !important; }
 .actions .secondary:not(:disabled):hover { border-color: var(--line-strong) !important; }
 .output {
@@ -403,7 +394,6 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @keyframes bubble-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .bubble-page, .bubble-page.visible, .bubble-mode .pill, .bubble .bubble-mode button, .bubble-select .chevron, .folder-row { transition: none; }
-  .bubble-select-list { animation: none; }
+  .bubble-page, .bubble-page.visible, .bubble-mode .pill, .bubble .bubble-mode button, .folder-row { transition: none; }
 }
 </style>

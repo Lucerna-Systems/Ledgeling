@@ -240,9 +240,7 @@ impl AgentRuntime for CodexRuntime {
             .ok_or("Incompatible Codex thread response")?;
         let prompt = format!(
             "{}\nSelected attachments: {:?}\nWeb access allowed: {}",
-            task.request.full_prompt(),
-            task.request.attachments,
-            task.request.allow_web
+            task.request.prompt, task.request.attachments, task.request.allow_web
         );
         p.rpc(
             "turn/start",
@@ -375,7 +373,7 @@ impl AgentRuntime for ClaudeRuntime {
         } else {
             Some(super::providers::secret("anthropic")?)
         };
-        p.send(json!({"type":"start","key":key,"prompt":task.request.full_prompt(),"cwd":&root,"model":self.0.model,"attachments":task.request.attachments,"allowWeb":task.request.allow_web}))?;
+        p.send(json!({"type":"start","key":key,"prompt":task.request.prompt,"cwd":&root,"model":self.0.model,"attachments":task.request.attachments,"allowWeb":task.request.allow_web}))?;
         let deadline = Instant::now() + Duration::from_secs(1800);
         let mut output = String::new();
         loop {

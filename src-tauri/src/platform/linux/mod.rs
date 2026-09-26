@@ -192,7 +192,7 @@ impl Platform for NativePlatform {
 
     fn mouse_down(&self) -> Option<bool> {
         // The pointer query's button mask also carries modifier-key state,
-        // and Perch reads no key state. The overlay's pointer capture reports
+        // and Ledgeling reads no key state. The overlay's pointer capture reports
         // the release instead, as on Windows.
         None
     }

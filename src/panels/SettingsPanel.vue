@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Check, ChevronRight, Code2, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
+import { Activity, Check, ChevronRight, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
 import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
 
-const emit = defineEmits<{ go: [page: 'desktop' | 'awareness'] }>()
+const emit = defineEmits<{ go: [page: 'desktop' | 'awareness' | 'lab'] }>()
 
 const themeChoices: { value: ThemeMode; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -26,13 +26,6 @@ const pace = computed(() => {
 
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
-}
-/** Turning Developer tools on opens coding mode straight away, so there is no second step to find. */
-async function toggleDeveloper() {
-  if (!settings.value) return
-  const on = !settings.value.developerMode
-  await saveSettings({ ...settings.value, developerMode: on })
-  if (on && settings.value?.developerMode) void call('code_open', { petId: null }, false)
 }
 function toggleAwareness() {
   if (settings.value) save({ awareness: { ...settings.value.awareness, enabled: !settings.value.awareness.enabled } })
@@ -175,20 +168,6 @@ const neverSeen = [
     </div>
   </section>
 
-  <template v-if="snapshot?.codingAvailable">
-  <h2 class="group-title">For developers</h2>
-  <section class="settings-group">
-    <div class="setting-row">
-      <div><h3>Developer tools <span class="experimental-tag">Experimental</span></h3><p>Adds coding mode: an editor, live diffs, worktrees, a terminal and a run button in a window beside your browser. It is still being tested and may change or break. Off, none of it loads.</p></div>
-      <div class="row-controls">
-        <button v-if="settings?.developerMode" :disabled="!native" @click="call('code_open', { petId: null }, false)"><Code2 :size="15" /> Open coding mode</button>
-        <button class="toggle" :class="{ enabled: settings?.developerMode }" role="switch" :aria-checked="!!settings?.developerMode" aria-label="Developer tools"
-                @click="toggleDeveloper"><span /></button>
-      </div>
-    </div>
-  </section>
-  </template>
-
   <h2 class="group-title">Privacy</h2>
   <section class="settings-group privacy-summary">
     <div class="privacy-lead">
@@ -217,6 +196,9 @@ const neverSeen = [
     </button>
     <button class="link-row" @click="emit('go', 'awareness')">
       <Activity :size="17" /><div><h3>Awareness details</h3><p>Reminder timing and how apps are categorised.</p></div><ChevronRight :size="16" />
+    </button>
+    <button class="link-row" @click="emit('go', 'lab')">
+      <FlaskConical :size="17" /><div><h3>Pet Lab</h3><p>Tools for people making their own pets.</p></div><ChevronRight :size="16" />
     </button>
   </section>
   <p class="version-note">Ledgeling · Preview 0.1</p>

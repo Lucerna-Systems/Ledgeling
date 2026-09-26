@@ -1,15 +1,12 @@
 import { computed, ref } from 'vue'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { pets } from '../state'
-import type { Task, TaskPet, Connections, Connection, ProviderDetection, ProviderKind, ProviderTerms } from './types'
+import type { Task, TaskPet, Connections, Connection, ProviderDetection, ProviderKind } from './types'
 export const tasks = ref<Task[]>([])
 export const taskError = ref('')
 export const assignedPet = ref<number | null>(null)
 export const droppedFiles = ref<string[]>([])
-/** The unsent request text; module-level so the companion can save and restore it. */
-export const promptDraft = ref('')
-export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} })
+export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } })
 /** The connection a task for this pet actually runs on: its override, else the default. */
 export function effectiveConnection(petId: number | null): Connection {
   const config = connections.value
@@ -35,7 +32,6 @@ export async function startTasks() {
   })
   await refreshTasks()
   connections.value = await taskCall<Connections>('task_connections')
-  void loadProviderTerms()
   return () => { stop(); stopConnections() }
 }
 /** A chat: a first request and every follow-up chained to it through `parentId`. */
@@ -79,32 +75,6 @@ export const conversations = computed<Conversation[]>(() => {
     .sort((a, b) => b.turns.at(-1)!.id - a.turns.at(-1)!.id)
 })
 
-/** Chats grouped by the pet they were with, most recently active pet first. */
-export interface PetChats { key: string; name: string; pet: TaskPet | null; petId: number | null; chats: Conversation[]; waiting: boolean }
-export const conversationsByPet = computed<PetChats[]>(() => {
-  const groups = new Map<string, PetChats>()
-  // `conversations` is already newest first, so each group's order and the order of groups follow from it.
-  for (const chat of conversations.value) {
-    // Pet ids restart every launch, so a stamped pet is grouped by pack and name.
-    const key = chat.pet ? `${chat.pet.packId}\u0000${chat.pet.name}` : chat.petId === null ? 'any' : `id:${chat.petId}`
-    let group = groups.get(key)
-    if (!group) {
-      const name = chat.pet?.name ?? (chat.petId === null ? 'Any pet' : pets.value.find(p => p.id === chat.petId)?.name ?? 'A pet')
-      group = { key, name, pet: chat.pet, petId: chat.petId, chats: [], waiting: false }
-      groups.set(key, group)
-    }
-    group.chats.push(chat)
-    group.waiting ||= chat.waiting
-  }
-  return [...groups.values()]
-})
-/** The pet on the desktop now that a chat was with, if it is out. Ids restart each launch, so the pack decides. */
-export function livePet(petId: number | null, pet: TaskPet | null): number | null {
-  const packId = pet?.packId
-  if (!packId) return pets.value.find(p => p.id === petId)?.id ?? null
-  return pets.value.find(p => p.id === petId && p.packId === packId)?.id ?? pets.value.find(p => p.packId === packId)?.id ?? null
-}
-
 export function conversationOf(taskId: number): number {
   return conversations.value.find(chat => chat.turns.some(t => t.id === taskId))?.id ?? taskId
 }
@@ -119,29 +89,15 @@ export const connectionDefaults: Record<ProviderKind, Partial<Connection>> = {
   compatible: { endpoint: 'https://your-provider.example/v1' }, codex: { executable: 'codex' }, claude: {},
   apple: { model: 'system' },
 }
-/** A connection of an added provider, on its saved settings and default model unless `model` is given. */
-export function draftConnection(kind: ProviderKind, model = ''): Connection {
-  const setup = connections.value.providers?.[kind]
+/** A connection of `kind`, reusing the endpoint or executable already configured for it. */
+export function draftConnection(kind: ProviderKind, model: string): Connection {
+  const config = connections.value
+  const existing = [config.active, ...Object.values(config.perPet ?? {})].find(c => c.kind === kind)
   return {
-    kind, model: model || setup?.model || (connectionDefaults[kind].model ?? ''),
-    endpoint: setup?.endpoint || (connectionDefaults[kind].endpoint ?? ''),
-    executable: setup?.executable || (connectionDefaults[kind].executable ?? ''),
+    kind, model: model || (connectionDefaults[kind].model ?? ''),
+    endpoint: existing?.endpoint || (connectionDefaults[kind].endpoint ?? ''),
+    executable: existing?.executable || (connectionDefaults[kind].executable ?? ''),
   }
-}
-/** Providers in the order every list shows them. */
-export const providerOrder: ProviderKind[] = ['apple', 'codex', 'claude', 'ollama', 'anthropic', 'openai', 'compatible']
-/** Providers the user has added, in display order. */
-export const addedProviders = computed(() => providerOrder.filter(kind => !!connections.value.providers?.[kind]))
-/** Every provider's terms; loaded once, since they only change with the build. */
-export const providerTerms = ref<Partial<Record<ProviderKind, ProviderTerms>>>({})
-export async function loadProviderTerms() {
-  try { providerTerms.value = await taskCall<Partial<Record<ProviderKind, ProviderTerms>>>('task_provider_terms') } catch { /* shared error */ }
-}
-/** Whether an added provider's terms are accepted at the version this build checks. */
-export function providerReady(kind: ProviderKind): boolean {
-  if (kind === 'none') return true
-  const setup = connections.value.providers?.[kind]
-  return !!setup && setup.termsVersion >= (providerTerms.value[kind]?.version ?? 0)
 }
 /** What this machine has installed and which keys are saved; loaded once, shared by every picker. */
 export const detection = ref<ProviderDetection | null>(null)

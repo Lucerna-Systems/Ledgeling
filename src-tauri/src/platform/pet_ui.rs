@@ -281,7 +281,7 @@ fn close(app: &tauri::AppHandle, session: Option<u64>) -> Result<(), String> {
 }
 
 /// Give the bubble keyboard focus. On macOS it is a non-activating panel that
-/// can still become key, so typing into it neither activates Perch nor brings
+/// can still become key, so typing into it neither activates Ledgeling nor brings
 /// the dashboard forward.
 fn focus(window: &WebviewWindow) {
     #[cfg(target_os = "macos")]
@@ -300,7 +300,7 @@ fn ensure_bubble(app: &tauri::AppHandle) -> Option<WebviewWindow> {
         return Some(window);
     }
     let built = WebviewWindowBuilder::new(app, BUBBLE, WebviewUrl::App("index.html?bubble".into()))
-        .title("Perch")
+        .title("Ledgeling")
         .inner_size(BUBBLE_WIDTH + BUBBLE_MARGIN * 2., DEFAULT_HEIGHT)
         .decorations(false)
         .transparent(true)
@@ -316,7 +316,7 @@ fn ensure_bubble(app: &tauri::AppHandle) -> Option<WebviewWindow> {
     let window = match built {
         Ok(window) => window,
         Err(error) => {
-            eprintln!("Perch could not create the pet bubble: {error}");
+            eprintln!("Ledgeling could not create the pet bubble: {error}");
             return None;
         }
     };
@@ -411,7 +411,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
                 v["parentId"].as_i64(),
                 || crate::tasks::files::default_root().map(|p| p.to_string_lossy().into_owned()),
             )?;
-            service.start(request)?;
+            service.start_for(request, crate::app::task_pet(app, Some(pet)))?;
         }
         // The bubble asks lazily: model listing can spawn a Codex process or
         // hit the network, so it happens here on the event thread, never
@@ -546,7 +546,7 @@ pub fn action_texts(preset: &str) -> Option<(&'static str, &'static str)> {
 /// Ask is questions and web search only; Actions is built-in presets without a
 /// connection, or the connected model's tool loop with one. With any
 /// connection the preset becomes an instruction for the model, which may also
-/// create folders, so a chosen folder is optional and falls back to Perch's
+/// create folders, so a chosen folder is optional and falls back to Ledgeling's
 /// own Documents folder.
 #[allow(clippy::too_many_arguments)]
 pub fn compose_request(
@@ -680,7 +680,7 @@ pub fn overlay(window: &tauri::WebviewWindow) {
         super::windows::quiet_overlay_frame(handle.0 as isize);
     }
     // GTK gives every window the app's menu bar, which would sit across the
-    // top of the pet screen as a stray "Perch" menu.
+    // top of the pet screen as a stray "Ledgeling" menu.
     #[cfg(target_os = "linux")]
     let _ = window.remove_menu();
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]

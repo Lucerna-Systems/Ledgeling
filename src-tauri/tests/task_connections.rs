@@ -1,28 +1,16 @@
 //! Explicit opt-in smoke tests. They send only a synthetic readiness request.
-//! API tests use credentials saved through Ledgeling, never print or copy keys.
+//! API tests use credentials saved through Perch, never print or copy keys.
 use ledgeling::tasks::{
     providers::{HttpModel, ModelProvider},
     runtimes,
-    types::{Connection, Message, ProviderKind},
+    types::{Connection, ProviderKind},
     Cancel,
 };
-
-fn get_test_var(name: &str) -> Result<String, std::env::VarError> {
-    let alt = if let Some(stripped) = name.strip_prefix("LEDGELING_") {
-        format!("PERCH_{stripped}")
-    } else if let Some(stripped) = name.strip_prefix("PERCH_") {
-        format!("LEDGELING_{stripped}")
-    } else {
-        name.to_string()
-    };
-    std::env::var(name).or_else(|_| std::env::var(&alt))
-}
-
 fn model(kind: ProviderKind, variable: &str) {
     let config = Connection {
         kind,
-        model: get_test_var(variable).expect(variable),
-        endpoint: get_test_var("LEDGELING_TEST_ENDPOINT").unwrap_or_default(),
+        model: std::env::var(variable).expect(variable),
+        endpoint: std::env::var("PERCH_TEST_ENDPOINT").unwrap_or_default(),
         ..Default::default()
     };
     assert!(
@@ -32,23 +20,20 @@ fn model(kind: ProviderKind, variable: &str) {
             .structured
     );
 }
-
 #[test]
-#[ignore = "Requires saved OpenAI API key and LEDGELING_TEST_OPENAI_MODEL (or PERCH_TEST_OPENAI_MODEL); incurs usage"]
+#[ignore = "Requires saved OpenAI API key and PERCH_TEST_OPENAI_MODEL; incurs usage"]
 fn openai() {
-    model(ProviderKind::Openai, "LEDGELING_TEST_OPENAI_MODEL")
+    model(ProviderKind::Openai, "PERCH_TEST_OPENAI_MODEL")
 }
-
 #[test]
-#[ignore = "Requires saved Anthropic API key and LEDGELING_TEST_ANTHROPIC_MODEL (or PERCH_TEST_ANTHROPIC_MODEL); incurs usage"]
+#[ignore = "Requires saved Anthropic API key and PERCH_TEST_ANTHROPIC_MODEL; incurs usage"]
 fn anthropic() {
-    model(ProviderKind::Anthropic, "LEDGELING_TEST_ANTHROPIC_MODEL")
+    model(ProviderKind::Anthropic, "PERCH_TEST_ANTHROPIC_MODEL")
 }
-
 #[test]
-#[ignore = "Requires LEDGELING_TEST_ENDPOINT and LEDGELING_TEST_COMPATIBLE_MODEL (or PERCH_TEST_*)"]
+#[ignore = "Requires PERCH_TEST_ENDPOINT and PERCH_TEST_COMPATIBLE_MODEL"]
 fn compatible() {
-    model(ProviderKind::Compatible, "LEDGELING_TEST_COMPATIBLE_MODEL")
+    model(ProviderKind::Compatible, "PERCH_TEST_COMPATIBLE_MODEL")
 }
 /// The on-device path end to end: starts `fm serve`, runs the structured
 /// readiness completion, and stops the server. Nothing leaves the machine, but
@@ -70,33 +55,6 @@ fn apple_foundation() {
     .unwrap();
     assert_eq!(capabilities.models, vec![apple::MODEL.to_string()]);
     assert!(capabilities.structured, "{}", capabilities.detail);
-    // The full action schema a folder task sends; `fm serve` rejects any
-    // schema outside its dialect, so this is what proves the format is right.
-    let tools = [
-        "finish",
-        "list_files",
-        "read_file",
-        "find_files",
-        "duplicates",
-        "changes",
-        "search_web",
-        "read_page",
-    ];
-    let reply = HttpModel(Connection {
-        kind: ProviderKind::Apple,
-        ..Default::default()
-    })
-    .act(
-        &[Message {
-            role: "user".into(),
-            content: "List the files in my folder.".into(),
-        }],
-        &tools,
-        &Cancel::default(),
-    )
-    .unwrap();
-    let call = ledgeling::tasks::providers::parse_call(&reply).unwrap();
-    assert!(tools.contains(&call.tool.as_str()), "{reply}");
     apple::shutdown();
 }
 #[test]

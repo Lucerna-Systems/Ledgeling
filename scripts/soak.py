@@ -19,8 +19,7 @@ root = Path(__file__).resolve().parents[1]
 hours = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
 interval = 60
 default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/ledgeling'
-bench_binary_env = os.environ.get('LEDGELING_BENCH_BINARY') or os.environ.get('PERCH_BENCH_BINARY')
-binary = Path(bench_binary_env if bench_binary_env else str(default_binary))
+binary = Path(os.environ.get('PERCH_BENCH_BINARY', str(default_binary)))
 
 if not binary.exists():
     sys.exit(f'{binary} does not exist. Run: npm run tauri build')
@@ -37,7 +36,7 @@ def rss_kib(pid):
     return int(out.strip() or 0)
 
 
-process = subprocess.Popen([str(binary)], env={**os.environ, 'LEDGELING_DIAGNOSTICS': '1', 'PERCH_DIAGNOSTICS': '1'},
+process = subprocess.Popen([str(binary)], env={**os.environ, 'PERCH_DIAGNOSTICS': '1'},
                            stderr=subprocess.DEVNULL)
 rows = []
 start = time.time()

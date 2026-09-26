@@ -2,16 +2,15 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowUp, FolderPlus, Globe, Paperclip, Pencil, Plus, Search, Sparkles, X } from '@lucide/vue'
 import { pets } from '../state'
-import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, promptDraft, effectiveConnection, livePet, providerReady, taskCall } from './state'
+import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, effectiveConnection, taskCall } from './state'
 import { presets, providerLabels, type Task, type TaskRequest } from './types'
 import ChatTurn from './ChatTurn.vue'
 import PetFace from './PetFace.vue'
+import ConnectionsPanel from './ConnectionsPanel.vue'
 import PetPicker from './PetPicker.vue'
 import './assistant.css'
 
-const emit = defineEmits<{ providers: [] }>()
-
-const prompt = promptDraft
+const prompt = ref('')
 const roots = ref<string[]>([])
 const attachments = ref<string[]>([])
 const preset = ref('')
@@ -20,14 +19,15 @@ const preset = ref('')
 const effective = computed(() => effectiveConnection(assignedPet.value))
 const mode = computed(() => !preset.value && ['codex', 'claude'].includes(effective.value.kind) ? 'advanced' : 'standard')
 const needsConnection = computed(() => !preset.value && effective.value.kind === 'none')
-// Consent to send content to a provider is given once, when it is added.
-const termsDue = computed(() => !preset.value && !providerReady(effective.value.kind))
+const allowCloud = ref(false)
 const allowWeb = ref(false)
 const sending = ref(false)
+const setup = ref(false)
+const remote = computed(() => !['none', 'ollama'].includes(effective.value.kind) && !preset.value)
 const provider = computed(() => providerLabels[effective.value.kind] ?? effective.value.kind)
 const activePreset = computed(() => presets.find(p => p.value === preset.value))
 const placeholder = computed(() => activePreset.value?.hint ?? (chat.value ? `Reply to ${chat.value.pet?.name.split(' ')[0] ?? 'your pet'}…` : 'Sort a folder, explain a document, or find something out…'))
-const canSend = computed(() => !sending.value && !needsConnection.value && !termsDue.value && !!prompt.value.trim())
+const canSend = computed(() => !sending.value && !needsConnection.value && !!prompt.value.trim() && (!remote.value || allowCloud.value))
 
 watch(assignedPet, async petId => { if (petId !== null) { try { const folder = await taskCall<string | null>('pet_folder', { petId }); if (folder) roots.value = [folder] } catch { /* shared error */ } } }, { immediate: true })
 watch(droppedFiles, paths => { attachments.value = [...new Set([...attachments.value, ...paths])] })
@@ -52,7 +52,7 @@ async function submit() {
   if (!canSend.value) return
   sending.value = true
   try {
-    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: chat.value?.turns.at(-1)?.id ?? null, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: false, allowWeb: allowWeb.value }
+    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: chat.value?.turns.at(-1)?.id ?? null, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: allowCloud.value, allowWeb: allowWeb.value }
     const task = await taskCall<Task>('task_start', { request })
     tasks.value = [task, ...tasks.value.filter(t => t.id !== task.id)]; prompt.value = ''; attachments.value = []; preset.value = ''
     if (!chat.value) activeConversation.value = task.id
@@ -60,6 +60,11 @@ async function submit() {
 }
 
 const chat = computed(() => conversations.value.find(c => c.id === activeConversation.value) ?? null)
+/** The pet a chat was with, if it is out now. Ids restart each launch, so the pack decides. */
+function livePet(petId: number | null, packId: string | undefined) {
+  if (!packId) return pets.value.find(p => p.id === petId)?.id ?? null
+  return pets.value.find(p => p.id === petId && p.packId === packId)?.id ?? pets.value.find(p => p.packId === packId)?.id ?? null
+}
 const chatPetName = computed(() => chat.value?.pet?.name ?? pets.value.find(p => p.id === chat.value?.petId)?.name ?? 'any pet')
 const renaming = ref(false)
 const titleDraft = ref('')
@@ -68,7 +73,7 @@ watch(activeConversation, () => {
   const current = chat.value
   if (!current) return
   const last = current.turns.at(-1)!
-  assignedPet.value = livePet(current.petId, current.pet)
+  assignedPet.value = livePet(current.petId, current.pet?.packId)
   roots.value = [...last.request.roots]
   attachments.value = []
   preset.value = ''
@@ -124,7 +129,11 @@ function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1)
   <div v-if="chat" ref="thread" class="chat-thread" aria-live="polite">
     <ChatTurn v-for="task in chat.turns" :key="task.id" :task="task" :pet="chat.pet" />
   </div>
-  <PetPicker v-else @providers="emit('providers')" />
+  <PetPicker v-else @setup="setup = true" />
+  <div v-if="setup && !chat" class="setup-drawer">
+    <div class="setup-drawer-head"><h2>Keys & apps</h2><button type="button" class="text-link" @click="setup = false">Done</button></div>
+    <ConnectionsPanel />
+  </div>
 
   <form class="task-composer" @submit.prevent="submit">
     <div v-if="activePreset" class="preset-pill">
@@ -137,9 +146,8 @@ function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1)
       <li v-for="path in roots" :key="path" :title="path"><FolderPlus :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="roots = roots.filter(p => p !== path)"><X :size="11" /></button></li>
       <li v-for="path in attachments" :key="path" :title="path"><Paperclip :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="attachments = attachments.filter(p => p !== path)"><X :size="11" /></button></li>
     </ul>
-    <p v-if="effective.kind === 'apple' && !preset" class="apple-note">Apple Intelligence answers from a look at your folder. It can't change files; use a built-in action or another AI for that.</p>
     <p v-if="mode === 'advanced'" class="task-problem">This AI can run commands on your computer. You'll approve each step, but some can't be undone.</p>
-    <p v-if="termsDue" class="task-problem">{{ provider }} needs its terms accepted once before it can run. <button type="button" class="text-link" @click="emit('providers')">Open AI providers</button></p>
+    <label v-if="remote" class="check-label consent"><input v-model="allowCloud" type="checkbox"> Let {{ provider }} read this request and anything attached</label>
     <div class="composer-toolbar">
       <button type="button" class="tool-button" title="Add a folder" aria-label="Add folder" @click="pick(true)"><FolderPlus :size="16" /></button>
       <button type="button" class="tool-button" title="Attach files" aria-label="Attach files" @click="pick(false)"><Paperclip :size="16" /></button>
@@ -158,6 +166,6 @@ function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1)
     </select>
   </div>
 
-  <p v-if="needsConnection" class="connection-hint">No AI picked yet. Try <strong>Organise files</strong> or another built-in action, or <button type="button" class="text-link" @click="emit('providers')">set up an AI provider</button> to ask anything.</p>
+  <p v-if="needsConnection" class="connection-hint">No AI picked yet. Try <strong>Organise files</strong> or another built-in action, or choose an AI above to ask anything.</p>
   </div>
 </template>

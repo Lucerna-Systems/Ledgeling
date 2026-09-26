@@ -1,7 +1,6 @@
 import { ref, watch } from 'vue'
 
-const KEY = 'ledgeling:sidebar'
-const LEGACY_KEY = 'perch:sidebar'
+const KEY = 'perch:sidebar'
 export const SIDEBAR_MIN = 210
 export const SIDEBAR_MAX = 440
 export const SIDEBAR_DEFAULT = 264
@@ -10,8 +9,7 @@ const clamp = (width: number) => Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEB
 
 function stored(): { width: number; collapsed: boolean } {
   try {
-    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY)
-    const saved = JSON.parse(raw ?? '{}') as { width?: number; collapsed?: boolean }
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as { width?: number; collapsed?: boolean }
     return { width: clamp(saved.width ?? SIDEBAR_DEFAULT), collapsed: !!saved.collapsed }
   } catch { return { width: SIDEBAR_DEFAULT, collapsed: false } }
 }

@@ -1,40 +1,31 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import AssistantPanel from './assistant/AssistantPanel.vue'
+import HistoryPanel from './assistant/HistoryPanel.vue'
 import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
 import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
-import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
-import PageLoading from './components/PageLoading.vue'
+import { ArrowLeft, Bird, ChevronLeft, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { action, busy, error, native, notes, pets, settings, snapshot, start } from './state'
+import PacksPanel from './panels/PacksPanel.vue'
+import SettingsPanel from './panels/SettingsPanel.vue'
+import LabPanel from './panels/LabPanel.vue'
+import AwarenessPanel from './panels/AwarenessPanel.vue'
+import DesktopPanel from './panels/DesktopPanel.vue'
+import PetStudio from './studio/PetStudio.vue'
 import { syncAppIcon } from './appIcon'
-import { companionReady, startPersist, type UiState } from './uiState'
-import { draft } from './studio/state'
-import { restoreDraft, serializeDraft } from './studio/state'
-import { promptDraft } from './assistant/state'
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
 
-// Pages other than the default Assistant load on first visit; Vue keeps the loaded component, so revisits are instant.
-const lazy = (load: () => Promise<{ default: object }>) => defineAsyncComponent({ loader: load as never, delay: 120, loadingComponent: PageLoading })
-const HistoryPanel = lazy(() => import('./assistant/HistoryPanel.vue'))
-const ProvidersPanel = lazy(() => import('./assistant/ProvidersPanel.vue'))
-const PacksPanel = lazy(() => import('./panels/PacksPanel.vue'))
-const SettingsPanel = lazy(() => import('./panels/SettingsPanel.vue'))
-const AwarenessPanel = lazy(() => import('./panels/AwarenessPanel.vue'))
-const DesktopPanel = lazy(() => import('./panels/DesktopPanel.vue'))
-const PetStudio = lazy(() => import('./studio/PetStudio.vue'))
-
-type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'studio'
+type Page = 'pets' | 'assistant' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
 const nav = [
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
-  { page: 'providers', label: 'AI providers', icon: Bot },
   { page: 'pets', label: 'Pets', icon: PawPrint },
   { page: 'history', label: 'History', icon: History },
   { page: 'settings', label: 'Settings', icon: Settings },
 ] as const
 /** Pages reached from inside another section, so the sidebar stays short. */
-const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', studio: 'pets' }
+const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', lab: 'settings', studio: 'pets' }
 const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
 
 const page = ref<Page>('assistant')
@@ -58,13 +49,11 @@ let stopIcon = () => {}
 let stopAssistant = () => {}
 const assistantOff: (() => void)[] = []
 let assistantDisposed = false
-const handlers: Record<string, (value: unknown) => void> = {
-  'assistant:open': value => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' },
-  'assistant:drop': value => { droppedFiles.value = value as string[]; page.value = 'assistant' },
-  'providers:open': () => { page.value = 'providers' },
-}
 async function initAssistant() {
-  for (const [name, handler] of Object.entries(handlers)) {
+  for (const [name, handler] of [
+    ['assistant:open', (value: unknown) => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' }],
+    ['assistant:drop', (value: unknown) => { droppedFiles.value = value as string[]; page.value = 'assistant' }],
+  ] as const) {
     const off = await listen(name, event => handler(event.payload))
     if (assistantDisposed) off(); else assistantOff.push(off)
   }
@@ -72,34 +61,6 @@ async function initAssistant() {
   const stop = await startTasks()
   if (assistantDisposed) stop(); else stopAssistant = stop
 }
-
-const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'studio']
-/** Put back what the user was doing before the window was destroyed, then replay events that arrived while it loaded. */
-async function restoreAndWatch() {
-  const ready = await companionReady()
-  const ui = ready.ui
-  restoredPage = typeof ui?.page === 'string'
-  if (ui) {
-    if (typeof ui.prompt === 'string') promptDraft.value = ui.prompt
-    const studio = ui.studio ? restoreDraft(ui.studio) : null
-    if (studio) draft.value = studio
-    if (typeof ui.page === 'string' && (pages as string[]).includes(ui.page) && (ui.page !== 'studio' || studio)) {
-      if (subpages[ui.page as Page]) back.value = subpages[ui.page as Page]!
-      page.value = ui.page as Page
-    }
-  }
-  for (const { event, payload } of ready.pending) handlers[event]?.(payload)
-  if (assistantDisposed) return
-  stopPersist = startPersist([page, promptDraft, draft], (): UiState => ({
-    page: page.value,
-    prompt: promptDraft.value,
-    studio: serializeDraft(draft.value),
-    volatile: page.value === 'providers',
-  }))
-}
-let stopPersist = () => {}
-/** The saved (or first-run) page was applied, so the first-run watch below must not override it. */
-let restoredPage = false
 
 const waiting = computed(() => tasks.value.filter(task => task.status === 'waiting').length)
 function followup(task: Task) {
@@ -119,17 +80,12 @@ const status = computed(() => {
 const offline = computed(() => !snapshot.value || busy.value)
 const quiet = computed(() => !pets.value.length || !!settings.value?.paused || !!settings.value?.hidden || !!snapshot.value?.suspended)
 
-// A brand-new user's first launch opens on Pets, once, where the tip waits.
-let openedFirstRun = false
-watch(snapshot, value => {
-  if (value?.firstRun && !openedFirstRun && !restoredPage) { openedFirstRun = true; page.value = 'pets' }
-})
 onMounted(() => {
   stop = start()
-  if (native) void initAssistant().then(restoreAndWatch).catch(() => {})
+  if (native) void initAssistant().catch(() => {})
   if (native) stopIcon = syncAppIcon()
 })
-onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
+onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
 </script>
 
 <template>
@@ -142,9 +98,6 @@ onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true;
                   :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">
             <component :is="item.icon" :size="18" :stroke-width="1.8" /><span class="label">{{ item.label }}</span>
             <span v-if="item.page === 'history' && waiting" class="nav-badge" :aria-label="`${waiting} waiting for you`">{{ waiting }}</span>
-          </button>
-          <button v-if="settings?.developerMode" class="code-entry" :title="collapsed ? 'Coding mode' : 'Open the coding window beside your browser'" :disabled="offline" @click="call('code_open', { petId: null }, false)">
-            <Code2 :size="18" :stroke-width="1.8" /><span class="label">Coding mode</span>
           </button>
         </nav>
         <section v-if="conversations.length && !collapsed" class="chat-section" aria-labelledby="chats-heading">
@@ -181,13 +134,13 @@ onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true;
       </div>
       <button v-if="subpages[page]" class="back-link" @click="page = back"><ArrowLeft :size="15" /> {{ titles[back] ?? 'Back' }}</button>
 
-      <div v-if="assistantVisited" v-show="page === 'assistant'" class="assistant-host"><AssistantPanel @providers="page = 'providers'" /></div>
-      <ProvidersPanel v-if="page === 'providers'" />
-      <HistoryPanel v-else-if="page === 'history'" @followup="followup" />
+      <div v-if="assistantVisited" v-show="page === 'assistant'" class="assistant-host"><AssistantPanel /></div>
+      <HistoryPanel v-if="page === 'history'" @followup="followup" />
       <PacksPanel v-else-if="page === 'pets'" @go="go" />
       <SettingsPanel v-else-if="page === 'settings'" @go="go" />
       <DesktopPanel v-else-if="page === 'desktop'" />
       <AwarenessPanel v-else-if="page === 'awareness'" />
+      <LabPanel v-else-if="page === 'lab'" />
       <PetStudio v-else-if="page === 'studio'" @go="go" />
     </main>
   </div>
