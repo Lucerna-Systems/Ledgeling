@@ -55,29 +55,30 @@ beforeEach(() => {
 describe('applyTheme', () => {
   it('sets the resolved mode and the tuned variants of a preset accent', () => {
     fakeMatchMedia(true)
-    applyTheme('dark', '#31725b')
+    applyTheme('dark', '#5b5bd6')
     expect(root().dataset.theme).toBe('dark')
-    expect(root().style.getPropertyValue('--accent')).toBe('#31725b')
-    expect(root().style.getPropertyValue('--accent-hover')).toBe('#3f8f70')
-    expect(root().style.getPropertyValue('--accent-soft')).toBe('#1d2b27')
+    expect(root().style.getPropertyValue('--accent')).toBe('#5b5bd6')
+    expect(root().style.getPropertyValue('--accent-hover')).toBe('#7c7cde')
+    expect(root().style.getPropertyValue('--accent-soft')).toBe('#1f1f33')
+    expect(root().style.getPropertyValue('--accent-2')).toBe('#8f4fd6')
     expect(root().style.getPropertyValue('--on-accent')).toBe('#ffffff')
   })
 
   it('resolves system mode from prefers-color-scheme', () => {
     const media = fakeMatchMedia(false)
-    applyTheme('system', '#31725b')
+    applyTheme('system', '#5b5bd6')
     expect(root().dataset.theme).toBe('light')
     media.setMatches(true)
-    applyTheme('system', '#31725b')
+    applyTheme('system', '#5b5bd6')
     expect(root().dataset.theme).toBe('dark')
   })
 
   it('caches the applied pair for the next launch', () => {
     fakeMatchMedia(false)
-    applyTheme('dark', '#31725b')
+    applyTheme('dark', '#5b5bd6')
     expect(JSON.parse(localStorage.getItem('perch:appearance') ?? '{}')).toEqual({
       theme: 'dark',
-      accent: '#31725b',
+      accent: '#5b5bd6',
     })
   })
 })
@@ -114,11 +115,11 @@ describe('accentVariants', () => {
 describe('initTheme', () => {
   it('paints the cached pair before the first snapshot arrives', async () => {
     fakeMatchMedia(false)
-    localStorage.setItem('perch:appearance', JSON.stringify({ theme: 'dark', accent: '#2e6da3' }))
+    localStorage.setItem('perch:appearance', JSON.stringify({ theme: 'dark', accent: '#2563d9' }))
     const { initTheme } = await import('./theme')
     initTheme()
     expect(root().dataset.theme).toBe('dark')
-    expect(root().style.getPropertyValue('--accent')).toBe('#2e6da3')
+    expect(root().style.getPropertyValue('--accent')).toBe('#2563d9')
   })
 
   it('follows the system appearance while the theme is auto', async () => {
@@ -126,11 +127,11 @@ describe('initTheme', () => {
     const { initTheme } = await import('./theme')
     const state = await import('./state')
     initTheme()
-    state.snapshot.value = { settings: { theme: 'system', accent: '#31725b' } } as unknown as Snapshot
+    state.snapshot.value = { settings: { theme: 'system', accent: '#5b5bd6' } } as unknown as Snapshot
     await nextTick()
     expect(root().dataset.theme).toBe('light')
     media.setMatches(true)
     expect(root().dataset.theme).toBe('dark')
-    expect(root().style.getPropertyValue('--accent')).toBe('#31725b')
+    expect(root().style.getPropertyValue('--accent')).toBe('#5b5bd6')
   })
 })

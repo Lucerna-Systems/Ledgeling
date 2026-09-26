@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { Activity, Check, ChevronRight, FlaskConical, Monitor, Power, ShieldCheck, X } from '@lucide/vue'
 import { busy, call, native, saveSettings, settings, snapshot } from '../state'
-import { ACCENT_PRESETS, presetFor } from '../theme'
+import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
 
 const emit = defineEmits<{ go: [page: 'desktop' | 'awareness' | 'lab'] }>()
@@ -91,11 +91,11 @@ const neverSeen = [
       <div><h3>Accent colour</h3><p>Used for buttons and highlights.</p></div>
       <div class="swatches" role="radiogroup" aria-label="Accent colour">
         <button v-for="preset in ACCENT_PRESETS" :key="preset.id" type="button" class="swatch" role="radio"
-                :style="{ background: preset.base }" :title="preset.label" :aria-label="preset.label"
+                :style="{ background: `linear-gradient(135deg, ${preset.base}, ${preset.glow})` }" :title="preset.label" :aria-label="preset.label"
                 :aria-checked="settings?.accent?.toLowerCase() === preset.base" @click="save({ accent: preset.base })" />
         <span class="swatch custom" role="radio" title="Custom" aria-label="Custom colour"
               :aria-checked="!!settings?.accent && !presetFor(settings.accent)">
-          <input type="color" :value="settings?.accent ?? '#31725b'" @change="save({ accent: ($event.target as HTMLInputElement).value })" />
+          <input type="color" :value="settings?.accent ?? DEFAULT_ACCENT" @change="save({ accent: ($event.target as HTMLInputElement).value })" />
         </span>
       </div>
     </div>

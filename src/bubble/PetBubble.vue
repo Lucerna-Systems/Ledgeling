@@ -372,8 +372,8 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .actions { display: flex; justify-content: space-between; gap: 10px; }
 .actions.start { justify-content: flex-start; }
 .actions button { min-width: 92px; height: 32px; padding: 0 16px; border-radius: 16px !important; font-size: 12px; font-weight: 500; }
-.actions .primary { background: var(--accent) !important; color: var(--on-accent); }
-.actions .primary:not(:disabled):hover { background: var(--accent-hover) !important; }
+.actions .primary { background: var(--accent-gradient) !important; color: var(--on-accent); }
+.actions .primary:not(:disabled):hover { filter: brightness(1.07); }
 .actions .secondary { background: var(--soft) !important; border: 1px solid var(--line) !important; }
 .actions .secondary:not(:disabled):hover { border-color: var(--line-strong) !important; }
 .output {
