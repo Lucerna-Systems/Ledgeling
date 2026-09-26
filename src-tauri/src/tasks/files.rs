@@ -33,6 +33,12 @@ impl Scope {
         let raw = Path::new(input);
         let path = if raw.is_absolute() {
             raw.to_path_buf()
+        } else if let Some(inside) = self.roots.iter().find_map(|r| {
+            // "curseforge/minecraft" means inside the shared "curseforge".
+            let rest = raw.strip_prefix(r.file_name()?).ok()?;
+            (!rest.as_os_str().is_empty()).then(|| r.join(rest))
+        }) {
+            inside
         } else {
             self.roots
                 .first()
@@ -56,17 +62,23 @@ impl Scope {
     /// chosen folders themselves.
     pub fn list_folder(&self, input: &str, cancel: &Cancel) -> Result<serde_json::Value, String> {
         const MAX: usize = 100;
-        let input = input.trim();
-        let folders: Vec<PathBuf> =
-            if input.is_empty() || self.roots.iter().any(|r| Path::new(input) == r) {
-                if input.is_empty() {
-                    self.roots.clone()
-                } else {
-                    vec![PathBuf::from(input)]
+        let folders = match self.shared_folder(input) {
+            Some(root) => vec![root],
+            None if input.trim().trim_end_matches('/').is_empty()
+                || matches!(input.trim(), "." | "./") =>
+            {
+                self.roots.clone()
+            }
+            None => {
+                let path = self
+                    .path(input.trim(), false)
+                    .map_err(|_| self.unknown_folder(input))?;
+                if !path.is_dir() {
+                    return Err(self.unknown_folder(input));
                 }
-            } else {
-                vec![self.path(input, false)?]
-            };
+                vec![path]
+            }
+        };
         if folders.is_empty() {
             return Err("No folder was shared for this task.".into());
         }
@@ -103,6 +115,32 @@ impl Scope {
             listed.push(serde_json::json!({ "folder": folder, "entries": entries, "more": more }));
         }
         Ok(serde_json::Value::Array(listed))
+    }
+    /// The shared folder `input` names, in the loose forms a model writes it:
+    /// its full path, `~/…`, its own name, or the tail of its path.
+    fn shared_folder(&self, input: &str) -> Option<PathBuf> {
+        let input = input.trim().trim_end_matches('/');
+        if input.is_empty() {
+            return None;
+        }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let expanded = match (input.strip_prefix("~/"), &home) {
+            (Some(rest), Some(home)) => home.join(rest),
+            _ => PathBuf::from(input),
+        };
+        self.roots
+            .iter()
+            .find(|root| {
+                **root == expanded || (!expanded.is_absolute() && root.ends_with(&expanded))
+            })
+            .cloned()
+    }
+    fn unknown_folder(&self, input: &str) -> String {
+        let shared: Vec<String> = self.roots.iter().map(|r| r.display().to_string()).collect();
+        format!(
+            "{input} is not a folder in this task. The shared folder is {}; pass \"\" for it, or a path inside it.",
+            shared.join(", ")
+        )
     }
     pub fn list(&self, cancel: &Cancel) -> Result<Vec<PathBuf>, String> {
         fn walk(
@@ -407,6 +445,51 @@ pub fn undo(scope: &Scope, op: &mut Operation, cancel: &Cancel) -> Result<(), St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_folder_can_be_named_the_ways_a_model_writes_it() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap().join("curseforge");
+        std::fs::create_dir_all(root.join("minecraft/Instances")).unwrap();
+        let scope = super::Scope::new(&[root.to_string_lossy().into()], &[]).unwrap();
+        let listed = |input: &str| {
+            scope
+                .list_folder(input, &super::Cancel::default())
+                .map(|v| {
+                    v[0]["entries"][0]["name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+        };
+        let full = root.to_string_lossy().to_string();
+        for root_form in [
+            "",
+            ".",
+            "./",
+            "curseforge",
+            "curseforge/",
+            &full,
+            &format!("{full}/"),
+        ] {
+            assert_eq!(
+                listed(root_form).as_deref(),
+                Ok("minecraft"),
+                "{root_form:?}"
+            );
+        }
+        for inside in [
+            "minecraft",
+            "curseforge/minecraft",
+            &format!("{full}/minecraft"),
+        ] {
+            assert_eq!(listed(inside).as_deref(), Ok("Instances"), "{inside:?}");
+        }
+        let missing = listed("Documents/nowhere").unwrap_err();
+        assert!(
+            missing.contains(&full),
+            "names the shared folder: {missing}"
+        );
+    }
     use super::*;
     fn setup() -> (tempfile::TempDir, Scope, Cancel) {
         let dir = tempfile::tempdir().unwrap();

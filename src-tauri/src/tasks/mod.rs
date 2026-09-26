@@ -484,6 +484,16 @@ impl Context {
                 Err(e) => json!({"toolError":e}),
             }
             .to_string();
+            // Debug builds only: what the model asked for and got, to diagnose
+            // a task that went wrong without a way to see its transcript.
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[task {}] {} {} -> {}",
+                self.id,
+                call.tool,
+                call.args,
+                clip(&content, 300)
+            );
             if let Some(budget) = model.context_chars() {
                 content = clip(&content, budget / 3);
             }
