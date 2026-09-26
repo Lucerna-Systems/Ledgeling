@@ -20,7 +20,7 @@ beforeEach(() => {
   api.invoke.mockReset().mockResolvedValue(null)
   activeConversation.value = null
   assignedPet.value = null
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} }
   tasks.value = [turn(4, 'Something else', null), turn(3, 'And the PDFs?', 2), turn(2, 'Find my invoices', null), turn(1, 'Older chat', null)]
 })
 
@@ -32,7 +32,8 @@ it('groups follow-ups into chats, most recently active first', () => {
 
 it('shows an open chat as a thread and continues it from its latest turn', async () => {
   activeConversation.value = 2
-  connections.value = { ...connections.value, active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' } }
+  connections.value = { ...connections.value, active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' },
+    providers: { ollama: { model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '', termsVersion: 0, acceptedAt: 0 } } }
   const wrapper = mount(AssistantPanel)
   expect(wrapper.findAll('.chat-prompt').map(p => p.text())).toEqual(['Find my invoices', 'And the PDFs?'])
   expect(wrapper.get('.chat-heading h1').text()).toBe('Find my invoices')

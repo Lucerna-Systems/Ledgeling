@@ -3,7 +3,7 @@
 use ledgeling::tasks::{
     providers::{HttpModel, ModelProvider},
     runtimes,
-    types::{Connection, ProviderKind},
+    types::{Connection, Message, ProviderKind},
     Cancel,
 };
 fn model(kind: ProviderKind, variable: &str) {
@@ -55,6 +55,33 @@ fn apple_foundation() {
     .unwrap();
     assert_eq!(capabilities.models, vec![apple::MODEL.to_string()]);
     assert!(capabilities.structured, "{}", capabilities.detail);
+    // The full action schema a folder task sends; `fm serve` rejects any
+    // schema outside its dialect, so this is what proves the format is right.
+    let tools = [
+        "finish",
+        "list_files",
+        "read_file",
+        "find_files",
+        "duplicates",
+        "changes",
+        "search_web",
+        "read_page",
+    ];
+    let reply = HttpModel(Connection {
+        kind: ProviderKind::Apple,
+        ..Default::default()
+    })
+    .act(
+        &[Message {
+            role: "user".into(),
+            content: "List the files in my folder.".into(),
+        }],
+        &tools,
+        &Cancel::default(),
+    )
+    .unwrap();
+    let call = ledgeling::tasks::providers::parse_call(&reply).unwrap();
+    assert!(tools.contains(&call.tool.as_str()), "{reply}");
     apple::shutdown();
 }
 #[test]

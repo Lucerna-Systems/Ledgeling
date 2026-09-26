@@ -21,7 +21,7 @@ const emit = async (name: string, payload: unknown) => {
   await flushPromises()
 }
 const sent = () => api.invoke.mock.calls.filter(([command]) => command === 'pet_bubble').map(([, args]) => (args as { event: Record<string, unknown> }).event)
-const show = (over = {}) => ({ session: 1, petId: 3, name: 'Budgie', runtime: 'none', remote: false, model: '', folder: '/tmp/work', tailX: 80, tailUp: false, ...over })
+const show = (over = {}) => ({ session: 1, petId: 3, name: 'Budgie', runtime: 'none', model: '', folder: '/tmp/work', tailX: 80, tailUp: false, ...over })
 const task = (over: Partial<Task> = {}): Task => ({
   id: 7, request: { prompt: 'p', petId: 3, roots: [], attachments: [], preset: '', mode: 'standard', parentId: null, allowCloud: false, allowWeb: false },
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status: 'running', progress: 'Sorting files', result: '', error: null,

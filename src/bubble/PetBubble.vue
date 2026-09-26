@@ -7,7 +7,7 @@ import MarkdownResult from '../assistant/MarkdownResult.vue'
 import Dropdown from '../components/Dropdown.vue'
 import { applyCachedTheme } from '../theme'
 import {
-  ACTIONS, NOTCH, agent, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
+  ACTIONS, NOTCH, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
   type BubbleShow, type BubbleUpdate, type Draft, type TaskView,
 } from './logic'
 
@@ -44,7 +44,6 @@ const isConnected = computed(() => !!show.value && connected(show.value.runtime)
 const hint = computed(() => show.value ? blocker(show.value, draft) : null)
 const running = computed(() => !!task.value && !task.value.done)
 const canSend = computed(() => !hint.value && !running.value)
-const cloudBox = computed(() => !ask.value && isConnected.value && !agent(show.value!.runtime) && show.value!.remote)
 const path = computed(() => bubblePath(size.width, size.height, tail.x, tail.up))
 const approvalLines = computed(() => task.value?.approval?.summary.items.filter(Boolean) ?? [])
 
@@ -193,7 +192,7 @@ function report() {
 
 // Rows appearing and disappearing change the height before the observer has
 // a chance to fire in a hidden window.
-watch([() => draft.mode, hint, task, note, () => models.state, cloudBox], () => { void nextTick(report) })
+watch([() => draft.mode, hint, task, note, () => models.state], () => { void nextTick(report) })
 
 async function subscribe<T>(event: string, callback: (value: T) => void) {
   const stop = await listen<T>(event, e => callback(e.payload))
@@ -272,7 +271,6 @@ onUnmounted(() => {
         @keydown="promptKey"
       />
 
-      <label v-if="cloudBox" class="check"><input v-model="draft.allowCloud" type="checkbox">Allow selected content to reach my AI provider</label>
       <label v-if="ask" class="check"><input v-model="draft.allowWeb" type="checkbox">Allow web research</label>
 
       <div v-if="isConnected" class="model-row">
@@ -284,7 +282,7 @@ onUnmounted(() => {
       </div>
 
       <div class="actions">
-        <button type="button" class="secondary" @click="settings">Connections</button>
+        <button type="button" class="secondary" @click="settings">AI providers</button>
         <button type="button" class="primary" :disabled="!canSend" @click="send">{{ ask ? 'Send request' : 'Run action' }}</button>
       </div>
 

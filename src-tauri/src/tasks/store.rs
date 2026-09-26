@@ -73,7 +73,11 @@ impl Store {
                 r.get::<_, String>(0)
             })
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| serde_json::from_str::<Connections>(&s).ok())
+            .map(|mut config| {
+                super::setup::normalize(&mut config);
+                config
+            })
             .unwrap_or_default()
     }
     pub fn set_config(&self, config: &Connections) -> Result<(), String> {

@@ -5,6 +5,7 @@ pub mod files;
 pub mod providers;
 pub mod runtimes;
 pub mod search;
+pub mod setup;
 pub mod store;
 pub mod summary;
 pub mod types;
@@ -139,16 +140,12 @@ impl TaskService {
         {
             return Err("Use Advanced mode for this runtime, or choose an Ollama/API model for Standard mode.".into());
         }
-        if providers::is_remote(&connection) && request.preset.is_empty() && !request.allow_cloud {
-            return Err("Confirm that selected task content may be sent to this provider.".into());
-        }
-        // Checked here as well as on save, so a connection stored by an older
-        // build cannot run before its terms have been accepted.
-        if connection.kind == ProviderKind::Apple && !apple::terms_accepted(&config) {
-            return Err(
-                "Open Connections, tick \"I accept the terms for using the on-device model\", then press Save connections. This is asked once."
-                    .into(),
-            );
+        // Adding a provider is where its terms, including consent to send
+        // content off this machine, are accepted. Checked here as well as on
+        // save, so a connection stored by an older build cannot skip them.
+        // Built-in actions never reach the provider.
+        if request.preset.is_empty() && !setup::ready(&config, &connection.kind) {
+            return Err(setup::not_ready(&connection.kind));
         }
         if let Some(id) = request.parent_id {
             self.inner.store.lock().unwrap().get(id)?;
@@ -408,9 +405,11 @@ impl Context {
         }
         messages.push(Message{role:"user".into(),content:json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
         let mut malformed = 0;
+        let mut done = HashSet::new();
         for step in 0..24 {
             self.progress(&format!("Thinking · step {} of 24", step + 1))?;
-            let text = model.complete(&messages, &self.cancel)?;
+            let tools = open_tools(scope, task.request.allow_web, &done);
+            let text = model.act(&messages, &tools, &self.cancel)?;
             let call = match providers::parse_call(&text) {
                 Ok(call) => {
                     malformed = 0;
@@ -450,6 +449,9 @@ impl Context {
             self.progress(summary::tool_label(&call.tool))?;
             let result = self.tool(scope, task, &call);
             self.cancel.check()?;
+            if result.is_ok() {
+                done.insert(call.tool.clone());
+            }
             let content = match result {
                 Ok(v) => json!({"toolResult":v}),
                 Err(e) => json!({"toolError":e}),
@@ -514,7 +516,7 @@ impl Context {
                 if !task.request.allow_web
                     || !self.inner.store.lock().unwrap().config().search_enabled
                 {
-                    return Err("Web search is not enabled for this task. Enable Brave Search in Connections and allow web access.".into());
+                    return Err("Web search is not enabled for this task. Turn on Brave Search on the AI providers page and allow web access.".into());
                 }
                 let results = search::Brave.search(arg(&call.args, "query")?, &self.cancel)?;
                 self.update(|t| {
@@ -667,6 +669,27 @@ fn validate_citations(text: &str, sources: &[Source]) -> Result<(), String> {
     }
     Ok(())
 }
+/// The actions that could do anything for this task right now: file tools only
+/// with a folder or attachment, web tools only when allowed, and a tool that
+/// takes no arguments only until it has run, since it would answer the same.
+/// Small models otherwise pick tools that cannot help, or repeat one forever.
+fn open_tools(scope: &Scope, web: bool, done: &HashSet<String>) -> Vec<&'static str> {
+    let mut tools = vec!["finish"];
+    if !scope.roots.is_empty() || !scope.attachments.is_empty() {
+        tools.extend([
+            "list_files",
+            "read_file",
+            "find_files",
+            "duplicates",
+            "changes",
+        ]);
+    }
+    if web {
+        tools.extend(["search_web", "read_page"]);
+    }
+    tools.retain(|tool| !(matches!(*tool, "list_files" | "duplicates") && done.contains(*tool)));
+    tools
+}
 const SYSTEM: &str = r#"You are Ledgeling, a helpful desktop assistant. Respond ONLY with one JSON object {"tool":"name","args":{...}} each turn. Do not emit prose outside JSON.
 Tools:
 list_files {}
@@ -731,13 +754,12 @@ mod tests {
     #[test]
     fn the_on_device_model_will_not_run_until_its_terms_are_accepted() {
         let (_db, s) = service();
-        let apple = Connection {
-            kind: ProviderKind::Apple,
-            model: apple::MODEL.into(),
-            ..Default::default()
-        };
         s.set_config(&Connections {
-            active: apple.clone(),
+            active: Connection {
+                kind: ProviderKind::Apple,
+                model: apple::MODEL.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .unwrap();
@@ -747,20 +769,75 @@ mod tests {
             ..Default::default()
         };
         let refused = s.start(request()).err().expect("the task must be refused");
-        assert!(refused.contains("accept the terms"), "{refused}");
+        assert!(refused.contains("AI providers page"), "{refused}");
         // Accepting is the only thing that changes. The accepted case is not
         // started here on purpose: running it would spawn a real `fm serve`
         // and leave a live model server behind the test process.
-        let accepted = Connections {
-            active: apple,
-            apple_terms: AppleTerms {
-                accepted_version: apple::TERMS_VERSION,
-                accepted_at: 1,
+        let mut config = s.config();
+        setup::add(
+            &mut config,
+            ProviderKind::Apple,
+            ProviderSetup::default(),
+            true,
+            1,
+        )
+        .unwrap();
+        assert!(!setup::ready(&s.config(), &ProviderKind::Apple));
+        assert!(setup::ready(&config, &ProviderKind::Apple));
+    }
+    #[test]
+    fn a_cloud_provider_used_before_the_providers_page_asks_for_its_terms_once() {
+        let (_db, s) = service();
+        s.set_config(&Connections {
+            active: Connection {
+                kind: ProviderKind::Openai,
+                model: "gpt".into(),
+                ..Default::default()
             },
             ..Default::default()
+        })
+        .unwrap();
+        let request = || TaskRequest {
+            prompt: "Hi".into(),
+            mode: "standard".into(),
+            allow_cloud: true,
+            ..Default::default()
         };
-        assert!(!apple::terms_accepted(&s.config()));
-        assert!(apple::terms_accepted(&accepted));
+        let refused = s
+            .start(request())
+            .err()
+            .expect("per-request consent no longer counts");
+        assert!(refused.contains("OpenAI"), "{refused}");
+        // Built-in actions never reach the provider, so they are not held up.
+        let d = tempfile::tempdir().unwrap();
+        assert!(s
+            .start(TaskRequest {
+                preset: "find".into(),
+                roots: vec![d.path().canonicalize().unwrap().to_string_lossy().into()],
+                ..request()
+            })
+            .is_ok());
+    }
+    #[test]
+    fn only_actions_that_could_help_are_offered() {
+        let none = HashSet::new();
+        let nothing = Scope::new(&[], &[]).unwrap();
+        assert_eq!(open_tools(&nothing, false, &none), ["finish"]);
+        assert_eq!(
+            open_tools(&nothing, true, &none),
+            ["finish", "search_web", "read_page"]
+        );
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap();
+        let folder = Scope::new(&[root.to_string_lossy().into()], &[]).unwrap();
+        assert!(open_tools(&folder, false, &none).contains(&"list_files"));
+        let listed = HashSet::from(["list_files".to_string(), "read_file".to_string()]);
+        let after = open_tools(&folder, false, &listed);
+        assert!(!after.contains(&"list_files"));
+        assert!(
+            after.contains(&"read_file"),
+            "a tool with arguments can run again"
+        );
     }
     #[test]
     fn legacy_config_without_per_pet_deserializes() {

@@ -1,12 +1,12 @@
 import { computed, ref } from 'vue'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { Task, TaskPet, Connections, Connection, ProviderDetection, ProviderKind } from './types'
+import type { Task, TaskPet, Connections, Connection, ProviderDetection, ProviderKind, ProviderTerms } from './types'
 export const tasks = ref<Task[]>([])
 export const taskError = ref('')
 export const assignedPet = ref<number | null>(null)
 export const droppedFiles = ref<string[]>([])
-export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } })
+export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} })
 /** The connection a task for this pet actually runs on: its override, else the default. */
 export function effectiveConnection(petId: number | null): Connection {
   const config = connections.value
@@ -32,6 +32,7 @@ export async function startTasks() {
   })
   await refreshTasks()
   connections.value = await taskCall<Connections>('task_connections')
+  void loadProviderTerms()
   return () => { stop(); stopConnections() }
 }
 /** A chat: a first request and every follow-up chained to it through `parentId`. */
@@ -89,15 +90,29 @@ export const connectionDefaults: Record<ProviderKind, Partial<Connection>> = {
   compatible: { endpoint: 'https://your-provider.example/v1' }, codex: { executable: 'codex' }, claude: {},
   apple: { model: 'system' },
 }
-/** A connection of `kind`, reusing the endpoint or executable already configured for it. */
-export function draftConnection(kind: ProviderKind, model: string): Connection {
-  const config = connections.value
-  const existing = [config.active, ...Object.values(config.perPet ?? {})].find(c => c.kind === kind)
+/** A connection of an added provider, on its saved settings and default model unless `model` is given. */
+export function draftConnection(kind: ProviderKind, model = ''): Connection {
+  const setup = connections.value.providers?.[kind]
   return {
-    kind, model: model || (connectionDefaults[kind].model ?? ''),
-    endpoint: existing?.endpoint || (connectionDefaults[kind].endpoint ?? ''),
-    executable: existing?.executable || (connectionDefaults[kind].executable ?? ''),
+    kind, model: model || setup?.model || (connectionDefaults[kind].model ?? ''),
+    endpoint: setup?.endpoint || (connectionDefaults[kind].endpoint ?? ''),
+    executable: setup?.executable || (connectionDefaults[kind].executable ?? ''),
   }
+}
+/** Providers in the order every list shows them. */
+export const providerOrder: ProviderKind[] = ['apple', 'codex', 'claude', 'ollama', 'anthropic', 'openai', 'compatible']
+/** Providers the user has added, in display order. */
+export const addedProviders = computed(() => providerOrder.filter(kind => !!connections.value.providers?.[kind]))
+/** Every provider's terms; loaded once, since they only change with the build. */
+export const providerTerms = ref<Partial<Record<ProviderKind, ProviderTerms>>>({})
+export async function loadProviderTerms() {
+  try { providerTerms.value = await taskCall<Partial<Record<ProviderKind, ProviderTerms>>>('task_provider_terms') } catch { /* shared error */ }
+}
+/** Whether an added provider's terms are accepted at the version this build checks. */
+export function providerReady(kind: ProviderKind): boolean {
+  if (kind === 'none') return true
+  const setup = connections.value.providers?.[kind]
+  return !!setup && setup.termsVersion >= (providerTerms.value[kind]?.version ?? 0)
 }
 /** What this machine has installed and which keys are saved; loaded once, shared by every picker. */
 export const detection = ref<ProviderDetection | null>(null)

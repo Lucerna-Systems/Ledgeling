@@ -1,9 +1,11 @@
 export type ProviderKind = 'none' | 'ollama' | 'openai' | 'anthropic' | 'compatible' | 'codex' | 'claude' | 'apple'
 export interface Connection { kind: ProviderKind; model: string; endpoint: string; executable: string }
-/** Acceptance of Ledgeling's terms for the on-device model. The backend clamps the
- *  version and stamps the time, so these are a request, not a claim. */
-export interface AppleTerms { acceptedVersion: number; acceptedAt: number }
-export interface Connections { active: Connection; searchEnabled: boolean; perPet: Record<number, Connection>; appleTerms: AppleTerms }
+/** A provider added on the AI providers page. The backend stamps the terms fields; the frontend never sets them. */
+export interface ProviderSetup { model: string; endpoint: string; executable: string; termsVersion: number; acceptedAt: number }
+/** Only providers in `providers` can be picked or run. */
+export interface Connections { active: Connection; searchEnabled: boolean; perPet: Record<number, Connection>; providers: Partial<Record<ProviderKind, ProviderSetup>> }
+/** A provider's terms as the backend checks them, from `task_provider_terms`. */
+export interface ProviderTerms { version: number; text: string }
 /** What the machine actually has: installed harnesses and saved API keys. */
 export interface ProviderDetection { codexInstalled: boolean; claudeCode: boolean; ollamaApp: boolean; ollamaReachable: boolean; openaiKey: boolean; anthropicKey: boolean; compatibleKey: boolean; braveKey: boolean; appleSupported: boolean; appleReady: boolean; appleDetail: string }
 export interface TaskRequest { prompt: string; petId: number | null; roots: string[]; attachments: string[]; preset: string; mode: string; parentId: number | null; allowCloud: boolean; allowWeb: boolean }
