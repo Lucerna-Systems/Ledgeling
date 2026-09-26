@@ -15,7 +15,7 @@ it('preserves a request draft when navigating between companion pages', async ()
   }
   await navigate('Assistant')
   await wrapper.get('#task-prompt').setValue('Summarise my notes')
-  await navigate('Home')
+  await navigate('History')
   expect(wrapper.get('#task-prompt').isVisible()).toBe(false)
   await navigate('Assistant')
   expect(wrapper.get('#task-prompt').isVisible()).toBe(true)
@@ -27,10 +27,10 @@ it('resets page scroll when changing sections', async () => {
   const wrapper = mount(Companion)
   const main = wrapper.get('main').element
   main.scrollTop = 400
-  await wrapper.findAll('nav button').find(button => button.text() === 'Assistant')!.trigger('click')
+  await wrapper.findAll('nav button').find(button => button.text() === 'History')!.trigger('click')
   await Promise.resolve()
   expect(main.scrollTop).toBe(0)
-  expect(wrapper.findAll('nav button').find(button => button.text() === 'Assistant')!.attributes('aria-current')).toBe('page')
+  expect(wrapper.findAll('nav button').find(button => button.text() === 'History')!.attributes('aria-current')).toBe('page')
   wrapper.unmount()
 })
 
@@ -46,18 +46,14 @@ it('keeps Settings selected on an advanced page and returns to it', async () => 
   wrapper.unmount()
 })
 
-it('shows each pet out on the desktop as a card', () => {
+it('opens on the Assistant and offers pause and hide in the sidebar while pets are out', () => {
   snapshot.value = {
     settings: { paused: false, hidden: false, speedScale: 1 }, notes: [], packs: [], perchCount: 0,
-    pets: [
-      { id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'perch', energy: 1, mood: .7, surface: 'window_top' },
-      { id: 2, packId: 'glass', name: 'Glass', class: 'climber', state: 'rest', energy: 1, mood: .7, surface: null },
-    ],
+    pets: [{ id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'perch', energy: 1, mood: .7, surface: 'window_top' }],
   } as unknown as Snapshot
   const wrapper = mount(Companion)
-  expect(wrapper.findAll('.pet-tile:not(.add-tile)')).toHaveLength(2)
-  expect(wrapper.text()).toContain('Perched on top of a window')
-  expect(wrapper.text()).toContain('Pip and Glass are out exploring')
+  expect(wrapper.get('nav button[aria-current="page"]').text()).toBe('Assistant')
+  expect(wrapper.findAll('.sidebar-controls button').map(button => button.text())).toEqual(['Pause', 'Hide'])
   wrapper.unmount()
   snapshot.value = null
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Check, ChevronRight, FlaskConical, Monitor, Power, ShieldCheck, X } from '@lucide/vue'
-import { busy, call, native, saveSettings, settings, snapshot } from '../state'
+import { Activity, Check, ChevronRight, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
+import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
 
@@ -12,6 +12,17 @@ const themeChoices: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'Auto' },
 ]
+
+const paces = [
+  { label: 'Calm', value: 0.6 },
+  { label: 'Normal', value: 1 },
+  { label: 'Lively', value: 1.8 },
+]
+/** The nearest preset, so a speed saved by an older build still shows a choice. */
+const pace = computed(() => {
+  const current = settings.value?.speedScale ?? 1
+  return paces.reduce((best, next) => Math.abs(next.value - current) < Math.abs(best.value - current) ? next : best).value
+})
 
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
@@ -103,6 +114,17 @@ const neverSeen = [
 
   <h2 class="group-title">Your pets</h2>
   <section class="settings-group">
+    <div class="setting-row">
+      <div><h3>Pace</h3><p>How busy your pets are as they wander between windows.</p></div>
+      <div class="segmented" role="radiogroup" aria-label="Pace">
+        <button v-for="option in paces" :key="option.label" type="button" role="radio" :aria-checked="pace === option.value"
+                :disabled="!snapshot" @click="option.value !== settings?.speedScale && save({ speedScale: option.value })">{{ option.label }}</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><h3>Fresh scenery</h3><p>Send everyone off to find a new spot.</p></div>
+      <button :disabled="!snapshot || busy || !pets.length" @click="action('relocate')"><Shuffle :size="15" /> Move somewhere new</button>
+    </div>
     <div v-if="screens.length > 1" class="setting-row">
       <div><h3>Screen</h3><p>Pets live on one screen at a time.</p></div>
       <select :value="selectedScreen" :disabled="busy" aria-label="Screen for pets" @change="pickScreen">

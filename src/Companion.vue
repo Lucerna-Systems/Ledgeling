@@ -5,9 +5,8 @@ import AssistantPanel from './assistant/AssistantPanel.vue'
 import HistoryPanel from './assistant/HistoryPanel.vue'
 import { startTasks, assignedPet, droppedFiles, pendingFollowup, tasks } from './assistant/state'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, History, House, MessageCircle, PawPrint, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
-import { error, native, notes, pets, settings, snapshot, start } from './state'
-import HomePanel from './panels/HomePanel.vue'
+import { ArrowLeft, Bird, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { action, busy, error, native, notes, pets, settings, snapshot, start } from './state'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
 import LabPanel from './panels/LabPanel.vue'
@@ -15,11 +14,10 @@ import AwarenessPanel from './panels/AwarenessPanel.vue'
 import DesktopPanel from './panels/DesktopPanel.vue'
 import PetStudio from './studio/PetStudio.vue'
 
-type Page = 'home' | 'pets' | 'assistant' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
+type Page = 'pets' | 'assistant' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
 const nav = [
-  { page: 'home', label: 'Home', icon: House },
-  { page: 'pets', label: 'Pets', icon: PawPrint },
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
+  { page: 'pets', label: 'Pets', icon: PawPrint },
   { page: 'history', label: 'History', icon: History },
   { page: 'settings', label: 'Settings', icon: Settings },
 ] as const
@@ -27,7 +25,7 @@ const nav = [
 const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', lab: 'settings', studio: 'pets' }
 const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
 
-const page = ref<Page>('home')
+const page = ref<Page>('assistant')
 /** Where a sub-page's back button returns to: the page that opened it. */
 const back = ref<Page>('settings')
 const section = computed(() => subpages[page.value] ?? page.value)
@@ -36,7 +34,7 @@ function go(next: Page) {
   page.value = next
 }
 
-const assistantVisited = ref(false)
+const assistantVisited = ref(true)
 watch(page, value => { if (value === 'assistant') assistantVisited.value = true })
 const content = ref<HTMLElement | null>(null)
 watch(page, async () => { await nextTick(); if (content.value) content.value.scrollTop = 0 })
@@ -64,11 +62,6 @@ function followup(task: Task) {
   page.value = 'assistant'
 }
 
-function ask(petId: number) {
-  assignedPet.value = petId
-  page.value = 'assistant'
-}
-
 const status = computed(() => {
   if (!native) return 'Browser preview'
   if (!snapshot.value) return 'Connecting…'
@@ -78,6 +71,7 @@ const status = computed(() => {
   if (!pets.value.length) return 'Nobody out yet'
   return pets.value.length === 1 ? '1 pet out' : `${pets.value.length} pets out`
 })
+const offline = computed(() => !snapshot.value || busy.value)
 const quiet = computed(() => !pets.value.length || !!settings.value?.paused || !!settings.value?.hidden || !!snapshot.value?.suspended)
 
 onMounted(() => {
@@ -90,7 +84,7 @@ onUnmounted(() => { stop(); assistantDisposed = true; stopAssistant(); assistant
 <template>
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#" @click.prevent="page = 'home'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span>perch</a>
+      <a class="brand" href="#" @click.prevent="page = 'assistant'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span>perch</a>
       <nav aria-label="Main navigation">
         <button v-for="item in nav" :key="item.page" :class="{ selected: section === item.page }"
                 :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">
@@ -100,6 +94,14 @@ onUnmounted(() => { stop(); assistantDisposed = true; stopAssistant(); assistant
       </nav>
       <div class="sidebar-bottom">
         <span class="sidebar-status"><span class="live-dot" :class="{ sleeping: quiet }" /> {{ status }}</span>
+        <div v-if="pets.length || settings?.paused || settings?.hidden" class="sidebar-controls">
+          <button :class="{ active: settings?.paused }" :disabled="offline" @click="action('pause')">
+            <Play v-if="settings?.paused" :size="14" /><Pause v-else :size="14" />{{ settings?.paused ? 'Resume' : 'Pause' }}
+          </button>
+          <button :class="{ active: settings?.hidden }" :disabled="offline" @click="action('visibility')">
+            <Eye v-if="settings?.hidden" :size="14" /><EyeOff v-else :size="14" />{{ settings?.hidden ? 'Show' : 'Hide' }}
+          </button>
+        </div>
         <span class="sidebar-private"><ShieldCheck :size="13" /> Stays on this computer</span>
       </div>
     </aside>
@@ -113,7 +115,6 @@ onUnmounted(() => { stop(); assistantDisposed = true; stopAssistant(); assistant
       </div>
       <button v-if="subpages[page]" class="back-link" @click="page = back"><ArrowLeft :size="15" /> {{ titles[back] ?? 'Back' }}</button>
 
-      <HomePanel v-if="page === 'home'" @go="go" @ask="ask" />
       <div v-if="assistantVisited" v-show="page === 'assistant'" class="assistant-host"><AssistantPanel /></div>
       <HistoryPanel v-if="page === 'history'" @followup="followup" />
       <PacksPanel v-else-if="page === 'pets'" @go="go" />

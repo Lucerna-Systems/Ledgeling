@@ -23,12 +23,22 @@ const baseSettings = {
   uninstalledBuiltins: [],
   petScreen: null,
   theme: 'system',
-  accent: '#31725b',
+  accent: '#5b5bd6',
 }
 
 beforeEach(() => {
   api.invoke.mockReset().mockResolvedValue(undefined)
   snapshot.value = { settings: { ...baseSettings } } as unknown as Snapshot
+})
+
+it('shows the nearest pace preset and saves the one picked', async () => {
+  snapshot.value = { settings: { ...baseSettings, speedScale: 1.3 } } as unknown as Snapshot
+  const wrapper = mount(SettingsPanel)
+  const buttons = wrapper.get('[aria-label="Pace"]').findAll('button')
+  expect(buttons.map(button => button.attributes('aria-checked'))).toEqual(['false', 'true', 'false'])
+  await buttons[2].trigger('click')
+  expect(api.invoke.mock.calls[0]).toEqual(['set_settings', { settings: { ...baseSettings, speedScale: 1.8 } }])
+  wrapper.unmount()
 })
 
 describe('appearance preferences', () => {
@@ -45,7 +55,7 @@ describe('appearance preferences', () => {
     const wrapper = mount(SettingsPanel)
     await wrapper.get('[aria-label="Accent colour"]').findAll('.swatch')[2].trigger('click')
     expect(api.invoke.mock.calls[0]).toEqual(['set_settings', {
-      settings: { ...baseSettings, accent: '#70518f' },
+      settings: { ...baseSettings, accent: '#7c4ddb' },
     }])
     wrapper.unmount()
   })

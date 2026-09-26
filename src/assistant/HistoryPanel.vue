@@ -98,6 +98,7 @@ watch([query, status, when, pet, kind, provider, order], () => { limit.value = 1
 </script>
 
 <template>
+  <div class="sticky-top">
   <section class="page-heading">
     <div><h1>History</h1><p>Everything you've asked for, and what came of it.</p></div>
     <label v-if="tasks.length" class="search-field">
@@ -119,6 +120,7 @@ watch([query, status, when, pet, kind, provider, order], () => { limit.value = 1
       <FilterPill v-model="order" class="filter-sort" label="Order" :options="[{ value: 'newest', label: 'Newest first' }, { value: 'oldest', label: 'Oldest first' }]" />
     </div>
   </template>
+  </div>
 
   <div v-if="!filtered.length" class="empty-state">
     <History :size="28" :stroke-width="1.4" />

@@ -81,6 +81,7 @@ async function exportPack(id: string) {
 </script>
 
 <template>
+  <div class="sticky-top">
   <section class="page-heading">
     <div>
       <h1>Pets</h1>
@@ -103,6 +104,7 @@ async function exportPack(id: string) {
       <button v-if="filtering" type="button" class="text-link" aria-label="Clear search and filters" @click="clearFilters">Clear filters</button>
     </template>
     <button type="button" class="primary-button make-pet" @click="emit('go', 'studio')"><Brush :size="15" /> Make your own pet</button>
+  </div>
   </div>
 
   <div v-if="!filteredPacks.length" class="empty-state">
