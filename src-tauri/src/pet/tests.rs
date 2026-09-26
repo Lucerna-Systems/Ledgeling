@@ -342,10 +342,74 @@ fn the_sprite_rectangle_follows_the_anchor_and_rotation() {
     let rect = pet.sprite_rect(1.);
     assert_eq!(rect.width, 48.);
     assert_eq!(rect.center().x, 500.);
+    assert!(
+        rect.bottom() >= 400. && rect.y < 400.,
+        "upright stands on the perch"
+    );
+    // The webview rotates about the feet, so a rotated pet is drawn beside
+    // or below its perch, and the hit box has to be there too.
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+    pet.rotation = 180.;
+    let hanging = pet.sprite_rect(1.);
+    assert!(
+        hanging.y <= 400. && hanging.center().y > 400.,
+        "hangs below"
+    );
+    pet.rotation = -90.;
+    let left = pet.sprite_rect(1.);
+    assert!(
+        left.center().x < 500. && left.right() >= 500.,
+        "clings to the left"
+    );
+    assert!(near(left.width + left.height, 96.));
     pet.rotation = 90.;
-    let rotated = pet.sprite_rect(1.);
-    assert_eq!(rotated.width, 48.);
-    assert_eq!(rotated.height, 48.);
+    assert!(pet.sprite_rect(1.).center().x > 500., "clings to the right");
+}
+
+#[test]
+fn hit_testing_undoes_the_rotation_the_webview_draws() {
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 400.));
+    let (w, h) = (48., 48.);
+    let ay = pet.frame(1., 1.).anchor_y * h;
+    // One pixel toward the head from the feet, in each orientation.
+    for (rotation, point) in [
+        (0., Point::new(500., 399.)),
+        (180., Point::new(500., 401.)),
+        (-90., Point::new(499., 400.)),
+        (90., Point::new(501., 400.)),
+    ] {
+        pet.rotation = rotation;
+        let local = pet.sprite_local(point, 1.);
+        assert!(
+            (local.x - w / 2.).abs() < 1e-6 && (local.y - (ay - 1.)).abs() < 1e-6,
+            "rotation {rotation}: {local:?}"
+        );
+    }
+}
+
+#[test]
+fn a_climber_on_a_window_side_faces_away_from_the_window() {
+    let window = win(1, 400., 200., 600., 500.);
+    let world = World::new(&[window]);
+    let squirrel = pack("squirrel-red");
+    for (kind, outside) in [
+        (world::SurfaceKind::WindowLeft, -1.),
+        (world::SurfaceKind::WindowRight, 1.),
+        (world::SurfaceKind::WindowBottom, 1.),
+    ] {
+        let surface = world.surfaces.iter().find(|s| s.kind == kind).unwrap();
+        let mut pet = Pet::new(1, squirrel.clone(), surface.point(0.5));
+        pet.rotation = locomotion::sprite_rotation(pet.manifest(), surface);
+        let rect = pet.sprite_rect(1.);
+        let perch = surface.point(0.5);
+        let offset = rect.center().x - perch.x + rect.center().y - perch.y;
+        // Transparent rows below the feet may cross the edge; the body may not.
+        assert!(
+            offset * outside > 12.,
+            "{} drew the pet into the window",
+            kind.as_str()
+        );
+    }
 }
 
 #[test]
