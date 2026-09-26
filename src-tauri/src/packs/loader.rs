@@ -405,7 +405,7 @@ pub fn uninstall(packs_dir: &Path, id: &str) -> Result<(), String> {
     Err(format!("No installed pack has the id `{id}`."))
 }
 
-fn folder_name(id: &str) -> String {
+pub(crate) fn folder_name(id: &str) -> String {
     id.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '.' || c == '-' {

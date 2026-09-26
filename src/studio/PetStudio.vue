@@ -1,0 +1,101 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { AlertCircle, Check, FlaskConical, Palette, PawPrint, RotateCcw, Workflow } from '@lucide/vue'
+import { call, native, refreshPacks } from '../state'
+import type { PackSummary } from '../types'
+import BehaviorEditor from './BehaviorEditor.vue'
+import SpriteEditor from './SpriteEditor.vue'
+import { FRAME, movements, payload, problems, starterDraft } from './model'
+import { draft } from './state'
+import './studio.css'
+
+const emit = defineEmits<{ go: [page: 'lab' | 'pets'] }>()
+
+const tab = ref<'look' | 'behaviour'>('look')
+const issues = computed(() => problems(draft.value))
+const saving = ref(false)
+const saved = ref<PackSummary | null>(null)
+
+/** The gallery picture: the first idle frame, enlarged on a soft backdrop. */
+function previewImage() {
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#eeeee4'
+  ctx.fillRect(0, 0, size, size)
+  const idle = draft.value.clips.idle?.frames[0]
+  if (idle) {
+    const sprite = document.createElement('canvas')
+    sprite.width = sprite.height = FRAME
+    sprite.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(idle), FRAME, FRAME), 0, 0)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(sprite, 32, 16, 192, 192)
+  }
+  return { width: size, height: size, pixels: ctx.getImageData(0, 0, size, size).data }
+}
+
+async function save(bringOut: boolean) {
+  if (issues.value.length || saving.value) return
+  saving.value = true
+  saved.value = null
+  try {
+    const summary = await call<PackSummary>('save_studio_pack', payload(draft.value, previewImage()))
+    if (summary) {
+      saved.value = summary
+      await refreshPacks()
+      if (bringOut) await call('spawn_pet', { packId: summary.id })
+    }
+  } finally { saving.value = false }
+}
+/** Two clicks, so a stray one never throws away a drawing. */
+const confirming = ref(false)
+function startOver() {
+  if (!confirming.value) { confirming.value = true; setTimeout(() => { confirming.value = false }, 3000); return }
+  confirming.value = false
+  draft.value = starterDraft(draft.value.movement)
+  saved.value = null
+}
+</script>
+
+<template>
+  <section class="studio">
+    <header class="studio-head">
+      <div class="studio-identity">
+        <input v-model="draft.name" class="studio-name" aria-label="Pet name" placeholder="Name your pet" maxlength="40" spellcheck="false">
+        <div class="studio-meta">
+          <input v-model="draft.author" aria-label="Made by" placeholder="Made by (optional)" maxlength="40">
+          <input v-model="draft.description" class="grow" aria-label="Description" placeholder="One line about your pet (optional)" maxlength="140">
+        </div>
+      </div>
+      <div class="studio-actions">
+        <button type="button" class="text-link start-over" :class="{ confirming }" @click="startOver"><RotateCcw :size="14" /> {{ confirming ? 'Click again to start over' : 'New pet' }}</button>
+        <button type="button" :disabled="!!issues.length || saving || !native" @click="save(false)">Save</button>
+        <button type="button" class="primary-button" :disabled="!!issues.length || saving || !native" @click="save(true)"><PawPrint :size="15" /> {{ saving ? 'Saving…' : 'Save & bring out' }}</button>
+      </div>
+    </header>
+
+    <div class="studio-bar">
+      <div class="segmented" role="radiogroup" aria-label="How it moves">
+        <button v-for="m in movements" :key="m.value" type="button" role="radio" :aria-checked="draft.movement === m.value" :title="m.blurb" @click="draft.movement = m.value">{{ m.label }}</button>
+      </div>
+      <div class="studio-tabs" role="tablist" aria-label="Studio">
+        <button type="button" role="tab" :aria-selected="tab === 'look'" @click="tab = 'look'"><Palette :size="15" /> Look</button>
+        <button type="button" role="tab" :aria-selected="tab === 'behaviour'" @click="tab = 'behaviour'"><Workflow :size="15" /> Behaviour</button>
+      </div>
+    </div>
+
+    <div v-if="saved" class="studio-saved" role="status">
+      <Check :size="16" /> <span><strong>{{ saved.name }}</strong> is saved and ready in your Pets.</span>
+      <button type="button" class="text-link" @click="emit('go', 'pets')">See it in Pets</button>
+      <button type="button" class="text-link" @click="emit('go', 'lab')"><FlaskConical :size="13" /> Test in Pet Lab</button>
+    </div>
+    <div v-else-if="issues.length" class="studio-issues">
+      <AlertCircle :size="15" />
+      <span>Before saving: {{ issues[0] }}<template v-if="issues.length > 1"> <em>(+{{ issues.length - 1 }} more)</em></template></span>
+    </div>
+
+    <SpriteEditor v-show="tab === 'look'" :draft="draft" />
+    <BehaviorEditor v-if="tab === 'behaviour'" :draft="draft" />
+  </section>
+</template>

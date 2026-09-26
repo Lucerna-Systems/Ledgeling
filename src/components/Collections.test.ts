@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import PacksPanel from '../panels/PacksPanel.vue'
 import AssistantPanel from '../assistant/AssistantPanel.vue'
+import HistoryPanel from '../assistant/HistoryPanel.vue'
 import { packs, snapshot } from '../state'
 import { tasks, connections, assignedPet } from '../assistant/state'
 import type { PackListing, Snapshot } from '../types'
@@ -30,16 +31,30 @@ const task = (id: number, status: string): Task => ({
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, createdAt: 0, progress: '', result: '', error: null, approval: null, operations: [], sources: [],
 })
 
-it('combines case-insensitive pack search with a class filter and can clear both', async () => {
+it('searches pets case-insensitively and can clear the search', async () => {
   packs.value = [pack('Pip', 'flier'), pack('Glass', 'climber')]
   const wrapper = mount(PacksPanel)
-  await wrapper.get('[aria-label="Search pet packs"]').setValue('  GLASS ')
+  await wrapper.get('[aria-label="Search pets"]').setValue('  GLASS ')
   expect(wrapper.findAll('.pack-card')).toHaveLength(1)
   expect(wrapper.get('.pack-card h3').text()).toBe('Glass')
-  await wrapper.get('[aria-label="Search pet packs filter"]').setValue('flier')
-  expect(wrapper.text()).toContain('No matching packs')
-  await wrapper.get('[aria-label="Clear search and filters"]').trigger('click')
+  await wrapper.get('[aria-label="Search pets"]').setValue('nobody')
+  expect(wrapper.text()).toContain('No pets match')
+  await wrapper.get('[aria-label="Clear search"]').trigger('click')
   expect(wrapper.findAll('.pack-card')).toHaveLength(2)
+  wrapper.unmount()
+})
+
+it('filters pets by who made them and how they move', async () => {
+  packs.value = [pack('Pip', 'flier'), pack('Glass', 'climber'), { ...pack('Moss', 'hopper'), summary: { ...pack('Moss', 'hopper').summary, author: 'Mira', builtin: false } }]
+  const wrapper = mount(PacksPanel)
+  await wrapper.get('[aria-label="Made by"]').setValue('Mira')
+  expect(wrapper.findAll('.pack-card h3').map(h => h.text())).toEqual(['Moss'])
+  await wrapper.get('[aria-label="Made by"]').setValue('any')
+  await wrapper.get('[aria-label="Source"]').setValue('builtin')
+  await wrapper.get('[aria-label="How it moves"]').setValue('climber')
+  expect(wrapper.findAll('.pack-card h3').map(h => h.text())).toEqual(['Glass'])
+  await wrapper.get('[aria-label="Clear search and filters"]').trigger('click')
+  expect(wrapper.findAll('.pack-card')).toHaveLength(3)
   wrapper.unmount()
 })
 
@@ -53,39 +68,68 @@ it('says which assistant clips a pack supplies and what an empty slot plays inst
   wrapper.unmount()
 })
 
-it('filters history by status and request and gives a useful empty state', async () => {
+it('filters history by status tab, kind and search, and can clear them all', async () => {
   tasks.value = [task(1, 'completed'), task(2, 'waiting')]
-  const wrapper = mount(AssistantPanel)
-  await wrapper.get('[aria-label="Search tasks filter"]').setValue('waiting')
+  const wrapper = mount(HistoryPanel)
+  await wrapper.get('[aria-label="Status"]').findAll('button').find(button => button.text().startsWith('Needs you'))!.trigger('click')
   expect(wrapper.findAll('.task-card')).toHaveLength(1)
   expect(wrapper.get('.task-card').text()).toContain('Research Vue')
-  await wrapper.get('[aria-label="Search tasks"]').setValue('organise')
-  expect(wrapper.text()).toContain('No matching tasks')
+  await wrapper.get('[aria-label="Search history"]').setValue('organise')
+  expect(wrapper.text()).toContain('Nothing matches these filters')
   await wrapper.get('[aria-label="Clear search and filters"]').trigger('click')
   expect(wrapper.findAll('.task-card')).toHaveLength(2)
+  await wrapper.get('[aria-label="Kind"]').setValue('builtin')
+  expect(wrapper.findAll('.task-card')).toHaveLength(0)
+  wrapper.unmount()
+})
+
+it('counts each status tab against the other filters', async () => {
+  tasks.value = [task(1, 'completed'), task(2, 'waiting'), task(3, 'failed')]
+  const wrapper = mount(HistoryPanel)
+  const counts = () => wrapper.get('[aria-label="Status"]').findAll('button').map(button => button.text())
+  expect(counts()).toEqual(['All3', 'Needs you1', 'In progress0', 'Done1', "Didn't finish1"])
+  await wrapper.get('[aria-label="Search history"]').setValue('vue')
+  expect(counts()).toEqual(['All2', 'Needs you1', 'In progress0', 'Done0', "Didn't finish1"])
+  wrapper.unmount()
+})
+
+it('keeps older tasks out of a recent date range', async () => {
+  const now = Date.now() / 1000
+  tasks.value = [{ ...task(1, 'completed'), createdAt: now }, { ...task(2, 'completed'), createdAt: now - 40 * 86400 }]
+  const wrapper = mount(HistoryPanel)
+  await wrapper.get('[aria-label="When"]').setValue('month')
+  expect(wrapper.findAll('.task-card')).toHaveLength(1)
+  expect(wrapper.get('.group-title').text()).toBe('Today')
   wrapper.unmount()
 })
 
 it('limits history rendering and reveals additional tasks on request', async () => {
   tasks.value = Array.from({ length: 12 }, (_, index) => task(index + 1, 'completed'))
-  const wrapper = mount(AssistantPanel)
+  const wrapper = mount(HistoryPanel)
   expect(wrapper.findAll('.task-card')).toHaveLength(10)
   await wrapper.get('.load-more').trigger('click')
   expect(wrapper.findAll('.task-card')).toHaveLength(12)
   wrapper.unmount()
 })
 
-it('selects the supported agent mode automatically and keeps built-in actions local', async () => {
-  connections.value.active.kind = 'codex'
+it('keeps task results off the assistant page; they live in history', () => {
+  tasks.value = [task(1, 'completed'), task(2, 'running'), task(3, 'completed')]
   const wrapper = mount(AssistantPanel)
-  expect(wrapper.get('.request-options summary').text()).toContain('Agent')
-  await wrapper.findAll('.task-shortcuts button').find(button => button.text() === 'Organise files')!.trigger('click')
-  expect(wrapper.get('.request-options summary').text()).toContain('Built-in action')
-  expect(wrapper.text()).toContain('Built-in action · runs locally')
+  expect(wrapper.findAll('.task-card')).toHaveLength(0)
   wrapper.unmount()
 })
 
-it('a companion override drives the mode and badge, and can be cleared back to the default', async () => {
+it('selects the supported agent mode automatically and keeps built-in actions local', async () => {
+  connections.value.active.kind = 'codex'
+  const wrapper = mount(AssistantPanel)
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(true)
+  await wrapper.findAll('.task-shortcuts button').find(button => button.text() === 'Organise files')!.trigger('click')
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(false)
+  expect(wrapper.get('.preset-pill').text()).toContain('runs on this computer')
+  wrapper.unmount()
+})
+
+it('the carousel picks a pet and the model bar edits that pet, falling back to the default', async () => {
   connections.value.active = { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' }
   connections.value.perPet = { 1: { kind: 'codex', model: 'gpt-5.2-codex', endpoint: '', executable: 'codex' } }
   snapshot.value = {
@@ -93,15 +137,37 @@ it('a companion override drives the mode and badge, and can be cleared back to t
     pets: [{ id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'rest', energy: 1, mood: .7, surface: null }],
   } as unknown as Snapshot
   const wrapper = mount(AssistantPanel)
-  expect(wrapper.get('.connection-badge').text()).toContain('ollama')
-  await wrapper.get('.composer-top select').setValue('1')
-  expect(wrapper.get('.connection-badge').text()).toContain('codex')
-  expect(wrapper.get('.connection-badge').text()).toContain('custom model')
-  expect(wrapper.get('.request-options summary').text()).toContain('Agent')
-  expect(wrapper.get('.task-meta').text()).toContain('gpt-5.2-codex')
-  await wrapper.get('.task-meta .text-link').trigger('click')
+  const provider = () => wrapper.get('.model-provider .dropdown-button').text()
+  const chooseProvider = async (label: string) => {
+    await wrapper.get('.model-provider .dropdown-button').trigger('click')
+    await wrapper.findAll('.model-provider li').find(li => li.text() === label)!.trigger('click')
+  }
+  expect(wrapper.get('.model-chip').text()).toBe('llama')
+  await wrapper.get('.model-chip').trigger('click')
+  expect(wrapper.get('.model-popover').text()).toContain('Default AI for your pets')
+  expect(provider()).toBe('Ollama · on this computer')
+  await wrapper.findAll('.pet-choice').find(choice => choice.text().includes('Pip'))!.trigger('click')
+  expect(assignedPet.value).toBe(1)
+  expect(wrapper.get('.model-chip').text()).toBe('gpt-5.2-codex')
+  expect(wrapper.find('.model-popover').exists()).toBe(false)
+  await wrapper.get('.model-chip').trigger('click')
+  expect(wrapper.get('.model-popover').text()).toContain('Pip uses')
+  expect(provider()).toBe('ChatGPT · Codex')
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(true)
+  await chooseProvider('Default · Ollama')
   expect(connections.value.perPet[1]).toBeUndefined()
-  await Promise.resolve()
-  expect(wrapper.get('.request-options summary').text()).toContain('Ask AI')
+  expect(provider()).toBe('Default · Ollama')
+  expect(wrapper.get('.model-chip').text()).toBe('llama')
+  expect(wrapper.find('.task-composer .task-problem').exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('choosing a provider for "Any pet" changes the default connection', async () => {
+  const wrapper = mount(AssistantPanel)
+  await wrapper.get('.model-chip').trigger('click')
+  await wrapper.get('.model-provider .dropdown-button').trigger('click')
+  await wrapper.findAll('.model-provider li').find(li => li.text().startsWith('Anthropic'))!.trigger('click')
+  expect(connections.value.active.kind).toBe('anthropic')
+  expect(wrapper.text()).toContain('Let Anthropic read this request')
   wrapper.unmount()
 })

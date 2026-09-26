@@ -57,6 +57,21 @@ What those tests actually cover:
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
 
+## Simpler companion window and Pet Studio (2026-09-26)
+
+- Navigation cut to Home, Pets, Assistant, History and Settings; advanced pages sit
+  under Settings. Pets and History gained status tabs and filter pills; the Assistant
+  picks a pet from a carousel and changes its model in place.
+- Pet Studio (Pets → Make your own pet): a pixel editor for each animation and a
+  block editor for behaviours and reactions. `save_studio_pack` writes the design
+  as an ordinary pack and loads it through the normal validator before it is moved
+  into the packs directory; built-in packs cannot be overwritten.
+- Automated: 83 UI tests, the Rust suite (including four Studio save tests),
+  Clippy and the frontend build pass on macOS.
+- Checked only as screenshots of the frontend against a mocked backend in headless
+  Chrome. Not yet run in the real app: no Studio save has been made through Tauri,
+  and no Studio-made pet has been watched on the desktop.
+
 ## Linux adapter (2026-09-24)
 
 `platform/linux/` replaces the stub for Linux. On X11 it reads

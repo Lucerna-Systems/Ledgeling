@@ -2,13 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import SearchSelect from '../components/SearchSelect.vue'
 import { pets } from '../state'
-import { connections, effectiveConnection, taskCall } from './state'
-import type { Capabilities, Connection, ProviderDetection, ProviderKind } from './types'
+import { connections, connectionDefaults as defaults, detection, draftConnection as draftFor, effectiveConnection, loadDetection, taskCall } from './state'
+import type { Capabilities, Connection, ProviderKind } from './types'
 const busy = ref(false)
 const feedback = ref('')
 const key = ref('')
 const braveKey = ref('')
-const detection = ref<ProviderDetection | null>(null)
 const models = ref<string[]>([])
 const loadingModels = ref(false)
 const accountNote = ref('')
@@ -29,11 +28,6 @@ async function loadAppleTerms() {
 async function openAppleSettings() {
   try { await taskCall('task_apple_open_settings') } catch { /* shared error */ }
 }
-const defaults: Record<ProviderKind, Partial<Connection>> = {
-  none: {}, ollama: { endpoint: 'http://127.0.0.1:11434' }, openai: {}, anthropic: {},
-  compatible: { endpoint: 'https://your-provider.example/v1' }, codex: { executable: 'codex' }, claude: {},
-  apple: { model: 'system' },
-}
 const installedKinds: ProviderKind[] = ['none', 'apple', 'codex', 'claude', 'ollama']
 const active = computed(() => connections.value.active)
 function choose(kind: ProviderKind) {
@@ -52,7 +46,7 @@ const apiChoice = computed({
 // A saved provider stays selectable even when detection misses it, so a
 // custom executable path or a stopped Ollama cannot lock the user out.
 const showCodex = computed(() => detection.value?.codexInstalled || active.value.kind === 'codex')
-const showClaude = computed(() => detection.value?.claudeBridge || active.value.kind === 'claude')
+const showClaude = computed(() => detection.value?.claudeCode || active.value.kind === 'claude')
 const showOllama = computed(() => detection.value?.ollamaApp || detection.value?.ollamaReachable || active.value.kind === 'ollama')
 // Offered on any Mac that could run it, so the reason it is not ready is
 // visible rather than the option silently missing.
@@ -63,7 +57,7 @@ const providerStatus = computed(() => {
   switch (active.value.kind) {
     case 'apple': return d.appleDetail
     case 'codex': return d.codexInstalled ? 'Codex was found on this computer.' : 'Codex was not found — check the executable path below.'
-    case 'claude': return d.anthropicKey ? 'Claude runtime included with Perch. Anthropic key saved.' : 'Claude runtime included with Perch. Add an Anthropic key below.'
+    case 'claude': return d.claudeCode ? 'Uses your Claude Code sign-in. Development builds only.' : 'Claude Code sign-in is only available in development builds.'
     case 'ollama': return d.ollamaReachable ? 'Ollama is running.' : d.ollamaApp ? 'Ollama is installed but not running.' : 'Ollama was not detected on this computer.'
     case 'openai': return d.openaiKey ? 'OpenAI key is saved in your OS credential store.' : 'No OpenAI key saved yet — add one below.'
     case 'anthropic': return d.anthropicKey ? 'Anthropic key is saved in your OS credential store.' : 'No Anthropic key saved yet — add one below.'
@@ -92,7 +86,7 @@ async function save() {
   busy.value = true
   try {
     const kind = active.value.kind
-    if (key.value) await taskCall('task_secret', { name: kind === 'claude' ? 'anthropic' : kind, value: key.value })
+    if (key.value) await taskCall('task_secret', { name: kind, value: key.value })
     if (braveKey.value) await taskCall('task_secret', { name: 'brave', value: braveKey.value })
     connections.value.appleTerms = { acceptedVersion: appleAgreed.value ? (appleTerms.value?.version ?? 0) : 0, acceptedAt: 0 }
     await taskCall('task_save_connections', { config: connections.value })
@@ -130,15 +124,6 @@ const overrideModel = ref('')
 const overrideModels = ref<string[]>([])
 const overrideCount = computed(() => Object.keys(connections.value.perPet ?? {}).length)
 function summarize(c: Connection) { return c.kind === 'none' ? 'No AI · built-in actions' : `${c.kind}${c.model ? ` · ${c.model}` : ''}` }
-// Reuse the endpoint/executable already configured for that kind, if any.
-function draftFor(kind: ProviderKind, model: string): Connection {
-  const existing = [connections.value.active, ...Object.values(connections.value.perPet ?? {})].find(c => c.kind === kind)
-  return {
-    kind, model,
-    endpoint: existing?.endpoint || (defaults[kind].endpoint ?? ''),
-    executable: existing?.executable || (defaults[kind].executable ?? ''),
-  }
-}
 function editOverride(petId: number) {
   if (editingPet.value === petId) { editingPet.value = null; return }
   const current = connections.value.perPet?.[petId] ?? effectiveConnection(petId)
@@ -168,7 +153,7 @@ async function clearOverride(petId: number) {
   await persistOverrides('Companion now uses the default connection.')
 }
 onMounted(async () => {
-  try { detection.value = await taskCall<ProviderDetection>('task_detect_providers') } catch { /* shared error */ }
+  await loadDetection()
   await loadModels()
   await checkStatus()
   await loadAppleTerms()
@@ -188,7 +173,7 @@ onMounted(async () => {
             <option value="">No AI · built-in actions</option>
             <option v-if="showApple" value="apple">Apple Intelligence · on this Mac</option>
             <option v-if="showCodex" value="codex">ChatGPT · Codex</option>
-            <option v-if="showClaude" value="claude">Claude · included runtime</option>
+            <option v-if="showClaude" value="claude">Claude Code · dev build</option>
             <option v-if="showOllama" value="ollama">Ollama · local models</option>
           </select>
         </label>
@@ -223,11 +208,11 @@ onMounted(async () => {
       </template>
       <label v-if="['ollama', 'compatible'].includes(active.kind)">Endpoint<input v-model="active.endpoint" spellcheck="false"></label>
       <label v-if="active.kind === 'codex'">Codex executable<input v-model="active.executable" placeholder="codex or an absolute path"></label>
-      <template v-if="['openai', 'anthropic', 'compatible', 'claude'].includes(active.kind)">
+      <template v-if="['openai', 'anthropic', 'compatible'].includes(active.kind)">
         <label>API key<input v-model="key" type="password" autocomplete="off" placeholder="Leave empty to keep the saved key"></label>
-        <button class="text-link" @click="forget(active.kind === 'claude' ? 'anthropic' : active.kind)">Remove saved key</button>
+        <button class="text-link" @click="forget(active.kind)">Remove saved key</button>
       </template>
-      <p v-if="active.kind === 'claude'">Claude subscription login is not offered. This bridge uses your Anthropic API key and requires the packaged SDK runtime.</p>
+      <p v-if="active.kind === 'claude'">Runs the bundled Claude agent on the account you are signed in to in Claude Code. Sign in with <code>claude</code> in a terminal first. Release builds offer only the Anthropic API key.</p>
       <div v-if="active.kind === 'codex'" class="task-actions"><button :disabled="busy" @click="account('login')">Sign in with ChatGPT</button><button :disabled="busy" @click="account('status')">Check account</button><button :disabled="busy" @click="account('logout')">Sign out</button></div>
       <p v-if="loginUrl">The sign-in page opened in your browser.</p>
     </template>
@@ -247,7 +232,7 @@ onMounted(async () => {
             <option value="none">No AI · built-in actions</option>
             <option v-if="showApple" value="apple">Apple Intelligence · on this Mac</option>
             <option v-if="showCodex" value="codex">ChatGPT · Codex</option>
-            <option v-if="showClaude" value="claude">Claude</option>
+            <option v-if="showClaude" value="claude">Claude Code · dev build</option>
             <option v-if="showOllama" value="ollama">Ollama · local models</option>
             <option value="openai">OpenAI · API key</option>
             <option value="anthropic">Anthropic · API key</option>

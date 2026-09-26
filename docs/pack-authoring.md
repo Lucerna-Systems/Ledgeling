@@ -1,8 +1,14 @@
 # Making a pet
 
-You need two things: a program that can draw with transparency, and a text editor.
-You do not need to write any code — a pack is data, and there is nowhere in the
-format to put a program even if you wanted to.
+The quickest way is inside Perch: **Pets → Make your own pet** opens the Pet Studio.
+Draw each animation frame by frame, set the behaviours with plain-language blocks
+("When you click it, go to say hi"), and press **Save & bring out**. The Studio
+writes an ordinary pack, the same format this guide describes, and the same
+validator checks it.
+
+This guide is the by-hand route. You need two things: a program that can draw with
+transparency, and a text editor. You do not need to write any code — a pack is
+data, and there is nowhere in the format to put a program even if you wanted to.
 
 Give this an hour. Most of that hour is drawing.
 
@@ -10,7 +16,8 @@ Give this an hour. Most of that hour is drawing.
 
 ## 1. Make the folder (2 minutes)
 
-Open Perch → **Pet packs** → type a name, pick a kind of animal, press **New pack**.
+Open Perch → **Settings → Advanced → Pet Lab** → under **New pack folder**, type a
+name, pick how it moves, press **New pack**.
 
 You now have a folder with placeholder art and a `pet.json` that already works.
 Perch tells you where it is. Open that folder.

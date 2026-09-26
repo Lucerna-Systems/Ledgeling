@@ -9,7 +9,7 @@ import type { Snapshot } from '../types'
 const invoke = vi.fn()
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke: (...args: unknown[]) => invoke(...args) }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
-const detection = { codexInstalled: true, claudeBridge: false, ollamaApp: false, ollamaReachable: false, openaiKey: true, anthropicKey: false, compatibleKey: false, braveKey: false }
+const detection = { codexInstalled: true, claudeCode: false, ollamaApp: false, ollamaReachable: false, openaiKey: true, anthropicKey: false, compatibleKey: false, braveKey: false }
 
 beforeEach(() => {
   invoke.mockReset()

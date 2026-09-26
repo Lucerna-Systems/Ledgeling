@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import MarkdownResult from './MarkdownResult.vue'
 import { taskCall, refreshTasks } from './state'
-import { terminal, type Task } from './types'
+import { providerLabels, terminal, type Task } from './types'
 const props = defineProps<{ task: Task }>()
 const emit = defineEmits<{ followup: [task: Task] }>()
 const expanded = ref(false)
@@ -16,13 +16,24 @@ async function control(command: string, args = {}) {
   pending.value = true
   try { await taskCall(command, { id: props.task.id, ...args }); await refreshTasks() } catch { /* shared error banner */ } finally { pending.value = false }
 }
+const statusLabels: Record<string, string> = {
+  queued: 'Starting', running: 'Working', waiting: 'Needs you', cancelling: 'Stopping', completed: 'Done',
+  failed: "Didn't work", cancelled: 'Cancelled', interrupted: 'Interrupted', undone: 'Undone',
+}
+const meta = computed(() => {
+  const who = props.task.request.preset ? 'Built-in action' : providerLabels[props.task.connection.kind] ?? props.task.connection.kind
+  const created = new Date(props.task.createdAt * 1000)
+  const sameDay = created.toDateString() === new Date().toDateString()
+  const when = sameDay ? created.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : created.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  return [who, props.task.request.mode === 'advanced' ? 'Agent' : '', when].filter(Boolean).join(' · ')
+})
 async function open(url: string) { try { await taskCall('task_open_url', { url }) } catch { /* shared error banner */ } }
 </script>
 <template>
   <article class="task-card" :aria-label="`Task ${task.id}`">
-    <header><strong>{{ task.request.prompt }}</strong><span class="task-status" :data-status="task.status">{{ task.status }}</span></header>
-    <p class="task-meta">{{ task.request.preset ? 'Built-in · local' : task.connection.kind }} · {{ task.request.mode }} · {{ new Date(task.createdAt * 1000).toLocaleString() }}</p>
-    <p role="status">{{ task.progress }}</p>
+    <header><strong>{{ task.request.prompt }}</strong><span class="task-status" :data-status="task.status">{{ statusLabels[task.status] ?? task.status }}</span></header>
+    <p class="task-meta">{{ meta }}</p>
+    <p v-if="task.progress" role="status">{{ task.progress }}</p>
     <div v-if="task.error" class="task-problem" role="alert">{{ task.error }}</div>
     <section v-if="task.approval && task.status === 'waiting'" class="approval-card" aria-label="Pending approval">
       <h3>{{ task.approval.summary.headline || task.approval.title }}</h3>

@@ -64,7 +64,8 @@ pub fn effective_connection(config: &Connections, pet_id: Option<u64>) -> Connec
 #[serde(default, rename_all = "camelCase")]
 pub struct ProviderDetection {
     pub codex_installed: bool,
-    pub claude_bridge: bool,
+    /// Debug builds only: the bundled Claude bridge, signed in through Claude Code.
+    pub claude_code: bool,
     pub ollama_app: bool,
     pub ollama_reachable: bool,
     pub openai_key: bool,

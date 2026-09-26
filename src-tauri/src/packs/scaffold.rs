@@ -258,7 +258,7 @@ fn preview_pixels() -> Vec<u8> {
     pixels
 }
 
-fn write_png(path: &Path, pixels: &[u8], width: u32, height: u32) -> Result<(), String> {
+pub(crate) fn write_png(path: &Path, pixels: &[u8], width: u32, height: u32) -> Result<(), String> {
     let file = std::fs::File::create(path)
         .map_err(|e| format!("Could not create {}: {e}", path.display()))?;
     let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);

@@ -225,7 +225,7 @@ pub fn detect(config: &Connections) -> ProviderDetection {
     });
     ProviderDetection {
         codex_installed: find_in_path(&codex).is_some(),
-        claude_bridge: super::runtimes::bridge_ready(),
+        claude_code: super::runtimes::CLAUDE_CODE_LOGIN && super::runtimes::bridge_ready(),
         ollama_app: find_in_path("ollama").is_some(),
         ollama_reachable: ollama_reachable(&ollama),
         openai_key: has_secret("openai"),

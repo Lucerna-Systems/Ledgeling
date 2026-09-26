@@ -35,7 +35,7 @@ no code that can reach one.
    only the category.
 5. Throw the name away.
 
-Step 4's table is yours to edit, on the **Your day** page. The window title is never
+Step 4's table is yours to edit, under **Settings → Advanced → Awareness details**. The window title is never
 part of this sequence.
 
 ## How this is enforced
@@ -47,6 +47,6 @@ local window events. It is checked by a machine on every test run, not by memory
 
 ## Turning it off
 
-The **Your day** page has one switch that disables all of it: no idle polling, no
+**Settings** has one switch, **Notice my day**, that disables all of it: no idle polling, no
 foreground check, no session tracking, no nudges. The pet carries on living on your
 windows exactly as before. It just stops noticing your day.

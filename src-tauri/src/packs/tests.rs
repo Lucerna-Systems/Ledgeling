@@ -443,3 +443,132 @@ fn exported_packs_round_trip_through_the_petpack_archive() {
     assert_eq!(installed.class, "climber");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+mod studio_saves {
+    use super::super::studio::{save, StudioImage};
+    use std::path::PathBuf;
+
+    fn image(name: &str, frames: u32) -> StudioImage {
+        let (width, height) = (32 * frames, 32);
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        // One opaque pixel per frame so the strip is not blank.
+        for frame in 0..frames {
+            let at = ((16 * width + frame * 32 + 16) * 4) as usize;
+            pixels[at..at + 4].copy_from_slice(&[200, 80, 40, 255]);
+        }
+        StudioImage {
+            name: name.into(),
+            width,
+            height,
+            pixels,
+        }
+    }
+    fn manifest(id: &str, name: &str) -> String {
+        format!(
+            r#"{{ "format": 1, "id": "{id}", "name": "{name}", "author": "Me", "version": "1.0.0",
+  "sprite": {{ "width": 32, "height": 32, "anchor": {{ "x": 0.5, "y": 1.0 }} }},
+  "locomotion": {{ "class": "walker" }},
+  "animations": {{
+    "idle": {{ "file": "sprites/idle.png", "frames": 2, "fps": 6 }},
+    "move": {{ "file": "sprites/move.png", "frames": 1, "fps": 8 }}
+  }},
+  "behavior": {{ "initial": "rest", "states": {{
+    "rest": {{ "clip": "idle", "duration": [2, 4], "transitions": [{{ "to": "wander", "weight": 1, "when": "idle_seconds < 60 && energy > 0.2" }}] }},
+    "wander": {{ "clip": "move", "action": "move_to_random_surface", "transitions": [{{ "to": "rest", "weight": 1 }}] }}
+  }} }},
+  "reactions": [{{ "on": "clicked", "goto": "rest", "cooldown": 3 }}]
+}}"#
+        )
+    }
+    fn root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("perch-studio-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn a_studio_design_becomes_a_loadable_pack() {
+        let root = root("ok");
+        let summary = save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap();
+        assert_eq!(summary.name, "Pebble");
+        assert!(summary.loadable);
+        assert!(root.join("com.studio.pebble/sprites/idle.png").exists());
+        assert!(!root.join(".studio-staging").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn saving_again_replaces_the_earlier_save() {
+        let root = root("again");
+        save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap();
+        let summary = save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble Two"),
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap();
+        assert_eq!(summary.name, "Pebble Two");
+        let listed: Vec<_> = super::super::loader::scan(&root)
+            .into_iter()
+            .filter(|l| l.summary.id == "com.studio.pebble")
+            .collect();
+        assert_eq!(listed.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_design_the_validator_rejects_is_explained_and_not_installed() {
+        let root = root("invalid");
+        let broken = manifest("com.studio.pebble", "Pebble")
+            .replace(r#""to": "rest""#, r#""to": "nowhere""#);
+        let error = save(
+            &root,
+            &broken,
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap_err();
+        assert!(error.contains("could not be saved"), "{error}");
+        assert!(error.contains("nowhere"), "{error}");
+        assert!(!root.join("com.studio.pebble").exists());
+        assert!(!root.join(".studio-staging").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn strange_names_and_short_pixel_buffers_are_refused_before_writing() {
+        let root = root("refuse");
+        let mut short = image("idle", 2);
+        short.pixels.truncate(10);
+        assert!(save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[short, image("move", 1)],
+            &image("preview", 1)
+        )
+        .is_err());
+        assert!(save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[image("../escape", 1)],
+            &image("preview", 1)
+        )
+        .is_err());
+        assert!(!root.join(".studio-staging").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

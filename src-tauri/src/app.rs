@@ -429,6 +429,25 @@ async fn new_pack(class: String, name: String, state: State<'_, Shared>) -> Resu
     Ok(created.to_string_lossy().to_string())
 }
 
+/// Pet Studio: write the editor's design as a pack. Files are written outside
+/// the engine lock; only the reload takes it.
+#[tauri::command]
+async fn save_studio_pack(
+    manifest: String,
+    strips: Vec<crate::packs::studio::StudioImage>,
+    preview: crate::packs::studio::StudioImage,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<PackSummary, String> {
+    if window.label() != "main" {
+        return Err("Pets can only be saved from the companion window.".into());
+    }
+    let dir = locked(&state)?.packs_dir.clone();
+    let summary = crate::packs::studio::save(&dir, &manifest, &strips, &preview)?;
+    locked(&state)?.engine.reload_packs(&dir);
+    Ok(summary)
+}
+
 #[tauri::command]
 async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, String> {
     let app = locked(&state)?;
@@ -544,6 +563,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             install_pack,
             uninstall_pack,
             new_pack,
+            save_studio_pack,
             export_pack,
             spawn_pet,
             despawn_pet,

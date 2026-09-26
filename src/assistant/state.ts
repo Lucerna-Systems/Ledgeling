@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { Task, Connections, Connection } from './types'
+import type { Task, Connections, Connection, ProviderDetection, ProviderKind } from './types'
 export const tasks = ref<Task[]>([])
 export const taskError = ref('')
 export const assignedPet = ref<number | null>(null)
@@ -33,4 +33,27 @@ export async function startTasks() {
   await refreshTasks()
   connections.value = await taskCall<Connections>('task_connections')
   return () => { stop(); stopConnections() }
+}
+/** A finished task picked for a follow-up from History; the composer takes it and clears it. */
+export const pendingFollowup = ref<Task | null>(null)
+/** Fields a fresh connection of each kind starts with. */
+export const connectionDefaults: Record<ProviderKind, Partial<Connection>> = {
+  none: {}, ollama: { endpoint: 'http://127.0.0.1:11434' }, openai: {}, anthropic: {},
+  compatible: { endpoint: 'https://your-provider.example/v1' }, codex: { executable: 'codex' }, claude: {},
+  apple: { model: 'system' },
+}
+/** A connection of `kind`, reusing the endpoint or executable already configured for it. */
+export function draftConnection(kind: ProviderKind, model: string): Connection {
+  const config = connections.value
+  const existing = [config.active, ...Object.values(config.perPet ?? {})].find(c => c.kind === kind)
+  return {
+    kind, model: model || (connectionDefaults[kind].model ?? ''),
+    endpoint: existing?.endpoint || (connectionDefaults[kind].endpoint ?? ''),
+    executable: existing?.executable || (connectionDefaults[kind].executable ?? ''),
+  }
+}
+/** What this machine has installed and which keys are saved; loaded once, shared by every picker. */
+export const detection = ref<ProviderDetection | null>(null)
+export async function loadDetection() {
+  try { detection.value = await taskCall<ProviderDetection>('task_detect_providers') } catch { /* shared error */ }
 }

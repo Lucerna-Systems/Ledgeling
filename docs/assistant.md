@@ -137,9 +137,11 @@ when needed, not during ordinary pet animation.
   actual ChatGPT sign-in state from `account/read`; the managed browser login and
   Check account are there for when signing in is genuinely outstanding. No token
   extraction is used.
-- **Claude SDK:** the runtime is bundled with Perch and detected as installed.
-  Uses the saved Anthropic API key. Subscription authentication is deliberately
-  not offered because official third-party guidance conflicts.
+- **Claude Code (development builds only):** the bundled Claude SDK runtime,
+  signed in through the Claude Code login on this machine (run `claude` once to
+  sign in). Anthropic's guidance does not allow shipped third-party products to
+  offer claude.ai login, so debug builds offer this option and release builds
+  never do. Released builds use Claude only through the Anthropic API key.
 - **Brave:** enable search and save a Brave Search API key. Search is independent
   of the AI provider. Public HTTPS text/HTML pages can also be read when allowed.
 
@@ -150,8 +152,8 @@ bodies or credentials. Model calls are limited to 90 seconds and 4,096 output
 tokens; Standard tasks stop at 24 steps / 350 KB accumulated context. There is
 no silent provider fallback. Tests/probes can incur provider usage.
 
-The Connections panel is split into **Installed apps** (Codex, the bundled Claude
-runtime, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
+The Connections panel is split into **Installed apps** (Codex, Claude Code in
+development builds, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
 endpoint). Installed apps are detected automatically — PATH probes for Codex and
 Ollama, a short reachability check against the Ollama endpoint, a packaged-files
 check for the Claude sidecar, and credential-store look-ups for saved API keys —

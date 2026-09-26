@@ -18,18 +18,22 @@ npm run tauri dev
 ```
 
 The companion window opens and a transparent overlay appears on each display.
-Your first pet is a budgie; open **Pet packs** to bring out the squirrel or the
+Your first pet is a budgie; open **Pets** to bring out the squirrel or the
 gecko as well.
 
 - **Drag** a pet to pick it up; let go and it finds its way back.
 - **Click** a pet to say hello.
-- **Pet packs** installs, exports, removes and scaffolds packs. Drop a `.petpack`
-  file or a pack folder onto the window to install it.
-- **Desktop view** draws the live surface map, and can draw it over your real
-  windows.
-- **Your day** shows what Perch has noticed and lets you retune or disable it.
-- **Pet Lab** is for pack authors: live reload, a validator, scenario buttons.
-- **Quiet by design** is the plain-language privacy screen.
+- **Home** shows who is out, with pause, hide and a three-step pace control.
+- **Pets** brings pets out and sends them home, filters them by status, movement,
+  maker, source and tag. **Make your own pet** opens the Pet Studio: a pixel
+  editor for every animation and block-style behaviour editing, saved as an
+  ordinary pack. Drop a `.petpack` file or a pack folder onto the window to install it.
+- **Assistant** takes a request; **History** lists past ones with status, date,
+  pet, kind and provider filters.
+- **Settings** holds appearance, sounds, awareness, break reminders, login and the
+  plain-language privacy summary. Its **Advanced** section leads to the desktop
+  map, awareness details (reminder timing, app categories) and the **Pet Lab**
+  for pack authors: live reload, a validator, scenario buttons and new pack folders.
 - Cmd/Ctrl+Shift+H shows or hides the pets, Cmd/Ctrl+Shift+P pauses, Cmd/Ctrl+1
   reopens the companion window. Closing that window leaves the pets running;
   quit from the menu-bar icon.

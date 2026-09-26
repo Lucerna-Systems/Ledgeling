@@ -7,6 +7,7 @@ pub mod loader;
 pub mod manifest;
 pub mod scaffold;
 pub mod sprites;
+pub mod studio;
 
 pub use diagnostics::{Diagnostic, Report, Tier};
 pub use expr::{Condition, Signal, Signals};

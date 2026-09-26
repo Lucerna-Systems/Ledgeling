@@ -15,7 +15,7 @@ it('preserves a request draft when navigating between companion pages', async ()
   }
   await navigate('Assistant')
   await wrapper.get('#task-prompt').setValue('Summarise my notes')
-  await navigate('Companions')
+  await navigate('Home')
   expect(wrapper.get('#task-prompt').isVisible()).toBe(false)
   await navigate('Assistant')
   expect(wrapper.get('#task-prompt').isVisible()).toBe(true)
@@ -34,22 +34,47 @@ it('resets page scroll when changing sections', async () => {
   wrapper.unmount()
 })
 
-it('combines companion name search and locomotion filters', async () => {
+it('keeps Settings selected on an advanced page and returns to it', async () => {
+  const wrapper = mount(Companion)
+  const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
+  await nav('Settings').trigger('click')
+  await wrapper.findAll('.link-row').find(row => row.text().includes('Desktop map'))!.trigger('click')
+  expect(wrapper.text()).toContain('Desktop view')
+  expect(nav('Settings').attributes('aria-current')).toBe('page')
+  await wrapper.get('.back-link').trigger('click')
+  expect(wrapper.find('.link-row').exists()).toBe(true)
+  wrapper.unmount()
+})
+
+it('shows each pet out on the desktop as a card', () => {
   snapshot.value = {
     settings: { paused: false, hidden: false, speedScale: 1 }, notes: [], packs: [], perchCount: 0,
     pets: [
-      { id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'rest', energy: 1, mood: .7, surface: null },
+      { id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'perch', energy: 1, mood: .7, surface: 'window_top' },
       { id: 2, packId: 'glass', name: 'Glass', class: 'climber', state: 'rest', energy: 1, mood: .7, surface: null },
     ],
   } as unknown as Snapshot
   const wrapper = mount(Companion)
-  await wrapper.get('[aria-label="Find a companion"]').setValue('PIP')
-  expect(wrapper.findAll('.pet-info')).toHaveLength(1)
-  expect(wrapper.get('.pet-info').text()).toContain('Pip')
-  await wrapper.get('[aria-label="Find a companion filter"]').setValue('climber')
-  expect(wrapper.text()).toContain('No companions match')
-  await wrapper.get('[aria-label="Clear search and filters"]').trigger('click')
-  expect(wrapper.findAll('.pet-info')).toHaveLength(2)
+  expect(wrapper.findAll('.pet-tile:not(.add-tile)')).toHaveLength(2)
+  expect(wrapper.text()).toContain('Perched on top of a window')
+  expect(wrapper.text()).toContain('Pip and Glass are out exploring')
   wrapper.unmount()
   snapshot.value = null
+})
+
+it('opens the Pet Studio from Pets and comes back to Pets', async () => {
+  // jsdom has no canvas; the Studio only needs something that accepts drawing calls.
+  HTMLCanvasElement.prototype.getContext = (() => new Proxy({}, { get: () => () => {} })) as never
+  globalThis.ImageData ??= class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} } as never
+  const wrapper = mount(Companion)
+  const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
+  await nav('Pets').trigger('click')
+  await wrapper.get('.make-pet').trigger('click')
+  expect(wrapper.find('.studio').exists()).toBe(true)
+  expect(nav('Pets').attributes('aria-current')).toBe('page')
+  expect(wrapper.get('.back-link').text()).toBe('Pets')
+  await wrapper.get('.back-link').trigger('click')
+  expect(wrapper.find('.studio').exists()).toBe(false)
+  expect(wrapper.find('.make-pet').exists()).toBe(true)
+  wrapper.unmount()
 })
