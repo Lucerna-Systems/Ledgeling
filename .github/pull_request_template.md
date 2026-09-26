@@ -19,3 +19,9 @@
 - [ ] Behavior lives in `engine.rs`, not `app.rs`, and no Tauri event is emitted while the engine lock is held
 - [ ] Nothing obviously costs CPU or memory against the performance budget
 - [ ] `docs/verification.md` still describes only what has actually been run
+
+## Contributor License Agreement
+
+<!-- Outside contributors only. -->
+
+- [ ] I have read `CLA.md` and agree to it for this contribution and all my future contributions to Ledgeling

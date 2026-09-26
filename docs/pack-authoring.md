@@ -216,6 +216,9 @@ people know what they may do with your drawing.
 
 - **A pack can never harm anyone.** There is no scripting and no way to add one.
   The worst a broken pack can do is look wrong.
+- **The format is yours to use.** This guide, the schema and the `pet.json` of
+  every bundled pack are public domain (CC0), so copy them freely. The bundled
+  sprite art is not; draw your own.
 - **Unknown settings are ignored**, with a note. A pack made for a newer Ledgeling
   still loads on an older one.
 - **Pixel art scales best.** Ledgeling draws sprites without smoothing.

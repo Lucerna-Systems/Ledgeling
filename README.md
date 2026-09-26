@@ -145,6 +145,17 @@ Nothing leaves your machine, and there is no code in the build that could send i
 Window titles are never read. See [docs/privacy.md](docs/privacy.md) — and note
 that `src-tauri/tests/privacy.rs` fails the build if any of that stops being true.
 
+## License
+
+Ledgeling is source-available, not open source. You can read the code, build it
+and run it on your own devices, but not redistribute or sell it; see
+[LICENSE.txt](LICENSE.txt). The bundled pet art and the logo are all rights
+reserved, while the pack format, its schema and the bundled `pet.json` files are
+public domain (CC0), so you can build your own pets freely; see
+[ASSETS-LICENSE.txt](ASSETS-LICENSE.txt).
+
+Contributions are accepted under the [Contributor License Agreement](CLA.md).
+
 ## Environment variables
 
 - `PERCH_DIAGNOSTICS=1` prints a scan/state summary to stderr every five seconds.
