@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { pets } from '../state'
 import type { Task, TaskPet, Connections, Connection, ProviderDetection, ProviderKind, ProviderTerms } from './types'
 export const tasks = ref<Task[]>([])
 export const taskError = ref('')
@@ -75,6 +76,32 @@ export const conversations = computed<Conversation[]>(() => {
     })
     .sort((a, b) => b.turns.at(-1)!.id - a.turns.at(-1)!.id)
 })
+
+/** Chats grouped by the pet they were with, most recently active pet first. */
+export interface PetChats { key: string; name: string; pet: TaskPet | null; petId: number | null; chats: Conversation[]; waiting: boolean }
+export const conversationsByPet = computed<PetChats[]>(() => {
+  const groups = new Map<string, PetChats>()
+  // `conversations` is already newest first, so each group's order and the order of groups follow from it.
+  for (const chat of conversations.value) {
+    // Pet ids restart every launch, so a stamped pet is grouped by pack and name.
+    const key = chat.pet ? `${chat.pet.packId}\u0000${chat.pet.name}` : chat.petId === null ? 'any' : `id:${chat.petId}`
+    let group = groups.get(key)
+    if (!group) {
+      const name = chat.pet?.name ?? (chat.petId === null ? 'Any pet' : pets.value.find(p => p.id === chat.petId)?.name ?? 'A pet')
+      group = { key, name, pet: chat.pet, petId: chat.petId, chats: [], waiting: false }
+      groups.set(key, group)
+    }
+    group.chats.push(chat)
+    group.waiting ||= chat.waiting
+  }
+  return [...groups.values()]
+})
+/** The pet on the desktop now that a chat was with, if it is out. Ids restart each launch, so the pack decides. */
+export function livePet(petId: number | null, pet: TaskPet | null): number | null {
+  const packId = pet?.packId
+  if (!packId) return pets.value.find(p => p.id === petId)?.id ?? null
+  return pets.value.find(p => p.id === petId && p.packId === packId)?.id ?? pets.value.find(p => p.packId === packId)?.id ?? null
+}
 
 export function conversationOf(taskId: number): number {
   return conversations.value.find(chat => chat.turns.some(t => t.id === taskId))?.id ?? taskId

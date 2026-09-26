@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowUp, FolderPlus, Globe, Paperclip, Pencil, Plus, Search, Sparkles, X } from '@lucide/vue'
 import { pets } from '../state'
-import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, effectiveConnection, providerReady, taskCall } from './state'
+import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, effectiveConnection, livePet, providerReady, taskCall } from './state'
 import { presets, providerLabels, type Task, type TaskRequest } from './types'
 import ChatTurn from './ChatTurn.vue'
 import PetFace from './PetFace.vue'
@@ -60,11 +60,6 @@ async function submit() {
 }
 
 const chat = computed(() => conversations.value.find(c => c.id === activeConversation.value) ?? null)
-/** The pet a chat was with, if it is out now. Ids restart each launch, so the pack decides. */
-function livePet(petId: number | null, packId: string | undefined) {
-  if (!packId) return pets.value.find(p => p.id === petId)?.id ?? null
-  return pets.value.find(p => p.id === petId && p.packId === packId)?.id ?? pets.value.find(p => p.packId === packId)?.id ?? null
-}
 const chatPetName = computed(() => chat.value?.pet?.name ?? pets.value.find(p => p.id === chat.value?.petId)?.name ?? 'any pet')
 const renaming = ref(false)
 const titleDraft = ref('')
@@ -73,7 +68,7 @@ watch(activeConversation, () => {
   const current = chat.value
   if (!current) return
   const last = current.turns.at(-1)!
-  assignedPet.value = livePet(current.petId, current.pet?.packId)
+  assignedPet.value = livePet(current.petId, current.pet)
   roots.value = [...last.request.roots]
   attachments.value = []
   preset.value = ''

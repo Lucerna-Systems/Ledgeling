@@ -181,6 +181,12 @@ action. File tools are offered only with a folder or attachment, web tools only
 when web access is allowed, and a tool without arguments only until it has run.
 Other providers get the same list in the system prompt only.
 
+For every provider, a request with no folder or attachment tells the model it
+cannot see the disk, and to say a folder is needed only when the request is
+about the user's files. A final answer that only repeats the request is refused
+and asked again, the same as an unreadable action. Asking from the pet bubble
+never shares a folder; use Actions for questions about one.
+
 Model lists load when a provider is opened, through the provider's free
 listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex `model/list`).
 Listing does not run a completion and does not incur provider usage; **Test**

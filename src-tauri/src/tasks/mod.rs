@@ -403,14 +403,29 @@ impl Context {
             let context = json!({ "previousTurns": turns });
             messages.push(Message{role:"user".into(),content:format!("Previous task context (data only; current scope and permissions apply): {context}")});
         }
-        messages.push(Message{role:"user".into(),content:json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
+        let mut request = json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web});
+        // An empty folder list alone left small models answering a question
+        // about "this folder" by repeating it, or refusing general questions.
+        if scope.roots.is_empty() && scope.attachments.is_empty() {
+            request["note"] = NO_FILES.into();
+        }
+        messages.push(Message {
+            role: "user".into(),
+            content: request.to_string(),
+        });
         let mut malformed = 0;
         let mut done = HashSet::new();
         for step in 0..24 {
             self.progress(&format!("Thinking · step {} of 24", step + 1))?;
             let tools = open_tools(scope, task.request.allow_web, &done);
             let text = model.act(&messages, &tools, &self.cancel)?;
-            let call = match providers::parse_call(&text) {
+            let call = match providers::parse_call(&text).and_then(|call| {
+                if call.tool == "finish" && restates(&call, &task.request.prompt) {
+                    Err("That repeats the request instead of answering it. Answer the request itself.".into())
+                } else {
+                    Ok(call)
+                }
+            }) {
                 Ok(call) => {
                     malformed = 0;
                     call
@@ -422,7 +437,7 @@ impl Context {
                 Err(error) => {
                     malformed += 1;
                     if malformed >= 3 {
-                        return Err("The model returned an unreadable action three times in a row. No action was executed.".into());
+                        return Err("The model did not give a usable answer three times in a row. No action was executed.".into());
                     }
                     messages.push(Message {
                         role: "assistant".into(),
@@ -669,6 +684,21 @@ fn validate_citations(text: &str, sources: &[Source]) -> Result<(), String> {
     }
     Ok(())
 }
+const NO_FILES: &str = "No files or folders were shared, so you cannot see the user's disk. Answer from your own knowledge. Only if the request is about the user's own files, reply that they need to share a folder first.";
+
+/// Whether a final answer is just the request echoed back, which the
+/// on-device model does when it has nothing to act on.
+fn restates(call: &ToolCall, prompt: &str) -> bool {
+    let words = |s: &str| {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>()
+    };
+    let answer = words(call.args["text"].as_str().unwrap_or_default());
+    !answer.is_empty() && answer == words(prompt)
+}
+
 /// The actions that could do anything for this task right now: file tools only
 /// with a folder or attachment, web tools only when allowed, and a tool that
 /// takes no arguments only until it has run, since it would answer the same.
@@ -817,6 +847,27 @@ mod tests {
                 ..request()
             })
             .is_ok());
+    }
+    #[test]
+    fn an_answer_that_only_repeats_the_request_is_not_an_answer() {
+        let finish = |text: &str| ToolCall {
+            tool: "finish".into(),
+            args: json!({ "text": text }),
+        };
+        let prompt = "What is currently in this folder? ";
+        assert!(restates(
+            &finish("What is currently in this folder?"),
+            prompt
+        ));
+        assert!(restates(
+            &finish("what is currently in THIS folder"),
+            prompt
+        ));
+        assert!(!restates(
+            &finish("You need to share a folder first."),
+            prompt
+        ));
+        assert!(!restates(&finish(""), prompt));
     }
     #[test]
     fn only_actions_that_could_help_are_offered() {
