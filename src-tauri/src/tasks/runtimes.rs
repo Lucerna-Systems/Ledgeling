@@ -348,14 +348,31 @@ impl AgentRuntime for ClaudeRuntime {
         if result["type"] != "ready" {
             return Err("Claude bridge is incompatible. Reinstall sidecar dependencies.".into());
         }
-        Ok(Capabilities{models:vec![self.0.model.clone()],structured:false,advanced:true,detail:format!("Claude SDK bridge {} connected. {}",result["version"].as_str().unwrap_or("unknown"),if CLAUDE_CODE_LOGIN {"Uses your Claude Code sign-in (development builds only)."} else {"Uses your Anthropic API key."})})
+        Ok(Capabilities {
+            models: vec![self.0.model.clone()],
+            structured: false,
+            advanced: true,
+            detail: format!(
+                "Claude SDK bridge {} connected. {}",
+                result["version"].as_str().unwrap_or("unknown"),
+                if CLAUDE_CODE_LOGIN {
+                    "Uses your Claude Code sign-in (development builds only)."
+                } else {
+                    "Uses your Anthropic API key."
+                }
+            ),
+        })
     }
     fn run(&self, ctx: &Context, task: &Task) -> Result<(), String> {
         let (root, extra) = working_root(&task.request.roots)?;
         if !ctx.approve("Start advanced agent",json!({"runtime":"Claude SDK","folder":&root,"notice":format!("Commands and writes require individual approval. Read access is limited by the SDK and selected working directory. Arbitrary commands do not have universal undo.{extra}")}))?{return ctx.finish("Advanced task declined.");}
         let mut p = self.process()?;
         // Send credentials over private stdin, never command arguments or logs.
-        let key = if CLAUDE_CODE_LOGIN { None } else { Some(super::providers::secret("anthropic")?) };
+        let key = if CLAUDE_CODE_LOGIN {
+            None
+        } else {
+            Some(super::providers::secret("anthropic")?)
+        };
         p.send(json!({"type":"start","key":key,"prompt":task.request.prompt,"cwd":&root,"model":self.0.model,"attachments":task.request.attachments,"allowWeb":task.request.allow_web}))?;
         let deadline = Instant::now() + Duration::from_secs(1800);
         let mut output = String::new();
