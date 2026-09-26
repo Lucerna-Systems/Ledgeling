@@ -18,7 +18,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 duration = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 600
 native_only = '--native' in sys.argv
-default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/perch'
+default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/ledgeling'
 binary = Path(os.environ.get('PERCH_BENCH_BINARY', str(default_binary)))
 
 

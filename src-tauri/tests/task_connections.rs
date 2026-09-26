@@ -1,6 +1,6 @@
 //! Explicit opt-in smoke tests. They send only a synthetic readiness request.
 //! API tests use credentials saved through Perch, never print or copy keys.
-use perch::tasks::{
+use ledgeling::tasks::{
     providers::{HttpModel, ModelProvider},
     runtimes,
     types::{Connection, ProviderKind},
@@ -41,7 +41,7 @@ fn compatible() {
 #[test]
 #[ignore = "Requires macOS 27 on Apple silicon with `sudo fm license` accepted"]
 fn apple_foundation() {
-    use perch::tasks::apple;
+    use ledgeling::tasks::apple;
     assert!(
         apple::readiness().is_ready(),
         "{}",
@@ -77,7 +77,7 @@ fn codex_protocol() {
 #[test]
 #[ignore = "Requires saved OpenAI API key; model listing is free"]
 fn openai_model_list() {
-    let models = perch::tasks::providers::list_models(&Connection {
+    let models = ledgeling::tasks::providers::list_models(&Connection {
         kind: ProviderKind::Openai,
         ..Default::default()
     })
@@ -87,7 +87,7 @@ fn openai_model_list() {
 #[test]
 #[ignore = "Requires saved Anthropic API key; model listing is free"]
 fn anthropic_model_list() {
-    let models = perch::tasks::providers::list_models(&Connection {
+    let models = ledgeling::tasks::providers::list_models(&Connection {
         kind: ProviderKind::Anthropic,
         ..Default::default()
     })
@@ -97,7 +97,7 @@ fn anthropic_model_list() {
 #[test]
 #[ignore = "Requires running Ollama"]
 fn ollama_model_list() {
-    let models = perch::tasks::providers::list_models(&Connection {
+    let models = ledgeling::tasks::providers::list_models(&Connection {
         kind: ProviderKind::Ollama,
         ..Default::default()
     })
@@ -119,7 +119,7 @@ fn claude_bridge() {
 #[test]
 #[ignore = "Requires saved Brave Search key; sends synthetic query"]
 fn brave_search() {
-    use perch::tasks::search::{Brave, SearchProvider};
+    use ledgeling::tasks::search::{Brave, SearchProvider};
     assert!(!Brave
         .search(
             "Rust programming language official documentation",

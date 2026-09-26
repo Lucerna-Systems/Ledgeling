@@ -18,7 +18,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 hours = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
 interval = 60
-default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/perch'
+default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/ledgeling'
 binary = Path(os.environ.get('PERCH_BENCH_BINARY', str(default_binary)))
 
 if not binary.exists():
