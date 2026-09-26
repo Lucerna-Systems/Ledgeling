@@ -125,7 +125,7 @@ onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(
       </button>
     </div>
 
-    <main ref="content" class="content" :class="{ 'fit-page': page === 'assistant' }">
+    <main ref="content" class="content" :class="{ 'fit-page': page === 'assistant' || page === 'studio' }">
       <div v-if="!native" class="preview-notice"><Monitor :size="16" /><span>This is a browser preview. Run <code>npm run tauri dev</code> to bring a pet onto your desktop.</span></div>
       <div v-for="note in notes" :key="note" class="preview-notice"><ShieldCheck :size="16" /><span>{{ note }}</span></div>
       <div v-if="error || snapshot?.scanError" class="error-banner" role="alert">

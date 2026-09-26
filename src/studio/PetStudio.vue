@@ -12,7 +12,9 @@ import './studio.css'
 const emit = defineEmits<{ go: [page: 'lab' | 'pets'] }>()
 
 const tab = ref<'look' | 'behaviour'>('look')
-const issues = computed(() => problems(draft.value))
+const edits = ref(0)
+// Read `edits` so drawing, which Vue cannot see, still re-checks the design.
+const issues = computed(() => (edits.value, problems(draft.value)))
 const saving = ref(false)
 const saved = ref<PackSummary | null>(null)
 
@@ -95,7 +97,7 @@ function startOver() {
       <span>Before saving: {{ issues[0] }}<template v-if="issues.length > 1"> <em>(+{{ issues.length - 1 }} more)</em></template></span>
     </div>
 
-    <SpriteEditor v-show="tab === 'look'" :draft="draft" />
+    <SpriteEditor v-show="tab === 'look'" :draft="draft" @edited="edits++" />
     <BehaviorEditor v-if="tab === 'behaviour'" :draft="draft" />
   </section>
 </template>

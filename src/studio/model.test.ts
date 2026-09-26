@@ -57,6 +57,13 @@ describe('studio checks', () => {
     expect(problems(ready())).toEqual([])
   })
 
+  it('saves a blank Move as a copy of Idle until issue #11 is fixed', () => {
+    const draft = ready()
+    draft.clips.move!.frames = [blankFrame()]
+    expect(problems(draft)).toEqual([])
+    expect(buildManifest(draft).animations.move).toEqual({ file: 'sprites/move.png', frames: 2, fps: 8 })
+  })
+
   it('catches a condition without a number and a step to a missing behaviour', () => {
     const draft = ready()
     draft.states[0]!.transitions[1]!.when[0]!.value = 'soon'

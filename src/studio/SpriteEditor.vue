@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Copy, Eraser, FlipHorizontal2, Grid3x3, Layers, PaintBucket, Pencil, Pipette, Plus, Redo2, Trash2, Undo2 } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Copy, Eraser, FlipHorizontal2, Grid3x3, Layers, PaintBucket, Pause, Pencil, Pipette, Play, Plus, Redo2, Trash2, Undo2 } from '@lucide/vue'
 import { FRAME, MAX_FRAMES, blankFrame, clipDrawn, clipInfo, clipsFor, drawn, emptyClip, type Draft } from './model'
 
 const props = defineProps<{ draft: Draft }>()
+/** Pixel edits are invisible to Vue (typed arrays are not reactive), so the
+ *  Studio hears about them here to re-check what still needs drawing. */
+const emit = defineEmits<{ edited: [] }>()
 /** Bumped after every pixel change; thumbnails and the preview redraw from it. */
 const version = ref(0)
+watch(version, () => emit('edited'))
 
 // ---- which animation and frame ----
 const clipName = ref('idle')
@@ -197,15 +201,23 @@ function clearFrame() {
 
 // ---- drawing to screen ----
 const SCALE = 8
-const scratch = document.createElement('canvas')
-scratch.width = scratch.height = FRAME
+/** Paints a frame as one square per pixel. Drawing one canvas onto another
+ *  is avoided on purpose: WebKit (the macOS app's engine) can draw the source
+ *  as it was before the latest putImageData, which showed stale or blank frames. */
 function blit(target: CanvasRenderingContext2D, pixels: Uint8ClampedArray, size: number, alpha = 1) {
-  scratch.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), FRAME, FRAME), 0, 0)
-  target.imageSmoothingEnabled = false
+  const cell = size / FRAME
   target.globalAlpha = alpha
-  target.drawImage(scratch, 0, 0, size, size)
+  for (let i = 0; i < FRAME * FRAME; i++) {
+    const a = pixels[i * 4 + 3]!
+    if (!a) continue
+    target.fillStyle = `rgba(${pixels[i * 4]},${pixels[i * 4 + 1]},${pixels[i * 4 + 2]},${a / 255})`
+    target.fillRect((i % FRAME) * cell, Math.floor(i / FRAME) * cell, cell, cell)
+  }
   target.globalAlpha = 1
 }
+/** Thumbnails read their canvas back with toDataURL, which always sees the latest pixels. */
+const thumbCanvas = document.createElement('canvas')
+thumbCanvas.width = thumbCanvas.height = FRAME
 function render() {
   const ctx = canvas.value?.getContext('2d')
   if (!ctx) return
@@ -239,31 +251,44 @@ function thumb(pixels: Uint8ClampedArray | undefined) {
   if (!pixels) return ''
   const cached = thumbCache.get(pixels)
   if (cached?.version === version.value) return cached.url
-  scratch.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), FRAME, FRAME), 0, 0)
-  const url = drawn(pixels) ? scratch.toDataURL() : ''
+  thumbCanvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), FRAME, FRAME), 0, 0)
+  const url = drawn(pixels) ? thumbCanvas.toDataURL() : ''
   thumbCache.set(pixels, { version: version.value, url })
   return url
 }
 
-// ---- live preview ----
+// ---- preview ----
+// Paused, the preview shows the frame being edited. It animates only while the
+// user asks, so an open Studio costs no CPU.
 const preview = ref<HTMLCanvasElement | null>(null)
+const playing = ref(false)
+const canPlay = computed(() => (clip.value?.frames.length ?? 0) > 1)
 let tick = 0
 let previewFrame = 0
 let lastTime = 0
-function animate(time: number) {
-  tick = requestAnimationFrame(animate)
-  const current = clip.value
+function showInPreview(pixels: Uint8ClampedArray | undefined) {
   const ctx = preview.value?.getContext('2d')
-  if (!current || !ctx) return
-  if (time - lastTime >= 1000 / current.fps) {
-    lastTime = time
-    previewFrame = current.loop || previewFrame < current.frames.length - 1 ? (previewFrame + 1) % current.frames.length : previewFrame
-    ctx.clearRect(0, 0, 144, 144)
-    const pixels = current.frames[previewFrame % current.frames.length]
-    if (pixels) blit(ctx, pixels, 144)
-  }
+  if (!ctx) return
+  ctx.clearRect(0, 0, 144, 144)
+  if (pixels) blit(ctx, pixels, 144)
 }
-watch(clipName, () => { previewFrame = 0 })
+function animate(time: number) {
+  const current = clip.value
+  if (!playing.value || !current) return
+  tick = requestAnimationFrame(animate)
+  if (time - lastTime < 1000 / current.fps) return
+  lastTime = time
+  if (previewFrame >= current.frames.length - 1 && !current.loop) { playing.value = false; return }
+  previewFrame = (previewFrame + 1) % current.frames.length
+  showInPreview(current.frames[previewFrame])
+}
+watch(playing, on => {
+  cancelAnimationFrame(tick)
+  if (on) { previewFrame = -1; lastTime = 0; tick = requestAnimationFrame(animate) }
+  else showInPreview(frame.value)
+})
+watch([version, clipName, frameIndex, preview], () => { if (!playing.value) showInPreview(frame.value) })
+watch([clipName, canPlay], () => { playing.value = false })
 
 function key(event: KeyboardEvent) {
   if ((event.target as HTMLElement).closest('input, textarea, [contenteditable]')) return
@@ -277,8 +302,7 @@ function key(event: KeyboardEvent) {
   else if (event.key === '.' && clip.value) frameIndex.value = Math.min(clip.value.frames.length - 1, frameIndex.value + 1)
 }
 onMounted(async () => {
-  await nextTick(); render()
-  tick = requestAnimationFrame(animate)
+  await nextTick(); render(); showInPreview(frame.value)
   window.addEventListener('keydown', key)
 })
 onUnmounted(() => { cancelAnimationFrame(tick); window.removeEventListener('keydown', key) })
@@ -337,8 +361,10 @@ defineExpose({ version })
             <button type="button" class="rail-button" :disabled="!canUndo" title="Undo (⌘Z)" aria-label="Undo" @click="undo"><Undo2 :size="17" /></button>
             <button type="button" class="rail-button" :disabled="!canRedo" title="Redo (⇧⌘Z)" aria-label="Redo" @click="redo"><Redo2 :size="17" /></button>
           </div>
-          <canvas ref="canvas" class="pixel-canvas" :class="`tool-${tool}`" :width="FRAME * SCALE" :height="FRAME * SCALE"
-                  aria-label="Drawing canvas" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" @pointerleave="hover = null" />
+          <div class="canvas-stage">
+            <canvas ref="canvas" class="pixel-canvas" :class="`tool-${tool}`" :width="FRAME * SCALE" :height="FRAME * SCALE"
+                    aria-label="Drawing canvas" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" @pointerleave="hover = null" />
+          </div>
         </div>
 
         <div class="frame-strip" aria-label="Frames">
@@ -373,8 +399,12 @@ defineExpose({ version })
         </div>
       </div>
       <div v-if="clip" class="panel-block">
-        <h3>Preview</h3>
-        <div class="preview-stage"><canvas ref="preview" width="144" height="144" aria-label="Animation preview" /></div>
+        <div class="preview-head">
+          <h3>Preview</h3>
+          <button type="button" class="preview-play" :disabled="!canPlay" :aria-pressed="playing" :title="canPlay ? undefined : 'Add a second frame to play the animation'"
+                  @click="playing = !playing"><Pause v-if="playing" :size="14" /><Play v-else :size="14" />{{ playing ? 'Pause' : 'Play' }}</button>
+        </div>
+        <div class="preview-stage"><canvas ref="preview" width="144" height="144" :aria-label="playing ? 'Animation preview, playing' : 'Animation preview, paused'" /></div>
         <label class="fps-row">Speed <input v-model.number="clip.fps" type="range" min="1" max="24" aria-label="Frames per second"><span>{{ clip.fps }} fps</span></label>
         <label class="check-row"><input v-model="clip.loop" type="checkbox"> Loop</label>
       </div>

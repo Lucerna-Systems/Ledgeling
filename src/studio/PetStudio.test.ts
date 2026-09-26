@@ -56,3 +56,31 @@ it('the behaviour tab edits the same design', async () => {
   expect(wrapper.findAll('.state-block')).toHaveLength(before + 1)
   wrapper.unmount()
 })
+
+it('keeps the preview still until Play is pressed', async () => {
+  const frames = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(1)
+  draft.value.clips.idle = { frames: [blankFrame(), blankFrame()], fps: 6, loop: true }
+  const wrapper = mount(PetStudio)
+  await wrapper.vm.$nextTick()
+  expect(frames).not.toHaveBeenCalled()
+  const play = wrapper.get('.preview-play')
+  expect(play.text()).toBe('Play')
+  await play.trigger('click')
+  expect(frames).toHaveBeenCalled()
+  expect(play.text()).toBe('Pause')
+  await play.trigger('click')
+  expect(play.text()).toBe('Play')
+  wrapper.unmount()
+  frames.mockRestore()
+})
+
+it('clears the "draw Idle first" note as soon as Idle is drawn', async () => {
+  const wrapper = mount(PetStudio)
+  expect(wrapper.text()).toContain('Idle animation')
+  const canvas = wrapper.get('.pixel-canvas')
+  canvas.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 480 }) as DOMRect
+  canvas.element.setPointerCapture = () => {}
+  await canvas.trigger('pointerdown', { button: 0, clientX: 240, clientY: 240, pointerId: 1 })
+  expect(wrapper.text()).not.toContain('Draw at least one frame of the Idle animation')
+  wrapper.unmount()
+})

@@ -165,11 +165,20 @@ export function conditionText(when: Condition[]) {
   return when.map(c => `${c.signal} ${c.op} ${c.value.trim()}`).join(' && ')
 }
 
+/** The clips a save writes. Temporary (issue #11): a blank Move reuses Idle,
+ *  because copying Idle into Move does not show on the macOS canvas yet. */
+function savedClips(draft: Draft): Record<string, ClipDraft> {
+  const clips = { ...draft.clips }
+  if (!clipDrawn(clips.move) && clipDrawn(clips.idle)) clips.move = clips.idle!
+  return clips
+}
+
 /** Problems worth fixing before saving, in plain words. The backend validator still has the final say. */
 export function problems(draft: Draft): string[] {
   const out: string[] = []
   if (!draft.name.trim()) out.push('Give your pet a name.')
-  for (const required of ['idle', 'move']) if (!clipDrawn(draft.clips[required])) out.push(`Draw at least one frame of the ${clipInfo(required)!.label} animation.`)
+  const clips = savedClips(draft)
+  for (const required of ['idle', 'move']) if (!clipDrawn(clips[required])) out.push(`Draw at least one frame of the ${clipInfo(required)!.label} animation.`)
   const names = new Set(draft.states.map(s => s.name))
   if (names.size !== draft.states.length) out.push('Two behaviours share a name. Give each its own.')
   if (!names.has(draft.initial)) out.push('Pick which behaviour your pet starts with.')
@@ -190,7 +199,7 @@ export function problems(draft: Draft): string[] {
 /** The manifest exactly as it is written to pet.json. */
 export function buildManifest(draft: Draft) {
   const animations: Record<string, Record<string, unknown>> = {}
-  for (const [name, clip] of Object.entries(draft.clips)) {
+  for (const [name, clip] of Object.entries(savedClips(draft))) {
     if (!clipDrawn(clip)) continue
     animations[name] = { file: `sprites/${name}.png`, frames: clip.frames.length, fps: clip.fps, ...(clip.loop ? {} : { loop: false }) }
   }
@@ -234,7 +243,7 @@ export function strip(frames: Uint8ClampedArray[]) {
 
 /** The save payload for `save_studio_pack`. */
 export function payload(draft: Draft, preview: { width: number; height: number; pixels: Uint8ClampedArray }) {
-  const strips = Object.entries(draft.clips)
+  const strips = Object.entries(savedClips(draft))
     .filter(([, clip]) => clipDrawn(clip))
     .map(([name, clip]) => { const s = strip(clip.frames); return { name, width: s.width, height: s.height, pixels: Array.from(s.pixels) } })
   return {
