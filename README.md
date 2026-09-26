@@ -151,6 +151,13 @@ Nothing leaves your machine, and there is no code in the build that could send i
 Window titles are never read. See [docs/privacy.md](docs/privacy.md) — and note
 that `src-tauri/tests/privacy.rs` fails the build if any of that stops being true.
 
+## License
+
+Ledgeling is source-available, not open source; see [LICENSE.txt](LICENSE.txt)
+for what you may do with it.
+
+Contributions are accepted under the [Contributor License Agreement](CLA.md).
+
 ## Environment variables
 
 - `LEDGELING_DIAGNOSTICS=1` prints a scan/state summary to stderr every five seconds
