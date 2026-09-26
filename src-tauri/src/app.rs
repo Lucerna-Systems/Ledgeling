@@ -641,6 +641,14 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
+            // Keys are only looked for on the launch that moves the folder, so a
+            // denied keychain prompt is asked once rather than on every start.
+            let mut migration_note = None;
+            match crate::migrate::move_app_dir(&config_dir) {
+                Ok(true) => crate::tasks::providers::migrate_legacy_secrets(),
+                Ok(false) => {}
+                Err(error) => migration_note = Some(error),
+            }
             crate::platform::pet_ui::init(app.handle());
             let task_handle = app.handle().clone();
             let task_service =
@@ -675,7 +683,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             // Applied before the window can be shown so native scrollbars and
             // form controls never flash the wrong appearance.
             let _ = main.set_theme(theme_to_option(settings.theme));
-            let mut notes: Vec<String> = note.into_iter().collect();
+            let mut notes: Vec<String> = note.into_iter().chain(migration_note).collect();
             if let Err(error) = builtin::restore(&packs_dir, &settings.uninstalled_builtins) {
                 notes.push(error);
             }
