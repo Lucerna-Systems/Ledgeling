@@ -23,6 +23,9 @@ use std::{
 /// no Private Cloud Compute backend in this build, so nothing here can leave
 /// the machine.
 pub const MODEL: &str = "system";
+/// The transcript a task may send: the model's context is about 4,000 tokens,
+/// and the reply needs room too.
+pub const CONTEXT_CHARS: usize = 10_000;
 const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 /// First use pays for loading the model, so readiness is slower than a health
 /// check on an ordinary server.
@@ -63,6 +66,7 @@ pub fn action_format(tools: &[&str]) -> Value {
         .filter_map(|tool| {
             let (title, args): (&str, Vec<(&str, Value)>) = match *tool {
                 "finish" => ("Finish", vec![("text", text())]),
+                "list_folder" => ("ListFolder", vec![("path", text())]),
                 "list_files" => ("ListFiles", vec![]),
                 "read_file" => ("ReadFile", vec![("path", text())]),
                 "find_files" => (

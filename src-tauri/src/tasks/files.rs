@@ -50,6 +50,60 @@ impl Scope {
         }
         Ok(path)
     }
+    /// One folder's own entries, without descending: what "what is in this
+    /// folder?" needs, and small enough for an on-device model's context even
+    /// when the tree below holds thousands of files. An empty `input` means the
+    /// chosen folders themselves.
+    pub fn list_folder(&self, input: &str, cancel: &Cancel) -> Result<serde_json::Value, String> {
+        const MAX: usize = 100;
+        let input = input.trim();
+        let folders: Vec<PathBuf> =
+            if input.is_empty() || self.roots.iter().any(|r| Path::new(input) == r) {
+                if input.is_empty() {
+                    self.roots.clone()
+                } else {
+                    vec![PathBuf::from(input)]
+                }
+            } else {
+                vec![self.path(input, false)?]
+            };
+        if folders.is_empty() {
+            return Err("No folder was shared for this task.".into());
+        }
+        let mut listed = Vec::new();
+        for folder in folders {
+            no_links(&folder)?;
+            let mut entries = Vec::new();
+            for entry in fs::read_dir(&folder)
+                .map_err(|_| format!("{} is not a folder that can be read.", folder.display()))?
+            {
+                cancel.check()?;
+                let entry = entry.map_err(|e| e.to_string())?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Ok(ty) = entry.file_type() else { continue };
+                if name.starts_with('.') || ty.is_symlink() {
+                    continue;
+                }
+                entries.push(if ty.is_dir() {
+                    serde_json::json!({ "name": name, "kind": "folder" })
+                } else {
+                    let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    serde_json::json!({ "name": name, "kind": "file", "bytes": bytes })
+                });
+            }
+            entries.sort_by(|a, b| {
+                a["kind"]
+                    .as_str()
+                    .cmp(&b["kind"].as_str())
+                    .reverse()
+                    .then(a["name"].as_str().cmp(&b["name"].as_str()))
+            });
+            let more = entries.len().saturating_sub(MAX);
+            entries.truncate(MAX);
+            listed.push(serde_json::json!({ "folder": folder, "entries": entries, "more": more }));
+        }
+        Ok(serde_json::Value::Array(listed))
+    }
     pub fn list(&self, cancel: &Cancel) -> Result<Vec<PathBuf>, String> {
         fn walk(
             p: &Path,
@@ -79,7 +133,7 @@ impl Scope {
                 }
                 if out.len() > 2000 {
                     return Err(
-                        "This task is limited to 2,000 files. Choose a smaller folder.".into(),
+                        "This folder holds more than 2,000 files, too many to list at once. Use list_folder to look inside it one folder at a time.".into(),
                     );
                 }
             }

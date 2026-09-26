@@ -12,6 +12,11 @@ pub trait ModelProvider {
         self.complete(messages, cancel)
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String>;
+    /// How many characters of transcript the model can take, when that is
+    /// small enough for a task to overflow it.
+    fn context_chars(&self) -> Option<usize> {
+        None
+    }
 }
 pub fn secret_name(kind: &ProviderKind) -> &'static str {
     match kind {
@@ -379,6 +384,10 @@ impl ModelProvider for HttpModel {
         } else {
             self.complete(messages, cancel)
         }
+    }
+    // `fm` refuses a transcript over about 4,000 tokens outright.
+    fn context_chars(&self) -> Option<usize> {
+        (self.0.kind == ProviderKind::Apple).then_some(apple::CONTEXT_CHARS)
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String> {
         if self.0.kind == ProviderKind::Apple {
