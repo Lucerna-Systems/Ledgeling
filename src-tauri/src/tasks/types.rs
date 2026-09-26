@@ -33,7 +33,7 @@ impl Default for Connection {
         }
     }
 }
-/// A record of the user accepting Perch's terms for the on-device provider.
+/// A record of the user accepting Ledgeling's terms for the on-device provider.
 /// Both fields are written by the backend, never taken from the frontend, so a
 /// stored acceptance always reflects text this build actually showed.
 #[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]

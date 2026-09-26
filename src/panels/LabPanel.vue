@@ -78,7 +78,7 @@ function toggleDebug() {
 
   <section class="new-pack">
     <div class="section-label"><FolderOpen :size="16" /> New pack folder</div>
-    <p class="control-intro">A working pack with placeholder art, for drawing in your own tools and editing <code>pet.json</code> by hand. To draw inside Perch instead, use <strong>Pets → Make your own pet</strong>.</p>
+    <p class="control-intro">A working pack with placeholder art, for drawing in your own tools and editing <code>pet.json</code> by hand. To draw inside Ledgeling instead, use <strong>Pets → Make your own pet</strong>.</p>
     <div class="new-pack-row">
       <input v-model="newName" aria-label="Pack name" placeholder="Name">
       <select v-model="newClass" aria-label="How it moves">

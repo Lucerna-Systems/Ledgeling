@@ -17,7 +17,7 @@ beforeEach(() => {
 
 const pack = (name: string, kind: string): PackListing => ({
   summary: {
-    id: name, name, class: kind, author: 'Perch', description: 'A desktop friend', version: '1', builtin: true, loadable: true,
+    id: name, name, class: kind, author: 'Ledgeling', description: 'A desktop friend', version: '1', builtin: true, loadable: true,
     errors: 0, warnings: 0, notes: 1, surfaces: [], preview: null, tags: [], license: '', animations: ['idle', 'move'], directory: '',
     assistantClips: [
       { slot: 'busy', when: 'while this pet is working on a task', clip: 'idle', provided: false },

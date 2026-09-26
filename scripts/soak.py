@@ -18,7 +18,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 hours = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
 interval = 60
-default_binary = root / 'src-tauri/target/release/bundle/macos/Perch.app/Contents/MacOS/perch'
+default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/perch'
 binary = Path(os.environ.get('PERCH_BENCH_BINARY', str(default_binary)))
 
 if not binary.exists():
@@ -45,7 +45,7 @@ try:
     while time.time() - start < hours * 3600:
         time.sleep(interval)
         if process.poll() is not None:
-            raise RuntimeError(f'Perch exited after {(time.time() - start) / 60:.0f} minutes '
+            raise RuntimeError(f'Ledgeling exited after {(time.time() - start) / 60:.0f} minutes '
                                f'with code {process.returncode}')
         minute = (time.time() - start) / 60
         rows.append({'minute': round(minute, 1), 'rss_kib': rss_kib(process.pid),

@@ -60,7 +60,7 @@ export const events = [
   { value: 'surface_moved_fast', label: 'its window is flung around' },
   { value: 'app_category_changed', label: 'you switch kinds of app' },
   { value: 'hour_changed', label: 'a new hour starts' },
-  { value: 'startup', label: 'Perch starts' },
+  { value: 'startup', label: 'Ledgeling starts' },
   { value: 'low_energy', label: 'it gets tired' },
 ] as const
 

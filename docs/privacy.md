@@ -1,7 +1,7 @@
-# What Perch looks at
+# What Ledgeling looks at
 
-Perch runs entirely on your computer. There is no account, no server, and no
-telemetry. Nothing you do in Perch reaches a network, because the program contains
+Ledgeling runs entirely on your computer. There is no account, no server, and no
+telemetry. Nothing you do in Ledgeling reaches a network, because the program contains
 no code that can reach one.
 
 ## Collected
@@ -13,14 +13,14 @@ no code that can reach one.
 | Position and size of your open windows, and their front-to-back order | This is the floor the pet stands on | Memory only |
 | Mouse pointer position | So the pet can react to your cursor and be picked up | Memory only |
 | How long your current unbroken stretch of work has been | The nudge ladder, and nothing else | Memory only |
-| Your settings, and where each pet was last standing | So it is where you left it after a restart | `settings.json` in Perch's own config folder |
+| Your settings, and where each pet was last standing | So it is where you left it after a restart | `settings.json` in Ledgeling's own config folder |
 
 ## Never collected
 
 - **Window titles.** Not read, not stored, not requested from the operating system
   at any point. Titles routinely contain email subject lines, document names,
   customer names and URLs, and no feature is worth that.
-- **What you type.** Perch knows *that* input happened. It never learns what it was,
+- **What you type.** Ledgeling knows *that* input happened. It never learns what it was,
   and installs no keyboard hook.
 - **Screen contents.** No screenshots, no screen recording permission, ever.
 - **The clipboard, your files, your file paths, your browser history or tabs.**
@@ -42,7 +42,7 @@ part of this sequence.
 
 `src-tauri/tests/privacy.rs` fails the build if any source file references a
 window-title API, a screen-capture API, a keyboard-state API, or anything that can
-open a network connection, and if Perch's permission list grants anything beyond
+open a network connection, and if Ledgeling's permission list grants anything beyond
 local window events. It is checked by a machine on every test run, not by memory.
 
 ## Turning it off

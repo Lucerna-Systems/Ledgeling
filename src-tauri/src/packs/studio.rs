@@ -56,7 +56,7 @@ pub fn save(
         if existing.summary.id == id && existing.summary.builtin {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(format!(
-                "`{}` comes with Perch and cannot be replaced. Rename your pet to save it as a new one.",
+                "`{}` comes with Ledgeling and cannot be replaced. Rename your pet to save it as a new one.",
                 existing.summary.name
             ));
         }
@@ -86,7 +86,7 @@ fn check_image(image: &StudioImage, strip: bool) -> Result<(), String> {
             .all(|c| c.is_ascii_lowercase() || c == '_');
     if strip && !valid_name {
         return Err(format!(
-            "`{}` is not an animation name Perch knows.",
+            "`{}` is not an animation name Ledgeling knows.",
             image.name
         ));
     }
@@ -126,7 +126,7 @@ fn write_all(
     )?;
     std::fs::write(
         directory.join("LICENSE.txt"),
-        "Made in Perch's Pet Studio. Replace this with the licence for your art before sharing the pack.\n",
+        "Made in Ledgeling's Pet Studio. Replace this with the licence for your art before sharing the pack.\n",
     )
     .map_err(|e| format!("Could not write LICENSE.txt: {e}"))
 }

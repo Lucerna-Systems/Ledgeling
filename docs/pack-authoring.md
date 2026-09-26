@@ -1,6 +1,6 @@
 # Making a pet
 
-The quickest way is inside Perch: **Pets → Make your own pet** opens the Pet Studio.
+The quickest way is inside Ledgeling: **Pets → Make your own pet** opens the Pet Studio.
 Draw each animation frame by frame, set the behaviours with plain-language blocks
 ("When you click it, go to say hi"), and press **Save & bring out**. The Studio
 writes an ordinary pack, the same format this guide describes, and the same
@@ -16,11 +16,11 @@ Give this an hour. Most of that hour is drawing.
 
 ## 1. Make the folder (2 minutes)
 
-Open Perch → **Settings → Advanced → Pet Lab** → under **New pack folder**, type a
+Open Ledgeling → **Settings → Advanced → Pet Lab** → under **New pack folder**, type a
 name, pick how it moves, press **New pack**.
 
 You now have a folder with placeholder art and a `pet.json` that already works.
-Perch tells you where it is. Open that folder.
+Ledgeling tells you where it is. Open that folder.
 
 ```
 my-new-pet/
@@ -48,10 +48,10 @@ idle.png →  [frame 1][frame 2][frame 3][frame 4]
             ← 48 px →
 ```
 
-- Transparency matters: Perch uses it so clicks pass through the empty corners.
+- Transparency matters: Ledgeling uses it so clicks pass through the empty corners.
 - The frame size is up to you. Whatever you choose, write it in `pet.json` under
   `sprite.width` and `sprite.height`.
-- Draw the animal **facing right**. Perch mirrors it when it walks the other way.
+- Draw the animal **facing right**. Ledgeling mirrors it when it walks the other way.
 - Its feet should touch the bottom edge of the frame. That bottom-centre point is
   where it meets the window edge, which is what `anchor` means.
 
@@ -59,7 +59,7 @@ Save over `sprites/idle.png` and `sprites/move.png`. The pet on screen changes a
 soon as you save — no restart, nothing to press.
 
 **Only `idle` and `move` are required.** Every other animation is optional, and if
-it is missing Perch uses one you did draw:
+it is missing Ledgeling uses one you did draw:
 
 ```
 climb → move → idle        land  → idle        sleep → idle
@@ -151,7 +151,7 @@ When you want more, describe what it does as a list of states:
 
 - `duration` is seconds, or `[shortest, longest]` for a bit of variety.
 - `weight` is how likely a transition is compared to the others in the same list.
-- `action` is one of the movements Perch already knows how to do:
+- `action` is one of the movements Ledgeling already knows how to do:
   `move_to_random_surface`, `move_to_nearest_surface`, `move_toward_cursor`,
   `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`.
 - `when` is an optional condition. If it is false, that transition cannot happen.
@@ -207,7 +207,7 @@ that overlay is where you find out why.
 ## 6. Share it
 
 Press **Export** on your pack. You get a `.petpack` file — anyone can drag it onto
-their Perch window to install it. Put a real licence in `LICENSE.txt` first so
+their Ledgeling window to install it. Put a real licence in `LICENSE.txt` first so
 people know what they may do with your drawing.
 
 ---
@@ -216,8 +216,8 @@ people know what they may do with your drawing.
 
 - **A pack can never harm anyone.** There is no scripting and no way to add one.
   The worst a broken pack can do is look wrong.
-- **Unknown settings are ignored**, with a note. A pack made for a newer Perch
+- **Unknown settings are ignored**, with a note. A pack made for a newer Ledgeling
   still loads on an older one.
-- **Pixel art scales best.** Perch draws sprites without smoothing.
+- **Pixel art scales best.** Ledgeling draws sprites without smoothing.
 - **Big animals need wide windows.** Use `min_surface_length` to stop a cat from
   trying to stand on a 60-pixel-wide window edge.

@@ -115,7 +115,7 @@ impl X11Window {
         )
     }
 
-    /// Perch's overlay is always-on-top and kept off the taskbar; its companion
+    /// Ledgeling's overlay is always-on-top and kept off the taskbar; its companion
     /// window is neither, so pets can still perch on that one.
     fn is_perch_overlay(&self, own_pid: u32) -> bool {
         self.pid == Some(own_pid)
@@ -163,7 +163,7 @@ pub fn front_to_back(
 }
 
 /// A focused window that says it is fullscreen, or that covers a whole
-/// monitor panels included, is the signature of a game or a film. Perch's own
+/// monitor panels included, is the signature of a game or a film. Ledgeling's own
 /// overlay covers the pet screen too, and a click on a pet can focus it.
 pub fn is_fullscreen(window: &X11Window, monitors: &[MonitorInfo], own_pid: u32) -> bool {
     if !window.viewable || window.has(WindowState::Hidden) || window.is_perch_overlay(own_pid) {
@@ -391,7 +391,7 @@ mod tests {
     fn a_synthetic_desktop_yields_perches_on_the_visible_frames_only() {
         // A GNOME-like desktop, bottom to top: the desktop window, a terminal
         // with a WM frame, a client-decorated editor with a shadow overlapping
-        // it, the top panel, a minimised chat app, and Perch's own overlay.
+        // it, the top panel, a minimised chat app, and Ledgeling's own overlay.
         let mut desktop = window(1, 0, 0, 1920, 1080);
         desktop.types = vec![WindowType::Desktop];
         let mut terminal = window(2, 200, 337, 900, 500);

@@ -128,7 +128,7 @@ pub fn load(directory: &Path) -> (Settings, Option<String>) {
             (
                 Settings::default(),
                 Some(format!(
-                    "Your settings file could not be read ({error}), so Perch started with \
+                    "Your settings file could not be read ({error}), so Ledgeling started with \
 defaults. The old file is kept at {}.",
                     backup.display()
                 )),

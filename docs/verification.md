@@ -92,12 +92,12 @@ display servers.
 
 - **Automated, every PR:** `npm run check`, `npm test` and `npm run test:ui`
   pass on Linux. Twelve model tests (any OS) cover the stacking reversal,
-  frame and GTK-shadow extents, which windows are skipped, Perch's own overlay,
+  frame and GTK-shadow extents, which windows are skipped, Ledgeling's own overlay,
   fullscreen, process names and session detection. One of them builds the
   engine's surfaces from a synthetic GNOME-like desktop.
 - **Live X11 test (Xvfb 1920×1080 + openbox), every PR:** real windows are
   listed front to back. A dock, a utility palette and an always-on-top,
-  taskbar-skipping window with Perch's PID are excluded. The top edge includes
+  taskbar-skipping window with Ledgeling's PID are excluded. The top edge includes
   openbox's frame (left 1, top 20). Minimising removes a window and activating
   one brings it to the front. The foreground process is named from its
   executable, fullscreen is detected and so is its end, the cursor matches a
@@ -123,7 +123,7 @@ display servers.
     window at 0,0 1920×1080. It was transparent over a native Wayland terminal,
     with the pet on the screen bottom.
   - This run found, and the build now fixes, a GTK menu bar that Tauri
-    attached to the overlay: a stray "Perch" menu at the top-left of the screen.
+    attached to the overlay: a stray "Ledgeling" menu at the top-left of the screen.
 - **Not verified:**
   - Any real distribution or desktop environment. GNOME/Mutter, KDE/KWin and
     Xfwm have not run it, whether on X11 or on Wayland.
@@ -144,7 +144,7 @@ display servers.
   - Any soak.
   - The pet bubble on Linux. The desktop run predates it on this branch, so
     its transparency, placement and focus have not been seen under any X11
-    or Wayland compositor. The adapter skips it like the overlay (Perch's PID
+    or Wayland compositor. The adapter skips it like the overlay (Ledgeling's PID
     plus always-on-top or skip-taskbar); that is covered only by the model
     tests.
   - Linux packaging, which remains out of scope.
@@ -187,7 +187,7 @@ display servers.
   positions.
 - **Not verified:** nothing about this has run in the real app on any
   platform. In particular: the macOS panel conversion (the Objective-C was not
-  compiled here), keyboard focus without activating Perch on macOS, focus on
+  compiled here), keyboard focus without activating Ledgeling on macOS, focus on
   Windows and whether the tool-window style survives showing, the hidden-caption
   handling on the bubble, transparency and the drop shadow in WKWebView and
   WebView2, the folder dialog not dismissing the bubble, and the bubble
@@ -266,7 +266,7 @@ display servers.
   continuing to tick while the companion window polls it once a second.
 - Monitor enumeration must happen on the UI thread on macOS; doing it from the
   update loop silently returns nothing. Fixed and confirmed.
-- A locked session reports no screens; Perch now suspends and keeps its geometry
+- A locked session reports no screens; Ledgeling now suspends and keeps its geometry
   instead of losing the world. Confirmed while the machine was locked.
 - **A second display was plugged in (2026-09-09)** — the first real
   multi-display session, and it broke exactly the way the mock never could:

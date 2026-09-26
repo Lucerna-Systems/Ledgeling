@@ -1,4 +1,4 @@
-# Perch interface
+# Ledgeling interface
 
 The companion uses a compact desktop layout with a quiet green accent.
 Shared tokens and primitives live in src/style.css; task-specific layouts live

@@ -242,7 +242,7 @@ impl ModelProvider for HttpModel {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
         cancel.check()?;
         let config = &self.0;
-        // Apple's endpoint is a server Perch starts on demand, not a saved
+        // Apple's endpoint is a server Ledgeling starts on demand, not a saved
         // address, and `system` is the only model it accepts.
         let endpoint = if config.kind == ProviderKind::Apple {
             apple::endpoint(cancel)?

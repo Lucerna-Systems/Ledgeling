@@ -102,7 +102,7 @@ pub fn default_root() -> Result<PathBuf, String> {
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .ok_or("The home folder is unavailable.")?;
-    let root = home.join("Documents").join("Perch");
+    let root = home.join("Documents").join("Ledgeling");
     fs::create_dir_all(&root).map_err(|e| format!("Could not create {}: {e}", root.display()))?;
     root.canonicalize().map_err(|e| e.to_string())
 }

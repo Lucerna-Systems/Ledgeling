@@ -1,5 +1,5 @@
 //! Opt-in launch at login. Off by default, and removable from the same switch
-//! that turned it on — Perch installs nothing behind the user's back.
+//! that turned it on — Ledgeling installs nothing behind the user's back.
 use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
@@ -119,7 +119,7 @@ mod registry {
             Ok(())
         } else {
             Err(format!(
-                "Windows would not add Perch to startup (error {result})."
+                "Windows would not add Ledgeling to startup (error {result})."
             ))
         }
     }
@@ -132,20 +132,27 @@ mod registry {
             Ok(())
         } else {
             Err(format!(
-                "Windows would not remove Perch from startup (error {result})."
+                "Windows would not remove Ledgeling from startup (error {result})."
             ))
         }
     }
 }
 
+/// The startup entry's name before the app was renamed; cleared so an
+/// upgraded install never launches twice at login.
+#[cfg(target_os = "windows")]
+const LEGACY_ENTRY: &str = "Perch";
+
 #[cfg(target_os = "windows")]
 fn enable(executable: &Path) -> Result<(), String> {
-    registry::set("Perch", &format!("\"{}\"", executable.display()))
+    registry::clear(LEGACY_ENTRY)?;
+    registry::set("Ledgeling", &format!("\"{}\"", executable.display()))
 }
 
 #[cfg(target_os = "windows")]
 fn disable() -> Result<(), String> {
-    registry::clear("Perch")
+    registry::clear(LEGACY_ENTRY)?;
+    registry::clear("Ledgeling")
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

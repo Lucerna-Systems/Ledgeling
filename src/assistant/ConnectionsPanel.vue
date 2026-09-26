@@ -12,7 +12,7 @@ const models = ref<string[]>([])
 const loadingModels = ref(false)
 const accountNote = ref('')
 const loginUrl = ref('')
-/** Perch's own terms for the on-device model, served by the backend so the
+/** Ledgeling's own terms for the on-device model, served by the backend so the
  *  version shown is always the version the gate checks. */
 const appleTerms = ref<{ version: number; text: string; accepted: boolean } | null>(null)
 const appleAgreed = ref(false)
@@ -162,7 +162,7 @@ onMounted(async () => {
 <template>
   <section class="connections-panel">
     <h3>Your AI connection</h3>
-    <p>Use an app installed on this computer or your own API key. Perch does not sell AI credits.</p>
+    <p>Use an app installed on this computer or your own API key. Ledgeling does not sell AI credits.</p>
     <p class="connection-summary">Default: {{ summarize(active) }}<template v-if="overrideCount"> · {{ overrideCount }} companion {{ overrideCount === 1 ? 'override' : 'overrides' }}</template></p>
     <div class="connection-sections">
       <div class="connection-section">

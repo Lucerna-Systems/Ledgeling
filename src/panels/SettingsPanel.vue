@@ -74,7 +74,7 @@ const seen = [
 const neverSeen = [
   'Window titles, which can hold email subjects and page names',
   'What you type; only that you typed',
-  'Your screen. Perch takes no screenshots',
+  'Your screen. Ledgeling takes no screenshots',
   'Your clipboard, browsing history or open tabs',
 ]
 </script>
@@ -83,7 +83,7 @@ const neverSeen = [
   <section class="page-heading">
     <div>
       <h1>Settings</h1>
-      <p>Make Perch feel like yours.</p>
+      <p>Make Ledgeling feel like yours.</p>
     </div>
   </section>
 
@@ -158,12 +158,12 @@ const neverSeen = [
   <h2 class="group-title">General</h2>
   <section class="settings-group">
     <div class="setting-row">
-      <div><h3>Open at login</h3><p>Start Perch when you log in to your computer.</p></div>
+      <div><h3>Open at login</h3><p>Start Ledgeling when you log in to your computer.</p></div>
       <button class="toggle" :class="{ enabled: settings?.launchAtLogin }" role="switch" :aria-checked="!!settings?.launchAtLogin" aria-label="Launch at login"
               @click="save({ launchAtLogin: !settings?.launchAtLogin })"><span /></button>
     </div>
     <div class="setting-row">
-      <div><h3>Quit Perch</h3><p>Closing this window keeps your pets out. Quitting sends them home.</p></div>
+      <div><h3>Quit Ledgeling</h3><p>Closing this window keeps your pets out. Quitting sends them home.</p></div>
       <button class="danger-button" :disabled="!native" @click="call('quit_app')"><Power :size="15" /> Quit</button>
     </div>
   </section>
@@ -183,7 +183,7 @@ const neverSeen = [
         <ul class="privacy-list"><li v-for="item in seen" :key="item"><Check :size="14" /> {{ item }}</li></ul>
       </div>
       <div>
-        <h4>What Perch never looks at</h4>
+        <h4>What Ledgeling never looks at</h4>
         <ul class="privacy-list never"><li v-for="item in neverSeen" :key="item"><X :size="14" /> {{ item }}</li></ul>
       </div>
     </div>
@@ -201,5 +201,5 @@ const neverSeen = [
       <FlaskConical :size="17" /><div><h3>Pet Lab</h3><p>Tools for people making their own pets.</p></div><ChevronRight :size="16" />
     </button>
   </section>
-  <p class="version-note">Perch · Preview 0.1</p>
+  <p class="version-note">Ledgeling · Preview 0.1</p>
 </template>

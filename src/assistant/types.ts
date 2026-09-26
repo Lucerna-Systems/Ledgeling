@@ -1,6 +1,6 @@
 export type ProviderKind = 'none' | 'ollama' | 'openai' | 'anthropic' | 'compatible' | 'codex' | 'claude' | 'apple'
 export interface Connection { kind: ProviderKind; model: string; endpoint: string; executable: string }
-/** Acceptance of Perch's terms for the on-device model. The backend clamps the
+/** Acceptance of Ledgeling's terms for the on-device model. The backend clamps the
  *  version and stamps the time, so these are a request, not a claim. */
 export interface AppleTerms { acceptedVersion: number; acceptedAt: number }
 export interface Connections { active: Connection; searchEnabled: boolean; perPet: Record<number, Connection>; appleTerms: AppleTerms }

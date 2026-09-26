@@ -92,7 +92,7 @@ onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(
   <div class="app-shell">
     <div class="sidebar-shell" :class="{ collapsed, resizing }" :style="{ width: collapsed ? undefined : `${sidebarWidth}px` }">
       <aside class="sidebar">
-        <a class="brand" href="#" :title="collapsed ? 'perch' : undefined" @click.prevent="page = 'assistant'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span><span class="label">perch</span></a>
+        <a class="brand" href="#" :title="collapsed ? 'Ledgeling' : undefined" @click.prevent="page = 'assistant'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span><span class="label">ledgeling</span></a>
         <nav aria-label="Main navigation">
           <button v-for="item in nav" :key="item.page" :class="{ selected: section === item.page }" :title="collapsed ? item.label : undefined"
                   :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">

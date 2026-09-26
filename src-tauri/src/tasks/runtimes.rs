@@ -175,15 +175,15 @@ pub fn account(config: &Connection, action: &str) -> Result<Value, String> {
     }
     result
 }
-/// Agent tasks work even without a chosen folder: fall back to Perch's own
-/// Documents/Perch folder, which is created on demand. The extra notice text
+/// Agent tasks work even without a chosen folder: fall back to Ledgeling's own
+/// Documents/Ledgeling folder, which is created on demand. The extra notice text
 /// states the fallback so the start approval is never misleading.
 fn working_root(roots: &[String]) -> Result<(String, String), String> {
     match roots.first() {
         Some(root) => Ok((root.clone(), String::new())),
         None => Ok((
             super::files::default_root()?.to_string_lossy().into_owned(),
-            " No folder was chosen, so work happens in the Perch folder inside Documents, which the agent may extend with new folders.".into(),
+            " No folder was chosen, so work happens in the Ledgeling folder inside Documents, which the agent may extend with new folders.".into(),
         )),
     }
 }
@@ -263,7 +263,7 @@ impl AgentRuntime for CodexRuntime {
                     }
                     // Unknown permission mechanisms fail closed, rather than
                     // accepting a new protocol shape with unknown authority.
-                    _=>p.send(json!({"id":v["id"],"error":{"code":-32601,"message":"Perch does not support this permission request. Action denied."}}))?,
+                    _=>p.send(json!({"id":v["id"],"error":{"code":-32601,"message":"Ledgeling does not support this permission request. Action denied."}}))?,
                 }
                 continue;
             }
@@ -316,7 +316,7 @@ fn bridge() -> PathBuf {
 /// Claude Code sign-in is offered only in debug builds: Anthropic's guidance
 /// does not allow shipped third-party products to run on claude.ai login.
 pub const CLAUDE_CODE_LOGIN: bool = cfg!(debug_assertions);
-/// The Claude bridge is packaged with Perch rather than user-installed, so
+/// The Claude bridge is packaged with Ledgeling rather than user-installed, so
 /// detection distinguishes a broken sidecar from a missing app.
 pub fn bridge_ready() -> bool {
     let dir = bridge();
@@ -331,7 +331,7 @@ impl ClaudeRuntime {
         let node = dir.join(if cfg!(windows) { "node.exe" } else { "node" });
         if !node.exists() {
             return Err(
-                "Packaged Node runtime is missing. Run npm run prepare:sidecar and rebuild Perch."
+                "Packaged Node runtime is missing. Run npm run prepare:sidecar and rebuild Ledgeling."
                     .into(),
             );
         }

@@ -222,7 +222,7 @@ fn locked<'a>(state: &'a State<'_, Shared>) -> Result<std::sync::MutexGuard<'a, 
     state
         .inner()
         .lock()
-        .map_err(|_| "Perch's state is unavailable. Restart the app.".to_string())
+        .map_err(|_| "Ledgeling's state is unavailable. Restart the app.".to_string())
 }
 
 // ------------------------------------------------------------------- commands
@@ -759,10 +759,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .build(context)
-        .expect("Unable to start Perch")
+        .expect("Unable to start Ledgeling")
         .run(|_, event| {
             // `fm serve` is a child process holding the on-device model; it
-            // must not outlive Perch.
+            // must not outlive Ledgeling.
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::tasks::apple::shutdown();
             }
@@ -908,10 +908,10 @@ fn ensure_overlay(
             monitor.bounds.height / scale,
         );
         if let Err(error) = window.set_position(position) {
-            eprintln!("Perch could not move the overlay: {error}");
+            eprintln!("Ledgeling could not move the overlay: {error}");
         }
         if let Err(error) = window.set_size(size) {
-            eprintln!("Perch could not resize the overlay: {error}");
+            eprintln!("Ledgeling could not resize the overlay: {error}");
         }
         return Some((window, false));
     }
@@ -920,7 +920,7 @@ fn ensure_overlay(
         LABEL,
         WebviewUrl::App("index.html?pet&monitor=0".into()),
     )
-    .title("Perch")
+    .title("Ledgeling")
     .inner_size(
         (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
         monitor.bounds.height / monitor.scale,
@@ -948,7 +948,7 @@ fn ensure_overlay(
             Some((window, true))
         }
         Err(error) => {
-            eprintln!("Perch could not create an overlay: {error}");
+            eprintln!("Ledgeling could not create an overlay: {error}");
             None
         }
     }
@@ -959,7 +959,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         menu::{Menu, MenuItem, Submenu},
         tray::TrayIconBuilder,
     };
-    let show = MenuItem::with_id(app, "show", "Open Perch", true, Some("CmdOrCtrl+1"))?;
+    let show = MenuItem::with_id(app, "show", "Open Ledgeling", true, Some("CmdOrCtrl+1"))?;
     let pause = MenuItem::with_id(
         app,
         "pause",
@@ -974,11 +974,12 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         true,
         Some("CmdOrCtrl+Shift+H"),
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Perch", true, Some("CmdOrCtrl+Q"))?;
-    let submenu = Submenu::with_items(app, "Perch", true, &[&show, &pause, &visibility, &quit])?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Ledgeling", true, Some("CmdOrCtrl+Q"))?;
+    let submenu =
+        Submenu::with_items(app, "Ledgeling", true, &[&show, &pause, &visibility, &quit])?;
     app.set_menu(Menu::with_items(app, &[&submenu])?)?;
     // Tray items are separate so their accelerators do not double-fire.
-    let tray_show = MenuItem::with_id(app, "tray-show", "Open Perch", true, None::<&str>)?;
+    let tray_show = MenuItem::with_id(app, "tray-show", "Open Ledgeling", true, None::<&str>)?;
     let tray_pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
     let tray_visibility = MenuItem::with_id(
         app,
@@ -987,7 +988,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         true,
         None::<&str>,
     )?;
-    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Perch", true, None::<&str>)?;
+    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Ledgeling", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[&tray_show, &tray_pause, &tray_visibility, &tray_quit],
@@ -1000,7 +1001,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .icon_as_template(true);
     #[cfg(not(target_os = "macos"))]
     let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
-    tray.tooltip("Perch · a little company")
+    tray.tooltip("Ledgeling · a little company")
         .menu(&menu)
         .build(app)?;
     Ok(())
@@ -1098,7 +1099,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     // Locked session or sleeping display: keep what we know.
                     if let Ok(mut app) = shared.lock() {
                         if app.engine.screens_available && diagnostics {
-                            eprintln!("Perch suspended: the screens are not readable.");
+                            eprintln!("Ledgeling suspended: the screens are not readable.");
                         }
                         app.engine.screens_available = false;
                     }
@@ -1131,7 +1132,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         }
                         if changed {
                             if diagnostics {
-                                eprintln!("Perch's screen: {name} ({count} display(s) connected).");
+                                eprintln!(
+                                    "Ledgeling's screen: {name} ({count} display(s) connected)."
+                                );
                             }
                             platform.set_monitors(vec![monitor]);
                             let hidden = shared
@@ -1156,7 +1159,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     }
                 }
                 Some(Err(error)) if diagnostics => {
-                    eprintln!("Perch could not read screen geometry: {error}");
+                    eprintln!("Ledgeling could not read screen geometry: {error}");
                 }
                 _ => {}
             }
@@ -1208,12 +1211,12 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         let _ = renderer.set_visible(plan.visible);
         for scene in &plan.scenes {
             if let Err(error) = renderer.render(scene) {
-                eprintln!("Perch could not draw: {error}");
+                eprintln!("Ledgeling could not draw: {error}");
             }
         }
         for entry in plan.sync {
             if let Err(error) = renderer.sync(entry.monitor, &entry.present, entry.payloads) {
-                eprintln!("Perch could not send sprites: {error}");
+                eprintln!("Ledgeling could not send sprites: {error}");
             }
         }
         for (monitor, interactive) in plan.interactive {

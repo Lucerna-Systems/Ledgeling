@@ -1,4 +1,4 @@
-# Perch
+# Ledgeling
 
 A little company for your desktop. A bird, a squirrel or a gecko lives on the
 edges of your open windows, notices roughly how your session is going, and never
@@ -47,7 +47,7 @@ npm run check      # frontend build plus Clippy with warnings denied
 npm run tauri build
 ```
 
-On macOS the bundle lands in `src-tauri/target/release/bundle/macos/Perch.app`.
+On macOS the bundle lands in `src-tauri/target/release/bundle/macos/Ledgeling.app`.
 It is an unsigned local build, not a notarised release. On Windows,
 `src-tauri/tauri.windows.conf.json` switches the bundle to a per-user NSIS
 installer and bundles `node.exe` for the Claude bridge. With it, `npm run tauri

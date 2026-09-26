@@ -667,7 +667,7 @@ fn validate_citations(text: &str, sources: &[Source]) -> Result<(), String> {
     }
     Ok(())
 }
-const SYSTEM: &str = r#"You are Perch, a helpful desktop assistant. Respond ONLY with one JSON object {"tool":"name","args":{...}} each turn. Do not emit prose outside JSON.
+const SYSTEM: &str = r#"You are Ledgeling, a helpful desktop assistant. Respond ONLY with one JSON object {"tool":"name","args":{...}} each turn. Do not emit prose outside JSON.
 Tools:
 list_files {}
 read_file {path:string}

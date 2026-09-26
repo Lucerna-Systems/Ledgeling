@@ -30,7 +30,7 @@ const sorted = <T,>(values: T[]) => [...new Set(values)].sort()
 const authorOptions = computed(() => [{ value: 'any', label: 'Anyone' }, ...sorted(packs.value.map(p => p.summary.author).filter(Boolean)).map(a => ({ value: a, label: `By ${a}` }))])
 const tagOptions = computed(() => [{ value: 'any', label: 'Any tag' }, ...sorted(packs.value.flatMap(p => p.summary.tags)).map(t => ({ value: t, label: t[0]!.toUpperCase() + t.slice(1) }))])
 const movementOptions = computed(() => [{ value: 'any', label: 'Any movement' }, ...classes.filter(c => packs.value.some(p => p.summary.class === c.value))])
-const sourceOptions = [{ value: 'any', label: 'Anywhere' }, { value: 'builtin', label: 'Comes with Perch' }, { value: 'added', label: 'Added by you' }]
+const sourceOptions = [{ value: 'any', label: 'Anywhere' }, { value: 'builtin', label: 'Comes with Ledgeling' }, { value: 'added', label: 'Added by you' }]
 
 /** Everything except the status tab, so each tab can show how many it would hold. */
 const narrowed = computed(() => packs.value.filter(({ summary: pack }) =>
@@ -133,7 +133,7 @@ async function exportPack(id: string) {
           <details class="pack-more">
             <summary :aria-label="`More about ${listing.summary.name}`"><MoreHorizontal :size="16" /></summary>
             <div class="pack-menu">
-              <p class="pack-meta">By {{ listing.summary.author }} · version {{ listing.summary.version }}<span v-if="listing.summary.builtin"> · comes with Perch</span></p>
+              <p class="pack-meta">By {{ listing.summary.author }} · version {{ listing.summary.version }}<span v-if="listing.summary.builtin"> · comes with Ledgeling</span></p>
               <ul v-if="listing.summary.assistantClips.length" class="pack-clips">
                 <li v-for="clip in listing.summary.assistantClips" :key="clip.slot">
                   <span>{{ clip.when[0]!.toUpperCase() + clip.when.slice(1) }}</span>

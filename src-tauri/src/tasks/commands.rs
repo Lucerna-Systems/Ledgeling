@@ -191,7 +191,7 @@ pub async fn task_account(
         .await
         .map_err(|_| "Account operation failed".to_string())?
 }
-/// Perch's own terms for the on-device provider, plus whether they have been
+/// Ledgeling's own terms for the on-device provider, plus whether they have been
 /// accepted, so the panel never has to hardcode the text or the version.
 #[tauri::command]
 pub async fn task_apple_terms(
