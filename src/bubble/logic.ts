@@ -72,7 +72,7 @@ export function startEvent(petId: number, draft: Draft, parentId: number | null)
     prompt: draft.prompt,
     preset: ask ? '' : ACTIONS[draft.action]?.preset ?? '',
     mode: draft.mode,
-    // Asking is the consent: only the question itself is sent.
+    // Asking is the consent: the question goes, with the pet's folder if it has one.
     allowCloud: ask ? true : draft.allowCloud,
     allowWeb: ask && draft.allowWeb,
     parentId,

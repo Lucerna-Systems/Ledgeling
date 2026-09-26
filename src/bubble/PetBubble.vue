@@ -239,7 +239,7 @@ onUnmounted(() => {
         <button type="button" class="icon-button" aria-label="Close" @click="dismiss"><X :size="15" /></button>
       </header>
 
-      <button v-if="!ask" type="button" class="folder-row" :title="show.folder || undefined" @click="chooseFolder">
+      <button type="button" class="folder-row" :title="show.folder || undefined" @click="chooseFolder">
         <Folder :size="15" class="folder-icon" aria-hidden="true" />
         <span class="folder-path" :class="{ empty: !show.folder }">{{ show.folder ? shortPath(show.folder) : (mac ? 'Choose a folder, or drop me into one' : 'Choose a folder') }}</span>
         <span class="folder-action">{{ show.folder ? 'Change' : 'Choose' }}</span>

@@ -572,11 +572,13 @@ pub fn compose_request(
         }
         // Which loop an ask runs is a property of the connection, not a
         // choice: an agent runtime has no plain-completion call, and a model
-        // connection has no agent loop. The bubble asks neither.
+        // connection has no agent loop. The bubble asks neither. A question
+        // about "this folder" means the pet's folder, so a bound one is shared;
+        // the Documents fallback never is, since nobody chose it.
         return Ok(TaskRequest {
             prompt: text.into(),
             pet_id: Some(pet),
-            roots: vec![],
+            roots: folder.into_iter().collect(),
             attachments: vec![],
             preset: String::new(),
             mode: if agent_runtime {
@@ -586,7 +588,6 @@ pub fn compose_request(
             }
             .into(),
             parent_id: parent,
-            // Only the question itself is sent; asking is the consent.
             allow_cloud: true,
             allow_web,
         });
@@ -842,16 +843,29 @@ mod tests {
     }
 
     #[test]
-    fn ask_uses_the_connection_loop_and_no_scope() {
+    fn ask_uses_the_connection_loop_and_only_a_folder_the_pet_was_given() {
         let r = req(ProviderKind::Ollama, "ask", "", "why is the sky blue?").unwrap();
         assert_eq!(r.mode, "standard");
         assert_eq!(r.preset, "");
-        assert!(r.roots.is_empty());
+        assert!(r.roots.is_empty(), "the Documents fallback is never shared");
         assert!(r.allow_cloud);
         assert_eq!(r.prompt, "why is the sky blue?");
         let r = req(ProviderKind::Claude, "ask", "", "summarize this").unwrap();
         assert_eq!(r.mode, "advanced");
-        assert!(r.roots.is_empty());
+        let bound = compose_request(
+            ProviderKind::Apple,
+            1,
+            "ask",
+            "",
+            "What is in this folder?",
+            Some("/tmp/bound".into()),
+            false,
+            false,
+            None,
+            fixed_root,
+        )
+        .unwrap();
+        assert_eq!(bound.roots, vec!["/tmp/bound".to_string()]);
     }
 
     #[test]

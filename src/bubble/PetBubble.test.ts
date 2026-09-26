@@ -169,11 +169,11 @@ describe('the pet bubble', () => {
     }
   })
 
-  it('switching to Ask hides the folder and action menu and offers web research', async () => {
+  it('switching to Ask keeps the folder it shares, hides the action menu and offers web research', async () => {
     const wrapper = await opened({ runtime: 'ollama' })
     expect(wrapper.find('.folder-row').exists()).toBe(true)
     await wrapper.find('[role="radio"][aria-checked="false"]').trigger('click')
-    expect(wrapper.find('.folder-row').exists()).toBe(false)
+    expect(wrapper.find('.folder-row').exists()).toBe(true)
     expect(wrapper.find('.action-select').exists()).toBe(false)
     expect(wrapper.text()).toContain('Allow web research')
     wrapper.unmount()

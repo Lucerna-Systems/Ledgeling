@@ -46,7 +46,8 @@ Hold Shift while dragging to move a pet normally without a handoff.
 The **Actions / Ask** toggle determines execution:
 
 - **Ask:** a question for the connected model, optionally with web research.
-  Nothing on disk is read. The loop follows from the connection — a local or
+  When the pet has a folder, the question comes with it, so "what is in this
+  folder?" means the pet's folder; with none, nothing on disk is read. The loop follows from the connection — a local or
   API model runs Standard tools; Codex/Claude runtimes run Advanced mode with
   a separate start approval.
 - **Actions:** without a connection the adjacent menu chooses the built-in
@@ -185,7 +186,7 @@ For every provider, a request with no folder or attachment tells the model it
 cannot see the disk, and to say a folder is needed only when the request is
 about the user's files. A final answer that only repeats the request is refused
 and asked again, the same as an unreadable action. Asking from the pet bubble
-never shares a folder; use Actions for questions about one.
+shares the pet's folder when it has one.
 
 Model lists load when a provider is opened, through the provider's free
 listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex `model/list`).
