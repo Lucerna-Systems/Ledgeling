@@ -1,7 +1,7 @@
 //! Integration tests: recorded window-layout timelines replayed through a mock
 //! platform, so "the user dragged a window while the squirrel was on it" is a
 //! repeatable test rather than something you have to reproduce by hand.
-use perch::{
+use ledgeling::{
     engine::Engine,
     packs::loader,
     platform::mock::MockPlatform,
@@ -37,7 +37,7 @@ fn win(id: u64, x: f64, y: f64, w: f64, h: f64) -> WindowInfo {
     WindowInfo::new(id, Rect::new(x, y, w, h))
 }
 
-fn packs() -> HashMap<String, Arc<perch::packs::Pack>> {
+fn packs() -> HashMap<String, Arc<ledgeling::packs::Pack>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packs");
     let mut packs = HashMap::new();
     for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
@@ -94,9 +94,9 @@ fn dragging_a_window_carries_the_squirrel_with_it() {
     let top = engine
         .surfaces
         .iter()
-        .find(|s| s.owner == 1 && s.kind == perch::world::SurfaceKind::WindowTop)
+        .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
         .expect("the window has a visible top");
-    engine.pets[0].perch = Some(perch::pet::pathfind::Perch {
+    engine.pets[0].perch = Some(ledgeling::pet::pathfind::Perch {
         key: top.key(),
         t: top.midpoint_t(),
     });
@@ -261,10 +261,10 @@ fn pets_and_positions_survive_a_restart() {
     engine.spawn("com.perch.squirrel-red").unwrap();
     run(&mut engine, &platform, 10.);
     engine.remember_pets();
-    perch::settings::save(&directory, &engine.settings).unwrap();
+    ledgeling::settings::save(&directory, &engine.settings).unwrap();
     let position = engine.pets[0].position;
 
-    let (loaded, note) = perch::settings::load(&directory);
+    let (loaded, note) = ledgeling::settings::load(&directory);
     assert!(note.is_none());
     let mut restarted = Engine::new(loaded, packs());
     restarted.set_monitors(monitors());
@@ -278,7 +278,7 @@ fn pets_and_positions_survive_a_restart() {
 #[test]
 fn a_pet_whose_pack_was_uninstalled_is_dropped_rather_than_crashing() {
     let mut settings = Settings::default();
-    settings.pets = vec![perch::settings::PetSetting {
+    settings.pets = vec![ledgeling::settings::PetSetting {
         pack_id: "com.example.gone".into(),
         x: Some(10.),
         y: Some(10.),

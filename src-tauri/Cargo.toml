@@ -1,16 +1,16 @@
 [package]
-name = "perch"
+name = "ledgeling"
 version = "0.1.0"
 description = "A little company for your desktop"
-authors = ["Perch contributors"]
+authors = ["Ledgeling contributors"]
 edition = "2021"
 
 [lib]
-name = "perch"
+name = "ledgeling"
 path = "src/lib.rs"
 
 [[bin]]
-name = "perch"
+name = "ledgeling"
 path = "src/main.rs"
 
 [build-dependencies]

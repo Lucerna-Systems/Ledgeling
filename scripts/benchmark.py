@@ -1,4 +1,4 @@
-"""Measure Perch against the performance budget.
+"""Measure Ledgeling against the performance budget.
 
     python3 scripts/benchmark.py 600            # whole process tree
     python3 scripts/benchmark.py 600 --native   # the Rust process only
@@ -18,7 +18,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 duration = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 600
 native_only = '--native' in sys.argv
-default_binary = root / 'src-tauri/target/release/bundle/macos/Perch.app/Contents/MacOS/perch'
+default_binary = root / 'src-tauri/target/release/bundle/macos/Ledgeling.app/Contents/MacOS/ledgeling'
 binary = Path(os.environ.get('PERCH_BENCH_BINARY', str(default_binary)))
 
 
@@ -60,7 +60,7 @@ try:
     for second in range(duration):
         time.sleep(1)
         if process.poll() is not None:
-            raise RuntimeError(f'Perch exited early with {process.returncode}')
+            raise RuntimeError(f'Ledgeling exited early with {process.returncode}')
         cpu, rss, count = sample(process.pid)
         rows.append({'second': second + 1, 'cpu': cpu, 'rss_kib': rss, 'processes': count})
         if (second + 1) % 30 == 0:

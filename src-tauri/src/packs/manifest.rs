@@ -1569,7 +1569,7 @@ fn note_unknown(map: &Map<String, Value>, path: &str, known: &[&str], report: &m
                 MANIFEST_FILE,
                 field_path(path, key),
                 format!("Unknown field `{key}` was ignored."),
-                "Check the spelling, or ignore this if the pack targets a newer Perch.",
+                "Check the spelling, or ignore this if the pack targets a newer Ledgeling.",
             ));
         }
     }

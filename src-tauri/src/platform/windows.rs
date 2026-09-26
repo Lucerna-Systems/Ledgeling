@@ -382,7 +382,7 @@ impl Platform for NativePlatform {
     }
 
     fn mouse_down(&self) -> Option<bool> {
-        // Deliberately not implemented with GetAsyncKeyState: Perch installs no
+        // Deliberately not implemented with GetAsyncKeyState: Ledgeling installs no
         // input hooks and reads no key state. The overlay's pointer capture
         // reports the release instead.
         None

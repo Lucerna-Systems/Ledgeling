@@ -33,7 +33,7 @@ impl Default for Connection {
         }
     }
 }
-/// A record of the user accepting Perch's terms for the on-device provider.
+/// A record of the user accepting Ledgeling's terms for the on-device provider.
 /// Both fields are written by the backend, never taken from the frontend, so a
 /// stored acceptance always reflects text this build actually showed.
 #[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
@@ -64,7 +64,8 @@ pub fn effective_connection(config: &Connections, pet_id: Option<u64>) -> Connec
 #[serde(default, rename_all = "camelCase")]
 pub struct ProviderDetection {
     pub codex_installed: bool,
-    pub claude_bridge: bool,
+    /// Debug builds only: the bundled Claude bridge, signed in through Claude Code.
+    pub claude_code: bool,
     pub ollama_app: bool,
     pub ollama_reachable: bool,
     pub openai_key: bool,
@@ -133,6 +134,14 @@ pub struct Source {
     pub url: String,
     pub excerpt: String,
 }
+/// Which pet a task was for, captured when it starts. Pet ids restart every
+/// launch, so a conversation keeps the pack and name to show the right face later.
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TaskPet {
+    pub pack_id: String,
+    pub name: String,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -147,6 +156,11 @@ pub struct Task {
     pub operations: Vec<Operation>,
     pub sources: Vec<Source>,
     pub created_at: i64,
+    #[serde(default)]
+    pub pet: Option<TaskPet>,
+    /// A user-chosen conversation name, kept on the conversation's first task.
+    #[serde(default)]
+    pub title: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]

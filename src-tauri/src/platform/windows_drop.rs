@@ -532,7 +532,7 @@ unsafe extern "system" fn source_release(this: *mut DropSource) -> u32 {
     }
     left
 }
-/// OLE passes the button state it tracks for the drag; Perch reads none itself.
+/// OLE passes the button state it tracks for the drag; Ledgeling reads none itself.
 unsafe extern "system" fn source_continue(
     this: *mut DropSource,
     escape: Bool,

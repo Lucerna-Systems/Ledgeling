@@ -90,7 +90,7 @@ function removeOverride(name: string) {
   <section class="controls-card">
     <div class="section-label"><Sparkles :size="16" /> Application categories</div>
     <p class="control-intro">
-      Adjust how an app is categorised. Perch uses its process name, never its window title.
+      Adjust how an app is categorised. Ledgeling uses its process name, never its window title.
     </p>
     <ul class="override-list">
       <li v-for="(category, name) in settings?.categoryOverrides ?? {}" :key="name">

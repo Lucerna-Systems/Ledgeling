@@ -9,5 +9,8 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rerun-if-changed=native/pet_ui.m");
     }
+    // An explicit rerun-if-changed replaces Cargo's watch-everything default, so
+    // the icons baked in by generate_context! and include_image! must be named.
+    println!("cargo:rerun-if-changed=icons");
     tauri_build::build()
 }

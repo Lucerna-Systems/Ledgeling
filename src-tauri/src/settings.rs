@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
 pub const SETTINGS_FILE: &str = "settings.json";
-pub const DEFAULT_ACCENT: &str = "#31725b";
+pub const DEFAULT_ACCENT: &str = "#5b5bd6";
+/// The pre-redesign default, which every existing install has saved. It no
+/// longer matches a preset, so it is treated as "never chosen" and replaced.
+const RETIRED_DEFAULT_ACCENT: &str = "#31725b";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -92,7 +95,7 @@ impl Settings {
         self.pets.retain(|p| !p.pack_id.is_empty());
         self.pets.truncate(8);
         self.accent = self.accent.to_lowercase();
-        if !is_hex_color(&self.accent) {
+        if !is_hex_color(&self.accent) || self.accent == RETIRED_DEFAULT_ACCENT {
             self.accent = DEFAULT_ACCENT.into();
         }
     }
@@ -125,7 +128,7 @@ pub fn load(directory: &Path) -> (Settings, Option<String>) {
             (
                 Settings::default(),
                 Some(format!(
-                    "Your settings file could not be read ({error}), so Perch started with \
+                    "Your settings file could not be read ({error}), so Ledgeling started with \
 defaults. The old file is kept at {}.",
                     backup.display()
                 )),
@@ -196,7 +199,7 @@ mod tests {
             theme: ThemeMode::Light,
             ..Default::default()
         };
-        for bad in ["blue", "#1234", "#12345g", "31725b"] {
+        for bad in ["blue", "#1234", "#12345g", "31725b", "#31725B"] {
             settings.accent = bad.into();
             settings.sanitize();
             assert_eq!(settings.accent, DEFAULT_ACCENT, "should reject {bad}");

@@ -1,4 +1,4 @@
-//! Perch: a small companion that lives on the edges of your windows.
+//! Ledgeling: a small companion that lives on the edges of your windows.
 //!
 //! Rust owns all truth — world model, pet state, behavior — and the webview is
 //! a renderer. Everything except the Tauri wiring in [`app`] is testable
@@ -7,6 +7,7 @@ pub mod app;
 pub mod autostart;
 pub mod awareness;
 pub mod engine;
+pub mod migrate;
 pub mod packs;
 pub mod pet;
 pub mod platform;

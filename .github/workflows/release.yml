@@ -120,17 +120,17 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           bundle=src-tauri/target/${{ matrix.target }}/release/bundle
-          name="Perch_${VERSION}_${{ matrix.label }}"
+          name="Ledgeling_${VERSION}_${{ matrix.label }}"
           mkdir out
           if [ "$RUNNER_OS" = Windows ]; then
             cp "$bundle"/nsis/*-setup.exe "out/$name-setup.exe"
           else
             cp "$bundle"/dmg/*.dmg "out/$name.dmg"
-            tar -czf "out/$name.app.tar.gz" -C "$bundle/macos" Perch.app
+            tar -czf "out/$name.app.tar.gz" -C "$bundle/macos" Ledgeling.app
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: perch-${{ matrix.label }}
+          name: ledgeling-${{ matrix.label }}
           path: out/*
           if-no-files-found: error
 
@@ -161,7 +161,7 @@ jobs:
             echo "Nothing is signed yet."
             echo
             echo "- **macOS:** \`macos-aarch64\` for Apple Silicon, \`macos-x86_64\` for Intel. Gatekeeper refuses the"
-            echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Perch.app\`."
+            echo "  unnotarized app until you right-click → Open, or run \`xattr -dr com.apple.quarantine /Applications/Ledgeling.app\`."
             echo "- **Windows:** \`windows-x86_64-setup.exe\`. SmartScreen warns about the unknown publisher: More info → Run anyway."
             echo "  The Windows build has not been tested on real hardware."
           } > notes.md
@@ -207,10 +207,10 @@ jobs:
           # rather than the DMG, and Windows gets the installer.
           for arch in aarch64 x86_64; do
             mkdir -p "itch/macos-$arch"
-            tar -xzf "out/Perch_${VERSION}_macos-$arch.app.tar.gz" -C "itch/macos-$arch"
+            tar -xzf "out/Ledgeling_${VERSION}_macos-$arch.app.tar.gz" -C "itch/macos-$arch"
           done
           mkdir -p itch/windows-x86_64
-          cp "out/Perch_${VERSION}_windows-x86_64-setup.exe" itch/windows-x86_64/
+          cp "out/Ledgeling_${VERSION}_windows-x86_64-setup.exe" itch/windows-x86_64/
       - name: Push to itch.io
         run: |
           [ -n "$BUTLER_API_KEY" ] || { echo "::error::Secret BUTLER_API_KEY is not set."; exit 1; }

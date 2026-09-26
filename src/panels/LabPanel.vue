@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { FlaskConical, Zap, Eye, RefreshCw } from '@lucide/vue'
+import { FlaskConical, FolderOpen, Plus, Zap, Eye, RefreshCw } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, settings, snapshot, saveSettings, validate } from '../state'
 import CollectionToolbar from '../components/CollectionToolbar.vue'
 import DiagnosticList from './DiagnosticList.vue'
@@ -9,6 +9,14 @@ import type { Report } from '../types'
 const scenarioQuery = ref('')
 const visibleScenarios = computed(() => scenarios.filter(name => name.replace(/_/g, ' ').includes(scenarioQuery.value.trim().toLowerCase())))
 const report = ref<Report | null>(null)
+const newName = ref('My New Pet')
+const newClass = ref('flier')
+const created = ref('')
+/** A placeholder pack folder, for authors who draw in their own tools and edit pet.json by hand. */
+async function scaffold() {
+  const path = await call<string>('new_pack', { class: newClass.value, name: newName.value })
+  if (path) { created.value = path; await refreshPacks() }
+}
 const checking = ref('')
 
 /** Scenario buttons: fire an awareness event now instead of waiting an hour. */
@@ -53,7 +61,7 @@ function toggleDebug() {
           <span v-if="pet.surface">on {{ pet.surface }}</span>
           · energy {{ Math.round(pet.energy * 100) }}% · mood {{ Math.round(pet.mood * 100) }}%
         </p>
-        <p v-if="!pets.length">No pets are out. Bring one out from the Pet packs page.</p>
+        <p v-if="!pets.length">No pets are out. Bring one out from the Pets page.</p>
       </div>
     </section>
 
@@ -67,6 +75,19 @@ function toggleDebug() {
       </div>
     </section>
   </div>
+
+  <section class="new-pack">
+    <div class="section-label"><FolderOpen :size="16" /> New pack folder</div>
+    <p class="control-intro">A working pack with placeholder art, for drawing in your own tools and editing <code>pet.json</code> by hand. To draw inside Ledgeling instead, use <strong>Pets → Make your own pet</strong>.</p>
+    <div class="new-pack-row">
+      <input v-model="newName" aria-label="Pack name" placeholder="Name">
+      <select v-model="newClass" aria-label="How it moves">
+        <option value="flier">Flies</option><option value="climber">Climbs</option><option value="walker">Walks</option><option value="hopper">Hops</option>
+      </select>
+      <button class="primary-button" @click="scaffold"><Plus :size="16" /> New pack</button>
+    </div>
+    <p v-if="created" class="path-note"><FolderOpen :size="13" /> {{ created }}</p>
+  </section>
 
   <section class="new-pack">
     <div class="section-label"><FlaskConical :size="16" /> Validator</div>

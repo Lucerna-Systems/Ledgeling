@@ -204,11 +204,25 @@ pub fn task_attention(status: &str) -> Option<Attend> {
 
 /// The lock is only ever held for the length of one command, so a failure here
 /// means another thread panicked while holding it.
+/// The pack and name of a pet that is out right now, for stamping on its tasks.
+pub fn task_pet(
+    app: &tauri::AppHandle,
+    pet_id: Option<u64>,
+) -> Option<crate::tasks::types::TaskPet> {
+    let shared = app.try_state::<Shared>()?;
+    let state = shared.lock().ok()?;
+    let pet = state.engine.pets.iter().find(|p| Some(p.id) == pet_id)?;
+    Some(crate::tasks::types::TaskPet {
+        pack_id: pet.pack.manifest.id.clone(),
+        name: pet.pack.manifest.name.clone(),
+    })
+}
+
 fn locked<'a>(state: &'a State<'_, Shared>) -> Result<std::sync::MutexGuard<'a, App>, String> {
     state
         .inner()
         .lock()
-        .map_err(|_| "Perch's state is unavailable. Restart the app.".to_string())
+        .map_err(|_| "Ledgeling's state is unavailable. Restart the app.".to_string())
 }
 
 // ------------------------------------------------------------------- commands
@@ -290,6 +304,51 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
         other => return Err(format!("Unknown interaction `{other}`.")),
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn perch_set_dock_icon(png: *const u8, length: std::ffi::c_ulong);
+}
+
+/// Repaints the running app's Dock/taskbar icon in the user's accent; icons
+/// shown while the app is closed never change.
+#[tauri::command]
+fn set_app_icon(png: Vec<u8>, window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("The app icon can only be changed from the companion window.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        window
+            .run_on_main_thread(move || unsafe {
+                perch_set_dock_icon(png.as_ptr(), png.len() as std::ffi::c_ulong)
+            })
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let icon = decode_icon(&png)?;
+        window.set_icon(icon).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn decode_icon(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
+    let mut decoder = png::Decoder::new(bytes);
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buffer = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
+    if info.color_type != png::ColorType::Rgba {
+        return Err("The app icon must be an RGBA PNG.".into());
+    }
+    buffer.truncate(info.buffer_size());
+    Ok(tauri::image::Image::new_owned(
+        buffer,
+        info.width,
+        info.height,
+    ))
 }
 
 #[tauri::command]
@@ -429,6 +488,25 @@ async fn new_pack(class: String, name: String, state: State<'_, Shared>) -> Resu
     Ok(created.to_string_lossy().to_string())
 }
 
+/// Pet Studio: write the editor's design as a pack. Files are written outside
+/// the engine lock; only the reload takes it.
+#[tauri::command]
+async fn save_studio_pack(
+    manifest: String,
+    strips: Vec<crate::packs::studio::StudioImage>,
+    preview: crate::packs::studio::StudioImage,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<PackSummary, String> {
+    if window.label() != "main" {
+        return Err("Pets can only be saved from the companion window.".into());
+    }
+    let dir = locked(&state)?.packs_dir.clone();
+    let summary = crate::packs::studio::save(&dir, &manifest, &strips, &preview)?;
+    locked(&state)?.engine.reload_packs(&dir);
+    Ok(summary)
+}
+
 #[tauri::command]
 async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, String> {
     let app = locked(&state)?;
@@ -520,6 +598,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             crate::platform::pet_ui::pet_bubble,
             task_list,
             task_start,
+            task_rename,
             task_cancel,
             task_approve,
             task_undo,
@@ -539,11 +618,13 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             pet_action,
             pet_interact,
             set_settings,
+            set_app_icon,
             list_packs,
             validate_pack,
             install_pack,
             uninstall_pack,
             new_pack,
+            save_studio_pack,
             export_pack,
             spawn_pet,
             despawn_pet,
@@ -560,6 +641,14 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
+            // Keys are only looked for on the launch that moves the folder, so a
+            // denied keychain prompt is asked once rather than on every start.
+            let mut migration_note = None;
+            match crate::migrate::move_app_dir(&config_dir) {
+                Ok(true) => crate::tasks::providers::migrate_legacy_secrets(),
+                Ok(false) => {}
+                Err(error) => migration_note = Some(error),
+            }
             crate::platform::pet_ui::init(app.handle());
             let task_handle = app.handle().clone();
             let task_service =
@@ -594,7 +683,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             // Applied before the window can be shown so native scrollbars and
             // form controls never flash the wrong appearance.
             let _ = main.set_theme(theme_to_option(settings.theme));
-            let mut notes: Vec<String> = note.into_iter().collect();
+            let mut notes: Vec<String> = note.into_iter().chain(migration_note).collect();
             if let Err(error) = builtin::restore(&packs_dir, &settings.uninstalled_builtins) {
                 notes.push(error);
             }
@@ -678,10 +767,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             Ok(())
         })
         .build(context)
-        .expect("Unable to start Perch")
+        .expect("Unable to start Ledgeling")
         .run(|_, event| {
             // `fm serve` is a child process holding the on-device model; it
-            // must not outlive Perch.
+            // must not outlive Ledgeling.
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::tasks::apple::shutdown();
             }
@@ -827,10 +916,10 @@ fn ensure_overlay(
             monitor.bounds.height / scale,
         );
         if let Err(error) = window.set_position(position) {
-            eprintln!("Perch could not move the overlay: {error}");
+            eprintln!("Ledgeling could not move the overlay: {error}");
         }
         if let Err(error) = window.set_size(size) {
-            eprintln!("Perch could not resize the overlay: {error}");
+            eprintln!("Ledgeling could not resize the overlay: {error}");
         }
         return Some((window, false));
     }
@@ -839,7 +928,7 @@ fn ensure_overlay(
         LABEL,
         WebviewUrl::App("index.html?pet&monitor=0".into()),
     )
-    .title("Perch")
+    .title("Ledgeling")
     .inner_size(
         (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
         monitor.bounds.height / monitor.scale,
@@ -867,7 +956,7 @@ fn ensure_overlay(
             Some((window, true))
         }
         Err(error) => {
-            eprintln!("Perch could not create an overlay: {error}");
+            eprintln!("Ledgeling could not create an overlay: {error}");
             None
         }
     }
@@ -878,7 +967,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         menu::{Menu, MenuItem, Submenu},
         tray::TrayIconBuilder,
     };
-    let show = MenuItem::with_id(app, "show", "Open Perch", true, Some("CmdOrCtrl+1"))?;
+    let show = MenuItem::with_id(app, "show", "Open Ledgeling", true, Some("CmdOrCtrl+1"))?;
     let pause = MenuItem::with_id(
         app,
         "pause",
@@ -893,11 +982,12 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         true,
         Some("CmdOrCtrl+Shift+H"),
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Perch", true, Some("CmdOrCtrl+Q"))?;
-    let submenu = Submenu::with_items(app, "Perch", true, &[&show, &pause, &visibility, &quit])?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Ledgeling", true, Some("CmdOrCtrl+Q"))?;
+    let submenu =
+        Submenu::with_items(app, "Ledgeling", true, &[&show, &pause, &visibility, &quit])?;
     app.set_menu(Menu::with_items(app, &[&submenu])?)?;
     // Tray items are separate so their accelerators do not double-fire.
-    let tray_show = MenuItem::with_id(app, "tray-show", "Open Perch", true, None::<&str>)?;
+    let tray_show = MenuItem::with_id(app, "tray-show", "Open Ledgeling", true, None::<&str>)?;
     let tray_pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
     let tray_visibility = MenuItem::with_id(
         app,
@@ -906,14 +996,20 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         true,
         None::<&str>,
     )?;
-    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Perch", true, None::<&str>)?;
+    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Ledgeling", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[&tray_show, &tray_pause, &tray_visibility, &tray_quit],
     )?;
-    TrayIconBuilder::with_id("perch")
-        .icon(tauri::include_image!("icons/icon.png"))
-        .tooltip("Perch · a little company")
+    // macOS tints a template image to match the menu bar, like Apple's own
+    // icons; elsewhere a black silhouette would vanish on a dark taskbar.
+    #[cfg(target_os = "macos")]
+    let tray = TrayIconBuilder::with_id("perch")
+        .icon(tauri::include_image!("icons/tray-template.png"))
+        .icon_as_template(true);
+    #[cfg(not(target_os = "macos"))]
+    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
+    tray.tooltip("Ledgeling · a little company")
         .menu(&menu)
         .build(app)?;
     Ok(())
@@ -1011,7 +1107,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     // Locked session or sleeping display: keep what we know.
                     if let Ok(mut app) = shared.lock() {
                         if app.engine.screens_available && diagnostics {
-                            eprintln!("Perch suspended: the screens are not readable.");
+                            eprintln!("Ledgeling suspended: the screens are not readable.");
                         }
                         app.engine.screens_available = false;
                     }
@@ -1044,7 +1140,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         }
                         if changed {
                             if diagnostics {
-                                eprintln!("Perch's screen: {name} ({count} display(s) connected).");
+                                eprintln!(
+                                    "Ledgeling's screen: {name} ({count} display(s) connected)."
+                                );
                             }
                             platform.set_monitors(vec![monitor]);
                             let hidden = shared
@@ -1069,7 +1167,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     }
                 }
                 Some(Err(error)) if diagnostics => {
-                    eprintln!("Perch could not read screen geometry: {error}");
+                    eprintln!("Ledgeling could not read screen geometry: {error}");
                 }
                 _ => {}
             }
@@ -1121,12 +1219,12 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         let _ = renderer.set_visible(plan.visible);
         for scene in &plan.scenes {
             if let Err(error) = renderer.render(scene) {
-                eprintln!("Perch could not draw: {error}");
+                eprintln!("Ledgeling could not draw: {error}");
             }
         }
         for entry in plan.sync {
             if let Err(error) = renderer.sync(entry.monitor, &entry.present, entry.payloads) {
-                eprintln!("Perch could not send sprites: {error}");
+                eprintln!("Ledgeling could not send sprites: {error}");
             }
         }
         for (monitor, interactive) in plan.interactive {

@@ -1,6 +1,6 @@
-# Perch tasks
+# Ledgeling tasks
 
-Perch now has an opt-in task service, independent of pet animation and awareness.
+Ledgeling now has an opt-in task service, independent of pet animation and awareness.
 Any pet can present a task. Removing or hiding that pet does not stop the worker.
 One task runs at a time, including while awaiting approval; additional tasks queue.
 
@@ -11,13 +11,13 @@ platform: a small transparent window (`src/bubble`) placed next to the pet with
 its tail pointing at it, above the pet when there is room and below it
 otherwise. If the window the pet stands on moves, the bubble moves with it. It
 takes keyboard input without bringing the dashboard forward. On macOS it is a
-non-activating panel, so typing into it does not activate Perch either; on
+non-activating panel, so typing into it does not activate Ledgeling either; on
 Windows it is a tool window, so it has no taskbar button, no Alt+Tab entry, and
 pets never perch on it. Clicking anywhere else, the close button, or Escape
 closes it. Cmd/Ctrl+Enter runs the request.
 
 The dashboard starts hidden; open it explicitly from the tray menu, Cmd+1 while
-Perch is active, or the bubble's Connections button. On macOS, pet overlays and
+Ledgeling is active, or the bubble's Connections button. On macOS, pet overlays and
 the bubble are auxiliary panels across Spaces; neither can become the
 application's main window.
 
@@ -31,7 +31,7 @@ after completion. No existing file is overwritten.
 - **macOS:** the drag is a native file promise, and Finder reports where it
   wrote the file.
 - **Windows:** the drag is an OLE drag offering one virtual file. Explorer does
-  not tell the drag where it wrote it, so for the length of the handoff Perch
+  not tell the drag where it wrote it, so for the length of the handoff Ledgeling
   listens to the shell's change notifications for that uniquely named file and
   takes its parent directory. If none arrives within 15 seconds of the drop,
   nothing is bound; choose the folder with the bubble's folder row instead. A
@@ -54,8 +54,8 @@ The **Actions / Ask** toggle determines execution:
   files, or exact duplicates — which need a chosen folder; the typed text is
   the filename prefix for rename or search phrase for find. With any
   connection, local or cloud, the model runs the request itself with file
-  tools in the chosen folder — or, when none was chosen, in the Documents/Perch
-  folder Perch creates, where it may also add folders. "My instructions" in
+  tools in the chosen folder — or, when none was chosen, in the Documents/Ledgeling
+  folder Ledgeling creates, where it may also add folders. "My instructions" in
   the menu sends free-form instructions. A cloud API model requires the
   content checkbox before a folder is read; an agent's start approval is its
   consent.
@@ -89,12 +89,12 @@ and pack validation raises a note naming the fallback. See
 
 ## Approvals are written for people, not for agents
 
-Approvals arrive from three different producers — Perch's own file planner, the
+Approvals arrive from three different producers — Ledgeling's own file planner, the
 Codex app-server protocol, the Claude SDK bridge's tool hooks — each with its own
 internal payload. `tasks::summary` turns any of them into one shape before it is
 stored: a headline, up to six lines, a count of what was not listed, a caution
 note, and the label for the accept button ("Approve", "Start", "Allow"). Every
-surface renders that summary; none of them renders the payload. A shape Perch
+surface renders that summary; none of them renders the payload. A shape Ledgeling
 does not recognise is relabelled leaf by leaf and says so, rather than being
 dumped as JSON. Progress lines are translated the same way: the user reads
 "Preparing changes for you to review", never the tool name that produced it.
@@ -137,9 +137,11 @@ when needed, not during ordinary pet animation.
   actual ChatGPT sign-in state from `account/read`; the managed browser login and
   Check account are there for when signing in is genuinely outstanding. No token
   extraction is used.
-- **Claude SDK:** the runtime is bundled with Perch and detected as installed.
-  Uses the saved Anthropic API key. Subscription authentication is deliberately
-  not offered because official third-party guidance conflicts.
+- **Claude Code (development builds only):** the bundled Claude SDK runtime,
+  signed in through the Claude Code login on this machine (run `claude` once to
+  sign in). Anthropic's guidance does not allow shipped third-party products to
+  offer claude.ai login, so debug builds offer this option and release builds
+  never do. Released builds use Claude only through the Anthropic API key.
 - **Brave:** enable search and save a Brave Search API key. Search is independent
   of the AI provider. Public HTTPS text/HTML pages can also be read when allowed.
 
@@ -150,8 +152,8 @@ bodies or credentials. Model calls are limited to 90 seconds and 4,096 output
 tokens; Standard tasks stop at 24 steps / 350 KB accumulated context. There is
 no silent provider fallback. Tests/probes can incur provider usage.
 
-The Connections panel is split into **Installed apps** (Codex, the bundled Claude
-runtime, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
+The Connections panel is split into **Installed apps** (Codex, Claude Code in
+development builds, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
 endpoint). Installed apps are detected automatically — PATH probes for Codex and
 Ollama, a short reachability check against the Ollama endpoint, a packaged-files
 check for the Claude sidecar, and credential-store look-ups for saved API keys —
@@ -208,8 +210,8 @@ Claude also has a 24-turn / $2 per-query cap.
 
 History, selected paths, generated content and journals live in
 `<app config>/assistant/tasks.sqlite`, including SQLite WAL files. They are local
-and not encrypted by Perch; OS disk protection applies. Do not delete the database
-while Perch is running or while you need its undo records.
+and not encrypted by Ledgeling; OS disk protection applies. Do not delete the database
+while Ledgeling is running or while you need its undo records.
 
 ## Validation
 

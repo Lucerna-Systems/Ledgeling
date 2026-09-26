@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Perch",
+  "productName": "Ledgeling",
   "version": "0.1.0",
-  "identifier": "com.perch.desktop",
+  "identifier": "technology.lucerna-systems.ledgeling",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Perch",
+        "title": "Ledgeling",
         "width": 1000,
         "height": 760,
         "minWidth": 760,
@@ -40,17 +40,17 @@
       "icons/icon.icns"
     ],
     "shortDescription": "A little company for your desktop",
-    "longDescription": "Perch is a desktop companion that lives on your windows and helps with tasks when asked. Built-in actions run locally; optional AI and web connections use your own provider access. No Perch account or telemetry.",
+    "longDescription": "Ledgeling is a desktop companion that lives on your windows and helps with tasks when asked. Built-in actions run locally; optional AI and web connections use your own provider access. No Ledgeling account or telemetry.",
     "category": "Utility",
-    "copyright": "Perch contributors",
+    "copyright": "Ledgeling contributors",
     "licenseFile": "../LICENSE.txt",
     "fileAssociations": [
       {
         "ext": [
           "petpack"
         ],
-        "name": "Perch pet pack",
-        "description": "A Perch pet pack",
+        "name": "Ledgeling pet pack",
+        "description": "A Ledgeling pet pack",
         "role": "Editor"
       }
     ],

@@ -214,7 +214,7 @@ fn the_tauri_capabilities_grant_nothing_beyond_local_events() {
 fn a_pack_cannot_describe_anything_executable() {
     // The condition grammar is the only thing a pack can express beyond data,
     // and it has no call, no assignment, and a closed signal namespace.
-    use perch::packs::Condition;
+    use ledgeling::packs::Condition;
     for attempt in [
         "system('rm -rf /')",
         "idle_seconds > 5; drop table",
@@ -234,7 +234,7 @@ fn a_pack_cannot_describe_anything_executable() {
 
 #[test]
 fn the_foreground_process_name_is_mapped_and_never_retained() {
-    use perch::awareness::{AppCategory, CategoryMap};
+    use ledgeling::awareness::{AppCategory, CategoryMap};
     let map = CategoryMap::default();
     // The category is all that survives the mapping; the name is not stored on
     // the returned value in any form.

@@ -1,33 +1,59 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Package, Plus, Trash2, Download, PawPrint, AlertTriangle, FolderOpen } from '@lucide/vue'
+import { AlertTriangle, Brush, Check, Download, FolderOpen, MoreHorizontal, Package, PawPrint, Search, Trash2, X } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, snapshot } from '../state'
 import type { PackSummary } from '../types'
-import CollectionToolbar from '../components/CollectionToolbar.vue'
 import DiagnosticList from './DiagnosticList.vue'
+import FilterPill from '../components/FilterPill.vue'
+import FilterTabs from '../components/FilterTabs.vue'
+
+const emit = defineEmits<{ go: [page: 'studio'] }>()
 
 const query = ref('')
-const filter = ref('all')
-const filters = [
-  { value: 'all', label: 'All packs' }, { value: 'active', label: 'On desktop' },
-  { value: 'available', label: 'Available' }, { value: 'issues', label: 'Needs attention' },
-  ...['flier', 'climber', 'walker', 'hopper'].map(value => ({ value, label: value[0]!.toUpperCase() + value.slice(1) })),
-]
-const filteredPacks = computed(() => packs.value.filter(({ summary: pack }) => {
-  const matches = [pack.name, pack.author, pack.description].join(' ').toLowerCase().includes(query.value.trim().toLowerCase())
-  const active = spawnedFor.value.has(pack.id)
-  return matches && (filter.value === 'all' || filter.value === pack.class ||
-    (filter.value === 'active' && active) || (filter.value === 'available' && !active && pack.loadable) ||
-    (filter.value === 'issues' && (!pack.loadable || pack.errors > 0 || pack.warnings > 0)))
-}))
-const newName = ref('My New Pet')
-const newClass = ref('flier')
-const created = ref('')
+const status = ref('all')
+const movement = ref('any')
+const author = ref('any')
+const source = ref('any')
+const tag = ref('any')
 const exported = ref('')
 const open = ref<string | null>(null)
 
-const classes = ['flier', 'climber', 'walker', 'hopper']
+const classes = [
+  { value: 'flier', label: 'Flies' }, { value: 'climber', label: 'Climbs' },
+  { value: 'walker', label: 'Walks' }, { value: 'hopper', label: 'Hops' },
+]
+const moves: Record<string, string> = Object.fromEntries(classes.map(c => [c.value, c.label]))
 const spawnedFor = computed(() => new Set(pets.value.map(p => p.packId)))
+
+const needsAttention = (pack: PackSummary) => !pack.loadable || pack.errors > 0 || pack.warnings > 0
+const sorted = <T,>(values: T[]) => [...new Set(values)].sort()
+const authorOptions = computed(() => [{ value: 'any', label: 'Anyone' }, ...sorted(packs.value.map(p => p.summary.author).filter(Boolean)).map(a => ({ value: a, label: `By ${a}` }))])
+const tagOptions = computed(() => [{ value: 'any', label: 'Any tag' }, ...sorted(packs.value.flatMap(p => p.summary.tags)).map(t => ({ value: t, label: t[0]!.toUpperCase() + t.slice(1) }))])
+const movementOptions = computed(() => [{ value: 'any', label: 'Any movement' }, ...classes.filter(c => packs.value.some(p => p.summary.class === c.value))])
+const sourceOptions = [{ value: 'any', label: 'Anywhere' }, { value: 'builtin', label: 'Comes with Ledgeling' }, { value: 'added', label: 'Added by you' }]
+
+/** Everything except the status tab, so each tab can show how many it would hold. */
+const narrowed = computed(() => packs.value.filter(({ summary: pack }) =>
+  [pack.name, pack.author, pack.description, ...pack.tags].join(' ').toLowerCase().includes(query.value.trim().toLowerCase()) &&
+  (movement.value === 'any' || pack.class === movement.value) &&
+  (author.value === 'any' || pack.author === author.value) &&
+  (source.value === 'any' || (source.value === 'builtin') === pack.builtin) &&
+  (tag.value === 'any' || pack.tags.includes(tag.value))))
+const statusTabs = computed(() => {
+  const list = narrowed.value.map(l => l.summary)
+  const tabs = [
+    { value: 'all', label: 'All', count: list.length },
+    { value: 'out', label: 'On your desktop', count: list.filter(p => spawnedFor.value.has(p.id)).length },
+    { value: 'home', label: 'At home', count: list.filter(p => !spawnedFor.value.has(p.id)).length },
+  ]
+  const broken = list.filter(needsAttention).length
+  return broken || status.value === 'issues' ? [...tabs, { value: 'issues', label: 'Needs attention', count: broken }] : tabs
+})
+const filteredPacks = computed(() => narrowed.value.filter(({ summary: pack }) =>
+  status.value === 'all' || (status.value === 'out' && spawnedFor.value.has(pack.id)) ||
+  (status.value === 'home' && !spawnedFor.value.has(pack.id)) || (status.value === 'issues' && needsAttention(pack))))
+const filtering = computed(() => !!query.value || status.value !== 'all' || movement.value !== 'any' || author.value !== 'any' || source.value !== 'any' || tag.value !== 'any')
+function clearFilters() { query.value = ''; status.value = 'all'; movement.value = 'any'; author.value = 'any'; source.value = 'any'; tag.value = 'any' }
 
 onMounted(refreshPacks)
 
@@ -48,10 +74,6 @@ async function uninstall(id: string) {
   await call('uninstall_pack', { id })
   await refreshPacks()
 }
-async function scaffold() {
-  const path = await call<string>('new_pack', { class: newClass.value, name: newName.value })
-  if (path) { created.value = path; await refreshPacks() }
-}
 async function exportPack(id: string) {
   const path = await call<string>('export_pack', { id })
   if (path) exported.value = path
@@ -59,67 +81,83 @@ async function exportPack(id: string) {
 </script>
 
 <template>
+  <div class="sticky-top">
   <section class="page-heading">
     <div>
-      <div class="eyebrow">DATA, NEVER CODE</div>
-      <h1>Pet packs</h1>
-      <p>Find a new friend. Make your desktop your own.</p>
+      <h1>Pets</h1>
+      <p>Bring a friend out onto your desktop. You can have a few at once.</p>
     </div>
+    <label v-if="packs.length" class="search-field">
+      <Search :size="15" />
+      <input v-model="query" type="search" aria-label="Search pets" placeholder="Search pets">
+      <button v-if="query" class="icon-button" aria-label="Clear search" @click="query = ''"><X :size="14" /></button>
+    </label>
   </section>
 
-  <CollectionToolbar v-model:query="query" v-model:filter="filter" label="Search pet packs" :count="filteredPacks.length" :options="filters" />
-  <div v-if="!filteredPacks.length" class="empty-state"><Package :size="28" /><h3>{{ packs.length ? 'No matching packs' : 'Your collection starts here' }}</h3><p>{{ packs.length ? 'Try a different search or filter.' : 'Drop a pet pack onto this window to install it.' }}</p></div>
+  <FilterTabs v-if="packs.length" v-model="status" label="Status" :options="statusTabs" />
+  <div class="filter-bar">
+    <template v-if="packs.length">
+      <FilterPill v-if="movementOptions.length > 2" v-model="movement" label="How it moves" :options="movementOptions" />
+      <FilterPill v-if="authorOptions.length > 2" v-model="author" label="Made by" :options="authorOptions" />
+      <FilterPill v-if="packs.some(p => p.summary.builtin) && packs.some(p => !p.summary.builtin)" v-model="source" label="Source" :options="sourceOptions" />
+      <FilterPill v-if="tagOptions.length > 2" v-model="tag" label="Tag" :options="tagOptions" />
+      <button v-if="filtering" type="button" class="text-link" aria-label="Clear search and filters" @click="clearFilters">Clear filters</button>
+    </template>
+    <button type="button" class="primary-button make-pet" @click="emit('go', 'studio')"><Brush :size="15" /> Make your own pet</button>
+  </div>
+  </div>
+
+  <div v-if="!filteredPacks.length" class="empty-state">
+    <Package :size="28" :stroke-width="1.4" />
+    <h3>{{ packs.length ? 'No pets match' : 'No pets yet' }}</h3>
+    <p>{{ packs.length ? 'Try a different search, or clear the filters.' : 'Drop a .petpack file onto this window to add one.' }}</p>
+  </div>
+
   <div class="pack-grid">
-    <article v-for="listing in filteredPacks" :key="listing.summary.id" class="pack-card" :class="{ broken: !listing.summary.loadable }">
+    <article v-for="listing in filteredPacks" :key="listing.summary.id" class="pack-card" :class="{ broken: !listing.summary.loadable, out: spawnedFor.has(listing.summary.id) }">
       <div class="pack-preview">
-        <img v-if="listing.summary.preview" :src="listing.summary.preview" :alt="`${listing.summary.name} preview`">
-        <span v-else class="pack-preview-empty"><Package :size="30" :stroke-width="1.2" /></span>
+        <img v-if="listing.summary.preview" :src="listing.summary.preview" :alt="listing.summary.name">
+        <Package v-else :size="36" :stroke-width="1.2" />
+        <span v-if="spawnedFor.has(listing.summary.id)" class="out-badge"><Check :size="12" /> On your desktop</span>
       </div>
       <div class="pack-body">
         <header>
           <h3>{{ listing.summary.name }}</h3>
-          <span class="pack-class">{{ listing.summary.class || 'unloadable' }}</span>
+          <span v-if="moves[listing.summary.class]" class="pack-class">{{ moves[listing.summary.class] }}</span>
         </header>
-        <p class="pack-meta">{{ listing.summary.author }} · v{{ listing.summary.version }}<span v-if="listing.summary.builtin"> · bundled</span></p>
         <p class="pack-description">{{ listing.summary.description }}</p>
-
+        <p v-if="!listing.summary.loadable" class="pack-problem"><AlertTriangle :size="13" /> This pet can't be brought out right now.</p>
         <div class="pack-actions">
-          <button v-if="!spawnedFor.has(listing.summary.id)" :disabled="!listing.summary.loadable" @click="spawn(listing.summary.id)"><PawPrint :size="14" /> Bring out</button>
-          <button v-else @click="despawn(listing.summary.id)"><PawPrint :size="14" /> Send home</button>
+          <button v-if="!spawnedFor.has(listing.summary.id)" class="primary-button" :disabled="!listing.summary.loadable" @click="spawn(listing.summary.id)"><PawPrint :size="15" /> Bring out</button>
+          <button v-else @click="despawn(listing.summary.id)">Send home</button>
           <details class="pack-more">
-            <summary>Details</summary>
-            <p class="pack-surfaces">{{ listing.summary.surfaces.map(surface => surface.replace(/_/g, ' ')).join(' · ') }}</p>
-            <ul class="pack-clips">
-              <li v-for="clip in listing.summary.assistantClips" :key="clip.slot">
-                <span>{{ clip.when[0]!.toUpperCase() + clip.when.slice(1) }}</span>
-                <template v-if="clip.provided">Plays its own <code>{{ clip.slot }}</code></template>
-                <template v-else>Plays <code>{{ clip.clip }}</code> — this pack has no <code>{{ clip.slot }}</code> animation</template>
-              </li>
-            </ul>
-            <div class="pack-actions"><button @click="exportPack(listing.summary.id)"><Download :size="14" /> Export</button><button class="danger-button" @click="uninstall(listing.summary.id)"><Trash2 :size="14" /> Remove</button></div>
+            <summary :aria-label="`More about ${listing.summary.name}`"><MoreHorizontal :size="16" /></summary>
+            <div class="pack-menu">
+              <p class="pack-meta">By {{ listing.summary.author }} · version {{ listing.summary.version }}<span v-if="listing.summary.builtin"> · comes with Ledgeling</span></p>
+              <ul v-if="listing.summary.assistantClips.length" class="pack-clips">
+                <li v-for="clip in listing.summary.assistantClips" :key="clip.slot">
+                  <span>{{ clip.when[0]!.toUpperCase() + clip.when.slice(1) }}</span>
+                  <template v-if="clip.provided">Plays its own <code>{{ clip.slot }}</code></template>
+                  <template v-else>Plays <code>{{ clip.clip }}</code> — this pack has no <code>{{ clip.slot }}</code> animation</template>
+                </li>
+              </ul>
+              <button v-if="listing.report.diagnostics.length" class="text-link" @click="open = open === listing.summary.id ? null : listing.summary.id">
+                <AlertTriangle :size="12" /> {{ diagnosticLabel(listing.summary) }}
+              </button>
+              <div class="pack-actions">
+                <button @click="exportPack(listing.summary.id)"><Download :size="14" /> Export</button>
+                <button class="danger-button" @click="uninstall(listing.summary.id)"><Trash2 :size="14" /> Remove</button>
+              </div>
+            </div>
           </details>
         </div>
-        <button v-if="listing.report.diagnostics.length" class="text-link" @click="open = open === listing.summary.id ? null : listing.summary.id">
-          <AlertTriangle :size="12" />
-          {{ diagnosticLabel(listing.summary) }}
-        </button>
         <DiagnosticList v-if="open === listing.summary.id" :report="listing.report" />
       </div>
     </article>
   </div>
 
-  <details class="new-pack">
-    <summary><Plus :size="16" /> Create your own pack</summary>
-    <p class="control-intro">Start with a working template and add your own artwork.</p>
-    <div class="new-pack-row">
-      <input v-model="newName" aria-label="Pack name" placeholder="Name">
-      <select v-model="newClass" aria-label="Locomotion class">
-        <option v-for="option in classes" :key="option" :value="option">{{ option }}</option>
-      </select>
-      <button class="primary-button" @click="scaffold"><Plus :size="16" /> New pack</button>
-    </div>
-    <p v-if="created" class="path-note"><FolderOpen :size="13" /> {{ created }}</p>
-    <p v-if="exported" class="path-note"><Download :size="13" /> {{ exported }}</p>
-  </details>
-  <div class="install-note"><FolderOpen :size="16" /><div>Drop a <code>.petpack</code> or pack folder anywhere in this window to install it.<details v-if="snapshot?.packsDir"><summary>Pack location</summary><p>{{ snapshot.packsDir }}</p></details></div></div>
+  <p v-if="exported" class="path-note"><Download :size="13" /> Exported to {{ exported }}</p>
+
+  <p class="install-note"><FolderOpen :size="15" /> Got a pet from a friend? Drop its <code>.petpack</code> file onto this window.</p>
+  <details v-if="snapshot?.packsDir" class="packs-location"><summary>Where pets are kept</summary><p>{{ snapshot.packsDir }}</p></details>
 </template>

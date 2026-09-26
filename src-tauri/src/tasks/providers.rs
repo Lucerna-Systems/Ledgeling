@@ -15,11 +15,32 @@ pub fn secret_name(kind: &ProviderKind) -> &'static str {
         _ => "unused",
     }
 }
+/// Where API keys live in the OS credential store.
+const SECRET_SERVICE: &str = "technology.lucerna-systems.ledgeling.tasks";
+const CREDENTIALS: [&str; 4] = ["openai", "anthropic", "compatible", "brave"];
+
+/// Copies keys saved under the pre-rename service into the current one, then
+/// removes the originals. A key already saved under the new service wins.
+pub fn migrate_legacy_secrets() {
+    let legacy = format!("{}.tasks", crate::migrate::LEGACY_IDENTIFIER);
+    for name in CREDENTIALS {
+        let Ok(old) = keyring::Entry::new(&legacy, name) else {
+            continue;
+        };
+        let Ok(value) = old.get_password() else {
+            continue;
+        };
+        if !has_secret(name) && set_secret(name, &value).is_err() {
+            continue;
+        }
+        let _ = old.delete_credential();
+    }
+}
 pub fn set_secret(name: &str, value: &str) -> Result<(), String> {
-    if !matches!(name, "openai" | "anthropic" | "compatible" | "brave") {
+    if !CREDENTIALS.contains(&name) {
         return Err("Unknown credential.".into());
     }
-    let entry = keyring::Entry::new("com.perch.desktop.tasks", name)
+    let entry = keyring::Entry::new(SECRET_SERVICE, name)
         .map_err(|_| "Credential store unavailable".to_string())?;
     if value.is_empty() {
         match entry.delete_credential() {
@@ -33,7 +54,7 @@ pub fn set_secret(name: &str, value: &str) -> Result<(), String> {
     }
 }
 pub fn secret(name: &str) -> Result<String, String> {
-    keyring::Entry::new("com.perch.desktop.tasks", name)
+    keyring::Entry::new(SECRET_SERVICE, name)
         .and_then(|e| e.get_password())
         .map_err(|_| format!("Add the {name} API key in Connections."))
 }
@@ -201,7 +222,7 @@ pub fn find_in_path(name: &str) -> Option<PathBuf> {
     None
 }
 fn has_secret(name: &str) -> bool {
-    keyring::Entry::new("com.perch.desktop.tasks", name)
+    keyring::Entry::new(SECRET_SERVICE, name)
         .and_then(|e| e.get_password())
         .is_ok()
 }
@@ -225,7 +246,7 @@ pub fn detect(config: &Connections) -> ProviderDetection {
     });
     ProviderDetection {
         codex_installed: find_in_path(&codex).is_some(),
-        claude_bridge: super::runtimes::bridge_ready(),
+        claude_code: super::runtimes::CLAUDE_CODE_LOGIN && super::runtimes::bridge_ready(),
         ollama_app: find_in_path("ollama").is_some(),
         ollama_reachable: ollama_reachable(&ollama),
         openai_key: has_secret("openai"),
@@ -242,7 +263,7 @@ impl ModelProvider for HttpModel {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
         cancel.check()?;
         let config = &self.0;
-        // Apple's endpoint is a server Perch starts on demand, not a saved
+        // Apple's endpoint is a server Ledgeling starts on demand, not a saved
         // address, and `system` is the only model it accepts.
         let endpoint = if config.kind == ProviderKind::Apple {
             apple::endpoint(cancel)?

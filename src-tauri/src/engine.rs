@@ -33,7 +33,7 @@ pub struct Engine {
     pub settings: Settings,
     pub suspended: bool,
     /// False while the screens cannot be read: a locked session or a sleeping
-    /// display. Perch suspends rather than pretending the desktop is empty.
+    /// display. Ledgeling suspends rather than pretending the desktop is empty.
     pub screens_available: bool,
     pub scan_ms: f64,
     pub scan_error: Option<String>,

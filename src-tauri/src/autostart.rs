@@ -1,10 +1,10 @@
 //! Opt-in launch at login. Off by default, and removable from the same switch
-//! that turned it on — Perch installs nothing behind the user's back.
+//! that turned it on — Ledgeling installs nothing behind the user's back.
 use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
 
-pub const IDENTIFIER: &str = "com.perch.desktop";
+pub const IDENTIFIER: &str = "technology.lucerna-systems.ledgeling";
 
 pub fn apply(enabled: bool, executable: &Path) -> Result<(), String> {
     if enabled {
@@ -15,16 +15,28 @@ pub fn apply(enabled: bool, executable: &Path) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn agent_path() -> Result<PathBuf, String> {
+fn agent_path(identifier: &str) -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "Your home folder could not be found.")?;
     Ok(PathBuf::from(home)
         .join("Library/LaunchAgents")
-        .join(format!("{IDENTIFIER}.plist")))
+        .join(format!("{identifier}.plist")))
+}
+
+#[cfg(target_os = "macos")]
+fn remove_agent(identifier: &str) -> Result<(), String> {
+    let path = agent_path(identifier)?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Could not remove {}: {error}", path.display())),
+    }
 }
 
 #[cfg(target_os = "macos")]
 fn enable(executable: &Path) -> Result<(), String> {
-    let path = agent_path()?;
+    // A pre-rename agent would launch the app a second time at login.
+    remove_agent(crate::migrate::LEGACY_IDENTIFIER)?;
+    let path = agent_path(IDENTIFIER)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Could not create {}: {e}", parent.display()))?;
@@ -47,12 +59,8 @@ fn enable(executable: &Path) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn disable() -> Result<(), String> {
-    let path = agent_path()?;
-    match std::fs::remove_file(&path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("Could not remove {}: {error}", path.display())),
-    }
+    remove_agent(crate::migrate::LEGACY_IDENTIFIER)?;
+    remove_agent(IDENTIFIER)
 }
 
 #[cfg(target_os = "windows")]
@@ -119,7 +127,7 @@ mod registry {
             Ok(())
         } else {
             Err(format!(
-                "Windows would not add Perch to startup (error {result})."
+                "Windows would not add Ledgeling to startup (error {result})."
             ))
         }
     }
@@ -132,20 +140,27 @@ mod registry {
             Ok(())
         } else {
             Err(format!(
-                "Windows would not remove Perch from startup (error {result})."
+                "Windows would not remove Ledgeling from startup (error {result})."
             ))
         }
     }
 }
 
+/// The startup entry's name before the app was renamed; cleared so an
+/// upgraded install never launches twice at login.
+#[cfg(target_os = "windows")]
+const LEGACY_ENTRY: &str = "Perch";
+
 #[cfg(target_os = "windows")]
 fn enable(executable: &Path) -> Result<(), String> {
-    registry::set("Perch", &format!("\"{}\"", executable.display()))
+    registry::clear(LEGACY_ENTRY)?;
+    registry::set("Ledgeling", &format!("\"{}\"", executable.display()))
 }
 
 #[cfg(target_os = "windows")]
 fn disable() -> Result<(), String> {
-    registry::clear("Perch")
+    registry::clear(LEGACY_ENTRY)?;
+    registry::clear("Ledgeling")
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

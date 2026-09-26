@@ -301,7 +301,7 @@ pub fn scan(packs_dir: &Path) -> Vec<PackListing> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        // `.staging` and other dot folders are Perch's own scratch space.
+        // `.staging` and other dot folders are Ledgeling's own scratch space.
         .filter(|p| {
             !p.file_name()
                 .is_some_and(|n| n.to_string_lossy().starts_with('.'))
@@ -405,7 +405,7 @@ pub fn uninstall(packs_dir: &Path, id: &str) -> Result<(), String> {
     Err(format!("No installed pack has the id `{id}`."))
 }
 
-fn folder_name(id: &str) -> String {
+pub(crate) fn folder_name(id: &str) -> String {
     id.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '.' || c == '-' {

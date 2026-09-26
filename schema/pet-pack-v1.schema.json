@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://perch.local/schema/pet-pack-v1.schema.json",
-  "title": "Perch pet pack (format 1)",
+  "title": "Ledgeling pet pack (format 1)",
   "description": "A pet is data: identity, one sprite block, one locomotion block, animation strips, and optionally a declarative behavior machine. Nothing here can execute code.",
   "type": "object",
   "required": ["format", "id", "name", "author", "version", "sprite", "locomotion", "animations"],
