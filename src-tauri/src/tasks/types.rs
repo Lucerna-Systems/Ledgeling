@@ -134,6 +134,14 @@ pub struct Source {
     pub url: String,
     pub excerpt: String,
 }
+/// Which pet a task was for, captured when it starts. Pet ids restart every
+/// launch, so a conversation keeps the pack and name to show the right face later.
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TaskPet {
+    pub pack_id: String,
+    pub name: String,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -148,6 +156,11 @@ pub struct Task {
     pub operations: Vec<Operation>,
     pub sources: Vec<Source>,
     pub created_at: i64,
+    #[serde(default)]
+    pub pet: Option<TaskPet>,
+    /// A user-chosen conversation name, kept on the conversation's first task.
+    #[serde(default)]
+    pub title: String,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]

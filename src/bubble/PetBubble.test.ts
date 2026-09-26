@@ -25,7 +25,7 @@ const show = (over = {}) => ({ session: 1, petId: 3, name: 'Budgie', runtime: 'n
 const task = (over: Partial<Task> = {}): Task => ({
   id: 7, request: { prompt: 'p', petId: 3, roots: [], attachments: [], preset: '', mode: 'standard', parentId: null, allowCloud: false, allowWeb: false },
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status: 'running', progress: 'Sorting files', result: '', error: null,
-  approval: null, operations: [], sources: [], createdAt: 0, ...over,
+  approval: null, operations: [], sources: [], createdAt: 0, pet: null, title: '', ...over,
 })
 const button = (wrapper: ReturnType<typeof mount>, text: string) => wrapper.findAll('button').find(b => b.text() === text)
 

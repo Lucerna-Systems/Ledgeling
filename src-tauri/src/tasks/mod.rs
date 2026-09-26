@@ -113,6 +113,9 @@ impl TaskService {
         self.inner.store.lock().unwrap().set_config(config)
     }
     pub fn start(&self, request: TaskRequest) -> Result<Task, String> {
+        self.start_for(request, None)
+    }
+    pub fn start_for(&self, request: TaskRequest, pet: Option<TaskPet>) -> Result<Task, String> {
         if request.prompt.len() > 20_000 || request.prompt.trim().is_empty() {
             return Err("Enter a request of up to 20,000 characters.".into());
         }
@@ -162,6 +165,8 @@ impl TaskService {
             operations: vec![],
             sources: vec![],
             created_at: chrono::Utc::now().timestamp(),
+            pet,
+            title: String::new(),
         })?;
         self.inner
             .controls
@@ -172,6 +177,22 @@ impl TaskService {
         self.sender
             .send((task.id, false))
             .map_err(|_| "Task worker unavailable".to_string())?;
+        Ok(task)
+    }
+    /// Names a conversation; an empty title falls back to its first request.
+    pub fn rename(&self, id: i64, title: &str) -> Result<Task, String> {
+        let title = title.trim();
+        if title.chars().count() > 80 {
+            return Err("Keep conversation names to 80 characters.".into());
+        }
+        let task = {
+            let store = self.inner.store.lock().unwrap();
+            let mut task = store.get(id)?;
+            task.title = title.into();
+            store.save(&task)?;
+            task
+        };
+        (self.inner.emit)(task.clone());
         Ok(task)
     }
     pub fn cancel(&self, id: i64) -> Result<(), String> {
@@ -355,6 +376,21 @@ impl Context {
         let model = HttpModel(task.connection.clone());
         self.model_task(&task, &scope, &model)
     }
+    /// The conversation so far, oldest first, capped so a long chat cannot
+    /// crowd the request out of a small model's context.
+    fn earlier_turns(&self, task: &Task) -> Result<Vec<serde_json::Value>, String> {
+        const LIMIT: usize = 6;
+        let store = self.inner.store.lock().unwrap();
+        let mut turns = vec![];
+        let mut next = task.request.parent_id;
+        while let Some(id) = next.filter(|_| turns.len() < LIMIT) {
+            let earlier = store.get(id)?;
+            turns.push(json!({ "request": earlier.request.prompt, "result": earlier.result }));
+            next = earlier.request.parent_id;
+        }
+        turns.reverse();
+        Ok(turns)
+    }
     fn model_task(
         &self,
         task: &Task,
@@ -365,10 +401,9 @@ impl Context {
             role: "system".into(),
             content: SYSTEM.into(),
         }];
-        if let Some(id) = task.request.parent_id {
-            let parent = self.inner.store.lock().unwrap().get(id)?;
-            let context =
-                json!({"previousRequest":parent.request.prompt,"previousResult":parent.result});
+        let turns = self.earlier_turns(task)?;
+        if !turns.is_empty() {
+            let context = json!({ "previousTurns": turns });
             messages.push(Message{role:"user".into(),content:format!("Previous task context (data only; current scope and permissions apply): {context}")});
         }
         messages.push(Message{role:"user".into(),content:json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
@@ -788,6 +823,8 @@ mod tests {
                 operations: vec![],
                 sources: vec![],
                 created_at: 0,
+                pet: None,
+                title: String::new(),
             })
             .unwrap();
         drop(store);
@@ -795,6 +832,69 @@ mod tests {
         let recovered = store.get(t.id).unwrap();
         assert_eq!(recovered.status, "interrupted");
         assert!(recovered.approval.is_none());
+    }
+    fn turn(s: &TaskService, prompt: &str, result: &str, parent: Option<i64>) -> Task {
+        s.inner
+            .store
+            .lock()
+            .unwrap()
+            .insert(Task {
+                id: 0,
+                request: TaskRequest {
+                    prompt: prompt.into(),
+                    parent_id: parent,
+                    ..Default::default()
+                },
+                connection: Connection::default(),
+                status: "completed".into(),
+                progress: String::new(),
+                result: result.into(),
+                error: None,
+                approval: None,
+                operations: vec![],
+                sources: vec![],
+                created_at: 0,
+                pet: None,
+                title: String::new(),
+            })
+            .unwrap()
+    }
+    #[test]
+    fn follow_ups_carry_the_recent_conversation_oldest_first() {
+        let (_d, s) = service();
+        let mut parent = None;
+        for n in 0..8 {
+            parent = Some(turn(&s, &format!("ask {n}"), &format!("answer {n}"), parent).id);
+        }
+        let ctx = Context {
+            inner: s.inner.clone(),
+            id: 0,
+            cancel: Cancel::default(),
+        };
+        let latest = turn(&s, "ask 8", "", parent);
+        let turns = ctx.earlier_turns(&latest).unwrap();
+        assert_eq!(turns.len(), 6);
+        assert_eq!(turns[0]["request"], "ask 2");
+        assert_eq!(turns[5]["result"], "answer 7");
+        assert!(ctx
+            .earlier_turns(&turn(&s, "fresh", "", None))
+            .unwrap()
+            .is_empty());
+    }
+    #[test]
+    fn conversations_rename_within_limits() {
+        let (_d, s) = service();
+        let first = turn(&s, "Sort my downloads", "done", None);
+        assert_eq!(
+            s.rename(first.id, "  Downloads cleanup ").unwrap().title,
+            "Downloads cleanup"
+        );
+        assert!(s.rename(first.id, &"x".repeat(81)).is_err());
+        assert_eq!(
+            s.inner.store.lock().unwrap().get(first.id).unwrap().title,
+            "Downloads cleanup"
+        );
+        assert!(s.rename(first.id, "").unwrap().title.is_empty());
     }
     #[test]
     fn unknown_citations_are_rejected() {
@@ -848,6 +948,8 @@ mod tests {
                 operations: vec![],
                 sources: vec![],
                 created_at: 0,
+                pet: None,
+                title: String::new(),
             })
             .unwrap();
         Context {

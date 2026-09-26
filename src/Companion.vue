@@ -3,9 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import AssistantPanel from './assistant/AssistantPanel.vue'
 import HistoryPanel from './assistant/HistoryPanel.vue'
-import { startTasks, assignedPet, droppedFiles, pendingFollowup, tasks } from './assistant/state'
+import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
+import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { ArrowLeft, Bird, ChevronLeft, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
 import { action, busy, error, native, notes, pets, settings, snapshot, start } from './state'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
@@ -13,6 +14,8 @@ import LabPanel from './panels/LabPanel.vue'
 import AwarenessPanel from './panels/AwarenessPanel.vue'
 import DesktopPanel from './panels/DesktopPanel.vue'
 import PetStudio from './studio/PetStudio.vue'
+import { syncAppIcon } from './appIcon'
+import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
 
 type Page = 'pets' | 'assistant' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
 const nav = [
@@ -26,6 +29,8 @@ const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 
 const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
 
 const page = ref<Page>('assistant')
+const sidebar = useSidebar()
+const { width: sidebarWidth, collapsed, resizing } = sidebar
 /** Where a sub-page's back button returns to: the page that opened it. */
 const back = ref<Page>('settings')
 const section = computed(() => subpages[page.value] ?? page.value)
@@ -40,12 +45,13 @@ const content = ref<HTMLElement | null>(null)
 watch(page, async () => { await nextTick(); if (content.value) content.value.scrollTop = 0 })
 
 let stop = () => {}
+let stopIcon = () => {}
 let stopAssistant = () => {}
 const assistantOff: (() => void)[] = []
 let assistantDisposed = false
 async function initAssistant() {
   for (const [name, handler] of [
-    ['assistant:open', (value: unknown) => { assignedPet.value = value as number | null; page.value = 'assistant' }],
+    ['assistant:open', (value: unknown) => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' }],
     ['assistant:drop', (value: unknown) => { droppedFiles.value = value as string[]; page.value = 'assistant' }],
   ] as const) {
     const off = await listen(name, event => handler(event.payload))
@@ -58,7 +64,7 @@ async function initAssistant() {
 
 const waiting = computed(() => tasks.value.filter(task => task.status === 'waiting').length)
 function followup(task: Task) {
-  pendingFollowup.value = task
+  activeConversation.value = conversationOf(task.id)
   page.value = 'assistant'
 }
 
@@ -77,34 +83,47 @@ const quiet = computed(() => !pets.value.length || !!settings.value?.paused || !
 onMounted(() => {
   stop = start()
   if (native) void initAssistant().catch(() => {})
+  if (native) stopIcon = syncAppIcon()
 })
-onUnmounted(() => { stop(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
+onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
 </script>
 
 <template>
   <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#" @click.prevent="page = 'assistant'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span>perch</a>
-      <nav aria-label="Main navigation">
-        <button v-for="item in nav" :key="item.page" :class="{ selected: section === item.page }"
-                :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">
-          <component :is="item.icon" :size="18" :stroke-width="1.8" /> {{ item.label }}
-          <span v-if="item.page === 'history' && waiting" class="nav-badge" :aria-label="`${waiting} waiting for you`">{{ waiting }}</span>
-        </button>
-      </nav>
-      <div class="sidebar-bottom">
-        <span class="sidebar-status"><span class="live-dot" :class="{ sleeping: quiet }" /> {{ status }}</span>
-        <div v-if="pets.length || settings?.paused || settings?.hidden" class="sidebar-controls">
-          <button :class="{ active: settings?.paused }" :disabled="offline" @click="action('pause')">
-            <Play v-if="settings?.paused" :size="14" /><Pause v-else :size="14" />{{ settings?.paused ? 'Resume' : 'Pause' }}
+    <div class="sidebar-shell" :class="{ collapsed, resizing }" :style="{ width: collapsed ? undefined : `${sidebarWidth}px` }">
+      <aside class="sidebar">
+        <a class="brand" href="#" :title="collapsed ? 'perch' : undefined" @click.prevent="page = 'assistant'"><span class="brand-mark"><Bird :size="22" :stroke-width="1.7" /></span><span class="label">perch</span></a>
+        <nav aria-label="Main navigation">
+          <button v-for="item in nav" :key="item.page" :class="{ selected: section === item.page }" :title="collapsed ? item.label : undefined"
+                  :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">
+            <component :is="item.icon" :size="18" :stroke-width="1.8" /><span class="label">{{ item.label }}</span>
+            <span v-if="item.page === 'history' && waiting" class="nav-badge" :aria-label="`${waiting} waiting for you`">{{ waiting }}</span>
           </button>
-          <button :class="{ active: settings?.hidden }" :disabled="offline" @click="action('visibility')">
-            <Eye v-if="settings?.hidden" :size="14" /><EyeOff v-else :size="14" />{{ settings?.hidden ? 'Show' : 'Hide' }}
-          </button>
+        </nav>
+        <section v-if="conversations.length && !collapsed" class="chat-section" aria-labelledby="chats-heading">
+          <h2 id="chats-heading" class="chat-section-title">Chats</h2>
+          <ConversationList :current="page === 'assistant'" @open="page = 'assistant'" />
+        </section>
+        <div class="sidebar-bottom">
+          <span class="sidebar-status" :title="collapsed ? status : undefined"><span class="live-dot" :class="{ sleeping: quiet }" /><span class="label">{{ status }}</span></span>
+          <div v-if="pets.length || settings?.paused || settings?.hidden" class="sidebar-controls">
+            <button :class="{ active: settings?.paused }" :disabled="offline" :aria-label="settings?.paused ? 'Resume' : 'Pause'" :title="collapsed ? (settings?.paused ? 'Resume' : 'Pause') : undefined" @click="action('pause')">
+              <Play v-if="settings?.paused" :size="14" /><Pause v-else :size="14" /><span class="label">{{ settings?.paused ? 'Resume' : 'Pause' }}</span>
+            </button>
+            <button :class="{ active: settings?.hidden }" :disabled="offline" :aria-label="settings?.hidden ? 'Show' : 'Hide'" :title="collapsed ? (settings?.hidden ? 'Show' : 'Hide') : undefined" @click="action('visibility')">
+              <Eye v-if="settings?.hidden" :size="14" /><EyeOff v-else :size="14" /><span class="label">{{ settings?.hidden ? 'Show' : 'Hide' }}</span>
+            </button>
+          </div>
+          <span class="sidebar-private"><ShieldCheck :size="13" /><span class="label">Stays on this computer</span></span>
         </div>
-        <span class="sidebar-private"><ShieldCheck :size="13" /> Stays on this computer</span>
-      </div>
-    </aside>
+      </aside>
+      <div v-if="!collapsed" class="sidebar-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"
+           :aria-valuenow="sidebarWidth" :aria-valuemin="SIDEBAR_MIN" :aria-valuemax="SIDEBAR_MAX"
+           @pointerdown.prevent="sidebar.startResize" @dblclick="sidebar.reset" @keydown.left.prevent="sidebar.nudge(-16)" @keydown.right.prevent="sidebar.nudge(16)" />
+      <button type="button" class="sidebar-toggle" :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'" :aria-expanded="!collapsed" @click="collapsed = !collapsed">
+        <ChevronRight v-if="collapsed" :size="14" /><ChevronLeft v-else :size="14" />
+      </button>
+    </div>
 
     <main ref="content" class="content" :class="{ 'fit-page': page === 'assistant' }">
       <div v-if="!native" class="preview-notice"><Monitor :size="16" /><span>This is a browser preview. Run <code>npm run tauri dev</code> to bring a pet onto your desktop.</span></div>

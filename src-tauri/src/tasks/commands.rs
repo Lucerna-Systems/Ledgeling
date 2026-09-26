@@ -29,7 +29,18 @@ pub async fn task_start(
     request: TaskRequest,
 ) -> Result<Task, String> {
     main_only(&window)?;
-    state.start(request)
+    let pet = crate::app::task_pet(window.app_handle(), request.pet_id);
+    state.start_for(request, pet)
+}
+#[tauri::command]
+pub async fn task_rename(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+    title: String,
+) -> Result<Task, String> {
+    main_only(&window)?;
+    state.rename(id, &title)
 }
 #[tauri::command]
 pub async fn task_cancel(

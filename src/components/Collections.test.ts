@@ -28,7 +28,7 @@ const pack = (name: string, kind: string): PackListing => ({
 })
 const task = (id: number, status: string): Task => ({
   id, status, request: { prompt: id === 1 ? 'Organise folder' : 'Research Vue', petId: null, roots: [], attachments: [], mode: 'standard', preset: '', parentId: null, allowCloud: false, allowWeb: false },
-  connection: { kind: 'none', model: '', endpoint: '', executable: '' }, createdAt: 0, progress: '', result: '', error: null, approval: null, operations: [], sources: [],
+  connection: { kind: 'none', model: '', endpoint: '', executable: '' }, createdAt: 0, progress: '', result: '', error: null, approval: null, operations: [], sources: [], pet: null, title: '',
 })
 
 it('searches pets case-insensitively and can clear the search', async () => {

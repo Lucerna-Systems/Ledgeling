@@ -3,10 +3,11 @@ import { computed, ref } from 'vue'
 import MarkdownResult from './MarkdownResult.vue'
 import { taskCall, refreshTasks } from './state'
 import { providerLabels, terminal, type Task } from './types'
-const props = defineProps<{ task: Task }>()
+/** `inChat` renders the reply half of a chat turn: the prompt is already shown above it. */
+const props = defineProps<{ task: Task; inChat?: boolean }>()
 const emit = defineEmits<{ followup: [task: Task] }>()
 const expanded = ref(false)
-const longResult = computed(() => props.task.result.length > 600)
+const longResult = computed(() => !props.inChat && props.task.result.length > 600)
 const preview = computed(() => props.task.result
   .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
   .replace(/[#*_`>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 190) + '…')
@@ -30,8 +31,8 @@ const meta = computed(() => {
 async function open(url: string) { try { await taskCall('task_open_url', { url }) } catch { /* shared error banner */ } }
 </script>
 <template>
-  <article class="task-card" :aria-label="`Task ${task.id}`">
-    <header><strong>{{ task.request.prompt }}</strong><span class="task-status" :data-status="task.status">{{ statusLabels[task.status] ?? task.status }}</span></header>
+  <article class="task-card" :class="{ 'in-chat': inChat }" :aria-label="`Task ${task.id}`">
+    <header v-if="!inChat || task.status !== 'completed'"><strong v-if="!inChat">{{ task.request.prompt }}</strong><span class="task-status" :data-status="task.status">{{ statusLabels[task.status] ?? task.status }}</span></header>
     <p class="task-meta">{{ meta }}</p>
     <p v-if="task.progress" role="status">{{ task.progress }}</p>
     <div v-if="task.error" class="task-problem" role="alert">{{ task.error }}</div>
@@ -65,7 +66,7 @@ async function open(url: string) { try { await taskCall('task_open_url', { url }
     <div class="task-actions">
       <button v-if="!terminal(task.status)" :disabled="pending || task.status === 'cancelling'" @click="control('task_cancel')">Cancel task</button>
       <button v-if="canUndo" :disabled="pending" @click="control('task_undo')">Undo file changes</button>
-      <button v-if="terminal(task.status)" @click="emit('followup', task)">Follow up</button>
+      <button v-if="terminal(task.status) && !inChat" @click="emit('followup', task)">Continue chat</button>
     </div>
   </article>
 </template>

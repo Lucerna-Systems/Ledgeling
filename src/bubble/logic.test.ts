@@ -43,7 +43,7 @@ describe('the start event', () => {
 const task = (over: Partial<Task>): Task => ({
   id: 7, request: { prompt: 'p', petId: 3, roots: [], attachments: [], preset: '', mode: 'standard', parentId: null, allowCloud: false, allowWeb: false },
   connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status: 'running', progress: 'Working', result: '', error: null,
-  approval: null, operations: [], sources: [], createdAt: 0, ...over,
+  approval: null, operations: [], sources: [], createdAt: 0, pet: null, title: '', ...over,
 })
 
 describe('what the bubble shows of a task', () => {

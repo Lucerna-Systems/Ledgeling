@@ -118,6 +118,9 @@
   --shadow-lift: 0 2px 4px #00000066, 0 12px 28px #00000059;
 }
 * { box-sizing: border-box; }
+/* Rubber-band overscroll makes fast flings hop, and drags the sticky headers
+   with it; a desktop app should stop dead at either end. */
+html, body, * { overscroll-behavior: none; }
 html, body, #app { margin: 0; background: transparent; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, summary, input[type=checkbox], input[type=range] { cursor: pointer; }
@@ -127,6 +130,12 @@ button, a, input { -webkit-tap-highlight-color: transparent; }
 :where(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 a { color: var(--accent); text-decoration: none; }
 svg { flex-shrink: 0; }
+/* Slim scrollbars that sit on the canvas instead of a grey gutter, even with
+   macOS set to always show them. */
+.app-shell ::-webkit-scrollbar { width: 10px; height: 10px; }
+.app-shell ::-webkit-scrollbar-track, .app-shell ::-webkit-scrollbar-corner { background: transparent; }
+.app-shell ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 10px; background: color-mix(in srgb, var(--muted) 32%, transparent) padding-box; }
+.app-shell ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--muted) 55%, transparent); }
 code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* Shell */
@@ -163,14 +172,57 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .text-link:hover { text-decoration: underline; }
 .app-shell .icon-button { min-height: 26px !important; padding: 4px !important; border: 0 !important; background: transparent !important; color: var(--muted); }
 
-.sidebar { width: 200px; flex-shrink: 0; padding: 22px 14px 18px; background: var(--sidebar-bg); border-right: 1px solid var(--line); backdrop-filter: blur(12px); display: flex; flex-direction: column; overflow-y: auto; }
+.sidebar-shell { position: relative; z-index: 5; flex-shrink: 0; display: flex; width: 264px; transition: width 200ms cubic-bezier(.3,.7,.4,1); }
+.sidebar-shell.resizing { transition: none; user-select: none; }
+.sidebar-shell.resizing, .sidebar-shell.resizing * { cursor: col-resize !important; }
+.sidebar { flex: 1; min-width: 0; padding: 22px 14px 18px; background: var(--sidebar-bg); border-right: 1px solid var(--line); backdrop-filter: blur(12px); display: flex; flex-direction: column; overflow: hidden; }
+/* The drag edge sits over the border; a hairline of accent shows it is grabbable. */
+.sidebar-resize { position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; cursor: col-resize; touch-action: none; }
+.sidebar-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: var(--accent); opacity: 0; transition: opacity 120ms; }
+.sidebar-resize:hover::after, .sidebar-shell.resizing .sidebar-resize::after, .sidebar-resize:focus-visible::after { opacity: .6; }
+.sidebar-resize:focus-visible { outline: none; }
+.app-shell .sidebar-toggle { position: absolute; z-index: 2; top: 50%; right: -13px; width: 26px; min-height: 26px; height: 26px; padding: 0; transform: translateY(-50%); border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--muted); box-shadow: var(--shadow); }
+.app-shell .sidebar-toggle:not(:disabled):hover { background: var(--surface); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+/* Collapsed: an icon rail. Labels hide; everything keeps a tooltip. */
+.sidebar-shell.collapsed { width: 72px; }
+.sidebar-shell.collapsed .sidebar { padding-left: 12px; padding-right: 12px; }
+.sidebar-shell.collapsed .label { display: none; }
+.sidebar-shell.collapsed .brand { padding: 0; justify-content: center; }
+.sidebar-shell.collapsed .sidebar nav > button { justify-content: center !important; padding: 9px 0 !important; position: relative; }
+.sidebar-shell.collapsed .nav-badge { position: absolute; top: 3px; right: 4px; min-width: 16px; line-height: 16px; font-size: 10px; padding: 0 4px; }
+.sidebar-shell.collapsed .sidebar-bottom { padding: 24px 0 0; justify-items: center; }
+.sidebar-shell.collapsed .sidebar-controls { grid-template-columns: 1fr; }
+.app-shell .sidebar-shell.collapsed .sidebar-controls button { width: 36px; padding: 4px; }
+.sidebar-shell.collapsed .sidebar-private { display: none; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 8px; margin-bottom: 26px; color: var(--ink); font-size: 21px; font-weight: 750; letter-spacing: -.8px; }
 .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--accent-gradient); color: var(--on-accent); box-shadow: 0 4px 12px -3px var(--accent-glow); }
 .sidebar nav { display: grid; gap: 3px; }
-.sidebar nav button { display: flex !important; justify-content: flex-start !important; border: 0 !important; background: transparent !important; border-radius: 11px !important; min-height: 40px !important; padding: 9px 12px !important; font-size: 13.5px !important; font-weight: 550 !important; gap: 11px !important; white-space: nowrap; color: var(--nav-text); }
-.sidebar nav button:hover { background: var(--nav-hover) !important; }
-.sidebar nav button.selected { background: var(--surface) !important; color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 650 !important; }
-.sidebar nav button.selected svg { color: var(--accent); }
+.sidebar nav > button { display: flex !important; justify-content: flex-start !important; border: 0 !important; background: transparent !important; border-radius: 11px !important; min-height: 40px !important; padding: 9px 12px !important; font-size: 13.5px !important; font-weight: 550 !important; gap: 11px !important; white-space: nowrap; color: var(--nav-text); }
+.sidebar nav > button:hover { background: var(--nav-hover) !important; }
+.sidebar nav > button.selected { background: var(--surface) !important; color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 650 !important; }
+.sidebar nav > button.selected svg { color: var(--accent); }
+.pet-face { display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px #0000000f; }
+/* Pack previews are a scene with the pet in its upper middle; zoom onto the pet. */
+.pet-face img { width: 100%; height: 100%; object-fit: cover; transform: scale(2); transform-origin: 53% 30%; image-rendering: pixelated; }
+/* Conversations hang off the Assistant item as its sub-menu. */
+.chat-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 20px; }
+.app-shell .chat-section-title { margin: 0 0 6px; padding: 0 12px; font-size: 11px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+/* minmax(0, 1fr) pins the column to the sidebar's width; an auto column grows to
+   the longest title, clipping titles without an ellipsis and hiding the rename button. */
+.chat-list { flex: 1 1 auto; min-height: 0; list-style: none; margin: 0; padding: 0 4px 4px 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1px; overflow: hidden auto; }
+.chat-row { position: relative; min-width: 0; }
+.app-shell .chat-item { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 32px; padding: 5px 26px 5px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--nav-text); font-size: 12.5px; font-weight: 500; text-align: left; }
+.app-shell .chat-item:not(:disabled):hover { background: var(--nav-hover); color: var(--ink); }
+.app-shell .chat-item.selected { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.app-shell .chat-item.new-chat { padding-right: 7px; color: var(--accent); font-weight: 600; }
+.app-shell .chat-item.new-chat svg { width: 20px; }
+.chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-waiting { width: 7px; height: 7px; border-radius: 50%; background: var(--status-waiting-ink); flex-shrink: 0; }
+.app-shell .chat-rename { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); min-height: 22px; width: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); opacity: 0; }
+.chat-row:hover .chat-rename, .app-shell .chat-rename:focus-visible { opacity: 1; }
+.app-shell .chat-rename:not(:disabled):hover { background: var(--soft); color: var(--ink); }
+.chat-item.editing { padding-right: 7px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.app-shell .chat-item.editing input { flex: 1; min-width: 0; min-height: 22px; padding: 0; border: 0; background: transparent; font-size: 12.5px; outline: none; }
 .sidebar-bottom { margin-top: auto; padding: 24px 8px 0; display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
 .sidebar-status { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 550; }
 .sidebar-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -181,21 +233,25 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .live-dot, .soft-pill>span { width: 7px; height: 7px; border-radius: 50%; background: var(--status-live); display: inline-block; flex-shrink: 0; }
 .live-dot:not(.sleeping) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-live) 22%, transparent); }
 .live-dot.sleeping { background: var(--sleeping); }
-.content { --gutter: 36px; flex: 1; min-width: 0; padding: 8px var(--gutter) 40px; overflow-y: auto; scrollbar-gutter: stable; }
+.content { --gutter: 36px; flex: 1; min-width: 0; padding: 0 var(--gutter) 40px; overflow-y: auto; scrollbar-gutter: stable; }
 /* Page headers and filters stay put while the list scrolls beneath them.
    It spans the gutters so cards never peek out at its sides. */
 .content > .sticky-top {
-  position: sticky; top: -8px; z-index: 10; display: flow-root; max-width: none;
+  position: sticky; top: 0; z-index: 10; display: flow-root; max-width: none;
   margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter);
   background: color-mix(in srgb, var(--canvas) 80%, transparent); backdrop-filter: blur(16px) saturate(1.4);
 }
 .sticky-top > * { max-width: 880px; margin-left: auto; margin-right: auto; }
 .sticky-top > .filter-bar { margin-bottom: 0; padding-bottom: 14px; }
 .content > .sticky-top + * { margin-top: 16px; }
-/* Where scroll-driven animation exists, the header gains a hairline once content passes under it. */
+/* Where scroll-driven animation exists, the header stays see-through at the top
+   (no seam against the canvas glow) and frosts once content passes under it. */
 @supports (animation-timeline: scroll()) {
   .content > .sticky-top { animation: sticky-edge linear both; animation-timeline: scroll(nearest); animation-range: 0 24px; }
-  @keyframes sticky-edge { to { box-shadow: 0 1px 0 var(--line), 0 8px 18px -12px #1a203326; } }
+  @keyframes sticky-edge {
+    from { background-color: transparent; backdrop-filter: none; }
+    to { box-shadow: 0 1px 0 var(--line), 0 8px 18px -12px #1a203326; }
+  }
 }
 .content > * { max-width: 880px; margin-left: auto; margin-right: auto; }
 /* The assistant page fills the window instead of scrolling; its prompt box takes the slack. */
@@ -399,7 +455,7 @@ details[open] > summary { margin-bottom: 12px; color: var(--ink); }
   .content { --gutter: 26px; }
 }
 @media (max-width: 760px) {
-  .sidebar { width: 176px; }
+  .sidebar-shell:not(.collapsed) { width: 220px !important; }
   .lab-grid, .privacy-columns { grid-template-columns: 1fr; }
   .page-heading { align-items: flex-start; flex-direction: column; }
   .search-field { width: 100%; max-width: none; }
@@ -408,12 +464,14 @@ details[open] > summary { margin-bottom: 12px; color: var(--ink); }
 }
 @media (max-width: 560px) {
   .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; padding: 10px; overflow: visible; }
+  .sidebar-shell { width: 100% !important; }
+  .sidebar-resize, .app-shell .sidebar-toggle { display: none; }
+  .sidebar { padding: 10px; overflow: visible; }
   .sidebar .brand, .sidebar-bottom { display: none; }
   .sidebar nav { display: flex; overflow-x: auto; }
-  .sidebar nav button { flex-shrink: 0; }
-  .content { --gutter: 16px; padding-top: 0; padding-bottom: 24px; }
-  .content > .sticky-top { top: 0; }
+  .sidebar nav > button { flex-shrink: 0; }
+  .sidebar .chat-list { display: none; }
+  .content { --gutter: 16px; padding-bottom: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }

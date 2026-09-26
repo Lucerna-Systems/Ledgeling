@@ -74,3 +74,16 @@ it('opens the Pet Studio from Pets and comes back to Pets', async () => {
   expect(wrapper.find('.make-pet').exists()).toBe(true)
   wrapper.unmount()
 })
+
+it('collapses the sidebar to an icon rail and remembers it', async () => {
+  const store = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value),
+  } })
+  const wrapper = mount(Companion)
+  await wrapper.get('[aria-label="Collapse sidebar"]').trigger('click')
+  expect(wrapper.get('.sidebar-shell').classes()).toContain('collapsed')
+  expect(JSON.parse(store.get('perch:sidebar')!)).toMatchObject({ collapsed: true })
+  wrapper.unmount()
+  expect(mount(Companion).get('.sidebar-shell').classes()).toContain('collapsed')
+})

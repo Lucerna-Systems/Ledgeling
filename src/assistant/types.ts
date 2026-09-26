@@ -13,7 +13,9 @@ export interface Operation { kind: string; source: string | null; destination: s
  *  payload and is never shown. */
 export interface ApprovalSummary { headline: string; items: string[]; more: number; note: string; accept: string; monospace: boolean }
 export interface Approval { id: number; title: string; details: { operations?: Operation[]; [key: string]: unknown }; summary: ApprovalSummary }
-export interface Task { id: number; request: TaskRequest; connection: Connection; status: string; progress: string; result: string; error: string | null; approval: Approval | null; operations: Operation[]; sources: { title: string; url: string; excerpt: string }[]; createdAt: number }
+/** The pet a task was for, stamped by the backend when it started. */
+export interface TaskPet { packId: string; name: string }
+export interface Task { id: number; request: TaskRequest; connection: Connection; status: string; progress: string; result: string; error: string | null; approval: Approval | null; operations: Operation[]; sources: { title: string; url: string; excerpt: string }[]; createdAt: number; pet: TaskPet | null; title: string }
 export interface Capabilities { models: string[]; structured: boolean; advanced: boolean; detail: string }
 export const terminal = (status: string) => ['completed', 'failed', 'cancelled', 'interrupted', 'undone'].includes(status)
 export const providerLabels: Record<ProviderKind, string> = {

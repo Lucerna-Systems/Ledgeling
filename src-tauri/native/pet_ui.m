@@ -114,4 +114,8 @@ int perch_begin_folder_drag(void *pointer, unsigned long long pet, const char *i
   [item setDraggingFrame:NSMakeRect(point.x - 40, point.y - 40, 80, 80) contents:sprite];
   [view beginDraggingSessionWithItems:@[item] event:event source:source];
   return 1;
+}void perch_set_dock_icon(const unsigned char *png, unsigned long length) {
+  NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:length]];
+  // A nil image would blank the Dock tile in dev builds, which have no bundle icon.
+  if (image) [NSApp setApplicationIconImage:image];
 }

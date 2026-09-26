@@ -204,6 +204,20 @@ pub fn task_attention(status: &str) -> Option<Attend> {
 
 /// The lock is only ever held for the length of one command, so a failure here
 /// means another thread panicked while holding it.
+/// The pack and name of a pet that is out right now, for stamping on its tasks.
+pub fn task_pet(
+    app: &tauri::AppHandle,
+    pet_id: Option<u64>,
+) -> Option<crate::tasks::types::TaskPet> {
+    let shared = app.try_state::<Shared>()?;
+    let state = shared.lock().ok()?;
+    let pet = state.engine.pets.iter().find(|p| Some(p.id) == pet_id)?;
+    Some(crate::tasks::types::TaskPet {
+        pack_id: pet.pack.manifest.id.clone(),
+        name: pet.pack.manifest.name.clone(),
+    })
+}
+
 fn locked<'a>(state: &'a State<'_, Shared>) -> Result<std::sync::MutexGuard<'a, App>, String> {
     state
         .inner()
@@ -290,6 +304,51 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
         other => return Err(format!("Unknown interaction `{other}`.")),
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn perch_set_dock_icon(png: *const u8, length: std::ffi::c_ulong);
+}
+
+/// Repaints the running app's Dock/taskbar icon in the user's accent; icons
+/// shown while the app is closed never change.
+#[tauri::command]
+fn set_app_icon(png: Vec<u8>, window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("The app icon can only be changed from the companion window.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        window
+            .run_on_main_thread(move || unsafe {
+                perch_set_dock_icon(png.as_ptr(), png.len() as std::ffi::c_ulong)
+            })
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let icon = decode_icon(&png)?;
+        window.set_icon(icon).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn decode_icon(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
+    let mut decoder = png::Decoder::new(bytes);
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buffer = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
+    if info.color_type != png::ColorType::Rgba {
+        return Err("The app icon must be an RGBA PNG.".into());
+    }
+    buffer.truncate(info.buffer_size());
+    Ok(tauri::image::Image::new_owned(
+        buffer,
+        info.width,
+        info.height,
+    ))
 }
 
 #[tauri::command]
@@ -539,6 +598,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             crate::platform::pet_ui::pet_bubble,
             task_list,
             task_start,
+            task_rename,
             task_cancel,
             task_approve,
             task_undo,
@@ -558,6 +618,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             pet_action,
             pet_interact,
             set_settings,
+            set_app_icon,
             list_packs,
             validate_pack,
             install_pack,
@@ -931,9 +992,15 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app,
         &[&tray_show, &tray_pause, &tray_visibility, &tray_quit],
     )?;
-    TrayIconBuilder::with_id("perch")
-        .icon(tauri::include_image!("icons/icon.png"))
-        .tooltip("Perch · a little company")
+    // macOS tints a template image to match the menu bar, like Apple's own
+    // icons; elsewhere a black silhouette would vanish on a dark taskbar.
+    #[cfg(target_os = "macos")]
+    let tray = TrayIconBuilder::with_id("perch")
+        .icon(tauri::include_image!("icons/tray-template.png"))
+        .icon_as_template(true);
+    #[cfg(not(target_os = "macos"))]
+    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
+    tray.tooltip("Perch · a little company")
         .menu(&menu)
         .build(app)?;
     Ok(())

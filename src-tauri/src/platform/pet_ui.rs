@@ -411,7 +411,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
                 v["parentId"].as_i64(),
                 || crate::tasks::files::default_root().map(|p| p.to_string_lossy().into_owned()),
             )?;
-            service.start(request)?;
+            service.start_for(request, crate::app::task_pet(app, Some(pet)))?;
         }
         // The bubble asks lazily: model listing can spawn a Codex process or
         // hit the network, so it happens here on the event thread, never

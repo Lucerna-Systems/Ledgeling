@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ArrowUp, FolderPlus, Globe, Paperclip, Search, Sparkles, X } from '@lucide/vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { ArrowUp, FolderPlus, Globe, Paperclip, Pencil, Plus, Search, Sparkles, X } from '@lucide/vue'
 import { pets } from '../state'
-import { tasks, taskError, assignedPet, droppedFiles, effectiveConnection, pendingFollowup, taskCall } from './state'
+import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, effectiveConnection, taskCall } from './state'
 import { presets, providerLabels, type Task, type TaskRequest } from './types'
+import ChatTurn from './ChatTurn.vue'
+import PetFace from './PetFace.vue'
 import ConnectionsPanel from './ConnectionsPanel.vue'
 import PetPicker from './PetPicker.vue'
 import './assistant.css'
@@ -17,7 +19,6 @@ const preset = ref('')
 const effective = computed(() => effectiveConnection(assignedPet.value))
 const mode = computed(() => !preset.value && ['codex', 'claude'].includes(effective.value.kind) ? 'advanced' : 'standard')
 const needsConnection = computed(() => !preset.value && effective.value.kind === 'none')
-const parent = ref<number | null>(null)
 const allowCloud = ref(false)
 const allowWeb = ref(false)
 const sending = ref(false)
@@ -25,7 +26,7 @@ const setup = ref(false)
 const remote = computed(() => !['none', 'ollama'].includes(effective.value.kind) && !preset.value)
 const provider = computed(() => providerLabels[effective.value.kind] ?? effective.value.kind)
 const activePreset = computed(() => presets.find(p => p.value === preset.value))
-const placeholder = computed(() => activePreset.value?.hint ?? 'Sort a folder, explain a document, or find something out…')
+const placeholder = computed(() => activePreset.value?.hint ?? (chat.value ? `Reply to ${chat.value.pet?.name.split(' ')[0] ?? 'your pet'}…` : 'Sort a folder, explain a document, or find something out…'))
 const canSend = computed(() => !sending.value && !needsConnection.value && !!prompt.value.trim() && (!remote.value || allowCloud.value))
 
 watch(assignedPet, async petId => { if (petId !== null) { try { const folder = await taskCall<string | null>('pet_folder', { petId }); if (folder) roots.value = [folder] } catch { /* shared error */ } } }, { immediate: true })
@@ -51,37 +52,96 @@ async function submit() {
   if (!canSend.value) return
   sending.value = true
   try {
-    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: parent.value, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: allowCloud.value, allowWeb: allowWeb.value }
+    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: chat.value?.turns.at(-1)?.id ?? null, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: allowCloud.value, allowWeb: allowWeb.value }
     const task = await taskCall<Task>('task_start', { request })
-    tasks.value = [task, ...tasks.value.filter(t => t.id !== task.id)]; prompt.value = ''; parent.value = null
+    tasks.value = [task, ...tasks.value.filter(t => t.id !== task.id)]; prompt.value = ''; attachments.value = []; preset.value = ''
+    if (!chat.value) activeConversation.value = task.id
   } catch { /* shared error */ } finally { sending.value = false }
 }
-function followup(task: Task) { parent.value = task.id; preset.value = ''; roots.value = [...task.request.roots]; attachments.value = [...task.request.attachments]; prompt.value = ''; document.getElementById('task-prompt')?.focus() }
-watch(pendingFollowup, task => { if (task) { followup(task); pendingFollowup.value = null } }, { immediate: true })
+
+const chat = computed(() => conversations.value.find(c => c.id === activeConversation.value) ?? null)
+/** The pet a chat was with, if it is out now. Ids restart each launch, so the pack decides. */
+function livePet(petId: number | null, packId: string | undefined) {
+  if (!packId) return pets.value.find(p => p.id === petId)?.id ?? null
+  return pets.value.find(p => p.id === petId && p.packId === packId)?.id ?? pets.value.find(p => p.packId === packId)?.id ?? null
+}
+const chatPetName = computed(() => chat.value?.pet?.name ?? pets.value.find(p => p.id === chat.value?.petId)?.name ?? 'any pet')
+const renaming = ref(false)
+const titleDraft = ref('')
+const titleField = ref<HTMLInputElement | null>(null)
+watch(activeConversation, () => {
+  const current = chat.value
+  if (!current) return
+  const last = current.turns.at(-1)!
+  assignedPet.value = livePet(current.petId, current.pet?.packId)
+  roots.value = [...last.request.roots]
+  attachments.value = []
+  preset.value = ''
+  renaming.value = false
+}, { immediate: true })
+
+const thread = ref<HTMLElement | null>(null)
+watch(() => [activeConversation.value, chat.value?.turns.length, chat.value?.turns.at(-1)?.status], async () => {
+  await nextTick()
+  if (thread.value) thread.value.scrollTop = thread.value.scrollHeight
+}, { immediate: true })
+
+async function startRename() {
+  if (!chat.value) return
+  titleDraft.value = chat.value.title
+  renaming.value = true
+  await nextTick()
+  titleField.value?.select()
+}
+async function commitRename() {
+  if (!renaming.value || !chat.value) return
+  renaming.value = false
+  const title = titleDraft.value.trim()
+  if (title !== chat.value.title) { try { await renameConversation(chat.value.id, title) } catch { /* shared error */ } }
+}
+/** Chats send on Enter like any messenger; Shift+Enter still breaks the line. */
+function sendOnEnter(event: KeyboardEvent) {
+  if (!chat.value || event.isComposing) return
+  event.preventDefault()
+  void submit()
+}
 function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path }
 
 </script>
 
 <template>
-  <div class="assistant-page">
-  <section class="page-heading">
+  <div class="assistant-page" :class="{ chatting: chat }">
+  <section v-if="chat" class="chat-header">
+    <PetFace :pet="chat.pet" :pet-id="chat.petId" :size="40" />
+    <div class="chat-heading">
+      <input v-if="renaming" ref="titleField" v-model="titleDraft" maxlength="80" aria-label="Conversation name"
+             @keydown.enter.prevent="commitRename" @keydown.esc.prevent="renaming = false" @blur="commitRename">
+      <h1 v-else @dblclick="startRename">{{ chat.title }}</h1>
+      <p>With {{ chatPetName }} · {{ chat.turns.length }} {{ chat.turns.length === 1 ? 'request' : 'requests' }}</p>
+    </div>
+    <button v-if="!renaming" type="button" class="icon-button" aria-label="Rename conversation" @click="startRename"><Pencil :size="15" /></button>
+    <button type="button" class="new-chat-button" @click="activeConversation = null"><Plus :size="15" /> New chat</button>
+  </section>
+  <section v-else class="page-heading">
     <div><h1>Assistant</h1><p>Pick who helps, then ask for what you need.</p></div>
   </section>
   <div v-if="taskError" class="error-banner" role="alert">{{ taskError }}<button aria-label="Dismiss task error" @click="taskError = ''"><X :size="15" /></button></div>
-  <PetPicker @setup="setup = true" />
-  <div v-if="setup" class="setup-drawer">
+  <div v-if="chat" ref="thread" class="chat-thread" aria-live="polite">
+    <ChatTurn v-for="task in chat.turns" :key="task.id" :task="task" :pet="chat.pet" />
+  </div>
+  <PetPicker v-else @setup="setup = true" />
+  <div v-if="setup && !chat" class="setup-drawer">
     <div class="setup-drawer-head"><h2>Keys & apps</h2><button type="button" class="text-link" @click="setup = false">Done</button></div>
     <ConnectionsPanel />
   </div>
 
   <form class="task-composer" @submit.prevent="submit">
-    <p v-if="parent" class="followup-note">Following up on an earlier request <button type="button" class="text-link" @click="parent = null">Start fresh</button></p>
     <div v-if="activePreset" class="preset-pill">
       <Sparkles :size="13" /> {{ activePreset.label }} <span>· runs on this computer, no AI</span>
       <button type="button" aria-label="Stop using this action" @click="clearPreset"><X :size="13" /></button>
     </div>
     <label for="task-prompt" class="sr-only">Your request</label>
-    <textarea id="task-prompt" v-model="prompt" rows="3" maxlength="20000" required :placeholder="placeholder" @keydown.meta.enter="submit" @keydown.ctrl.enter="submit" />
+    <textarea id="task-prompt" v-model="prompt" rows="3" maxlength="20000" required :placeholder="placeholder" @keydown.meta.enter="submit" @keydown.ctrl.enter="submit" @keydown.enter.exact="sendOnEnter" />
     <ul v-if="roots.length || attachments.length" class="attachment-list">
       <li v-for="path in roots" :key="path" :title="path"><FolderPlus :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="roots = roots.filter(p => p !== path)"><X :size="11" /></button></li>
       <li v-for="path in attachments" :key="path" :title="path"><Paperclip :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="attachments = attachments.filter(p => p !== path)"><X :size="11" /></button></li>
@@ -96,7 +156,7 @@ function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1)
     </div>
   </form>
 
-  <div class="task-shortcuts" aria-label="Suggestions">
+  <div v-if="!chat" class="task-shortcuts" aria-label="Suggestions">
     <button type="button" @click="shortcut('organise')"><FolderPlus :size="14" /> Organise files</button>
     <button type="button" @click="shortcut('summarise')"><Sparkles :size="14" /> Summarise</button>
     <button type="button" @click="shortcut('research')"><Search :size="14" /> Research</button>
