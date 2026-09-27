@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; media-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data:; media-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:; font-src 'self' data:"
     }
   },
   "bundle": {
@@ -66,7 +66,8 @@
       "../sidecar/bridge.mjs": "sidecar/bridge.mjs",
       "../sidecar/package.json": "sidecar/package.json",
       "../sidecar/node": "sidecar/node",
-      "../sidecar/node_modules/": "sidecar/node_modules/"
+      "../sidecar/node_modules/": "sidecar/node_modules/",
+      "../scripts/dev-addons/": "dev-addons/"
     }
   }
 }

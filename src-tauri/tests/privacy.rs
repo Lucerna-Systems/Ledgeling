@@ -185,29 +185,39 @@ fn telemetry_and_frontend_network_plugins_are_absent() {
 
 #[test]
 fn the_tauri_capabilities_grant_nothing_beyond_local_events() {
-    let text = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/default.json"),
-    )
-    .unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&text).expect("capabilities are JSON");
-    let granted: Vec<String> = parsed["permissions"]
-        .as_array()
-        .expect("a permissions list")
-        .iter()
-        .map(|p| p.as_str().unwrap_or_default().to_string())
-        .collect();
-    for permission in &granted {
-        assert!(
-            permission.starts_with("core:event:") || permission.starts_with("core:window:"),
-            "`{permission}` is more than local events and window state"
-        );
+    // Every capability file, so a new window cannot quietly widen the grant.
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        checked += 1;
+        let text = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("capabilities are JSON");
+        let granted: Vec<String> = parsed["permissions"]
+            .as_array()
+            .expect("a permissions list")
+            .iter()
+            .map(|p| p.as_str().unwrap_or_default().to_string())
+            .collect();
+        for permission in &granted {
+            assert!(
+                permission.starts_with("core:event:") || permission.starts_with("core:window:"),
+                "{}: `{permission}` is more than local events and window state",
+                path.display()
+            );
+        }
+        for forbidden in ["shell", "fs:", "http", "updater", "process:"] {
+            assert!(
+                !granted.iter().any(|p| p.contains(forbidden)),
+                "{}: capabilities grant `{forbidden}`",
+                path.display()
+            );
+        }
     }
-    for forbidden in ["shell", "fs:", "http", "updater", "process:"] {
-        assert!(
-            !granted.iter().any(|p| p.contains(forbidden)),
-            "capabilities grant `{forbidden}`"
-        );
-    }
+    assert!(checked >= 2, "the capability files should have been found");
 }
 
 #[test]

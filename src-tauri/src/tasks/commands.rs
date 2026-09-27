@@ -14,12 +14,20 @@ fn main_only(window: &WebviewWindow) -> Result<(), String> {
         Err("Task controls belong to the companion window.".into())
     }
 }
+/// The coding window's Chat tab runs ordinary tasks in the selected worktree.
+fn main_or_code(window: &WebviewWindow) -> Result<(), String> {
+    if window.label() == crate::coding::window::LABEL {
+        Ok(())
+    } else {
+        main_only(window)
+    }
+}
 #[tauri::command]
 pub async fn task_list(
     window: WebviewWindow,
     state: State<'_, TaskService>,
 ) -> Result<Vec<Task>, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.list()
 }
 #[tauri::command]
@@ -28,7 +36,7 @@ pub async fn task_start(
     state: State<'_, TaskService>,
     request: TaskRequest,
 ) -> Result<Task, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     let pet = crate::app::task_pet(window.app_handle(), request.pet_id);
     state.start_for(request, pet)
 }
@@ -39,7 +47,7 @@ pub async fn task_rename(
     id: i64,
     title: String,
 ) -> Result<Task, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.rename(id, &title)
 }
 #[tauri::command]
@@ -48,7 +56,7 @@ pub async fn task_cancel(
     state: State<'_, TaskService>,
     id: i64,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.cancel(id)
 }
 #[tauri::command]
@@ -59,7 +67,7 @@ pub async fn task_approve(
     approval_id: u64,
     accept: bool,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.answer(id, approval_id, accept)
 }
 #[tauri::command]
@@ -68,7 +76,7 @@ pub async fn task_undo(
     state: State<'_, TaskService>,
     id: i64,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.undo(id)
 }
 #[tauri::command]
@@ -76,7 +84,7 @@ pub async fn task_connections(
     window: WebviewWindow,
     state: State<'_, TaskService>,
 ) -> Result<Connections, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     Ok(state.config())
 }
 #[tauri::command]
@@ -238,7 +246,7 @@ pub async fn task_pick(window: WebviewWindow, folders: bool) -> Result<Vec<Strin
 }
 #[tauri::command]
 pub async fn task_open_url(window: WebviewWindow, url: String) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     open_web_url(&url)
 }
 /// Open a result's link in the browser. Web links only: the dashboard and the

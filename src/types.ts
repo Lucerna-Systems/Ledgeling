@@ -115,6 +115,8 @@ export interface Settings {
   theme: ThemeMode
   /** Accent colour as `#rrggbb`; variants are derived, so only the base travels. */
   accent: string
+  /** Developer tools: coding mode, its window and its menu entry. */
+  developerMode: boolean
 }
 
 export interface SessionSummary {

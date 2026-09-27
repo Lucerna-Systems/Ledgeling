@@ -11,6 +11,8 @@ export interface BubbleShow {
   remote: boolean
   model: string
   folder: string
+  /** Developer tools are on, so the bubble offers coding mode. */
+  developer?: boolean
   tailX: number | null
   tailUp: boolean
 }

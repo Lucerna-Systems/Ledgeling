@@ -201,6 +201,8 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .sidebar nav > button:hover { background: var(--nav-hover) !important; }
 .sidebar nav > button.selected { background: var(--surface) !important; color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 650 !important; }
 .sidebar nav > button.selected svg { color: var(--accent); }
+.sidebar nav > button.code-entry { margin-top: 6px; color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent); }
+.sidebar nav > button.code-entry:hover { background: var(--accent-soft) !important; }
 .pet-face { display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px #0000000f; }
 /* Pack previews are a scene with the pet in its upper middle; zoom onto the pet. */
 .pet-face img { width: 100%; height: 100%; object-fit: cover; transform: scale(2); transform-origin: 53% 30%; image-rendering: pixelated; }

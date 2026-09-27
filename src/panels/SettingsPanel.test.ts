@@ -24,6 +24,7 @@ const baseSettings = {
   petScreen: null,
   theme: 'system',
   accent: '#5b5bd6',
+  developerMode: false,
 }
 
 beforeEach(() => {
@@ -96,6 +97,25 @@ describe('break reminders', () => {
     const wrapper = mount(SettingsPanel)
     const options = wrapper.get('[aria-label="Remind me after"]').findAll('option').map(option => option.text())
     expect(options).toEqual(['After 30 min', 'After 45 min', 'After 50 min', 'After 60 min', 'After 90 min'])
+    wrapper.unmount()
+  })
+})
+
+describe('developer tools', () => {
+  it('are off by default and offer nothing until turned on', () => {
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.get('[aria-label="Developer tools"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.text()).not.toContain('Open coding mode')
+    wrapper.unmount()
+  })
+
+  it('turn on through set_settings, then offer the coding window', async () => {
+    const wrapper = mount(SettingsPanel)
+    await wrapper.get('[aria-label="Developer tools"]').trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['set_settings', { settings: { ...baseSettings, developerMode: true } }])
+    snapshot.value = { settings: { ...baseSettings, developerMode: true } } as unknown as Snapshot
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Open coding mode')
     wrapper.unmount()
   })
 })

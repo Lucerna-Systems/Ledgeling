@@ -55,6 +55,9 @@ pub struct Settings {
     /// Accent colour as `#rrggbb`. Rust only validates the shape; the frontend
     /// derives hover/soft variants so hand-tuned presets stay in one place.
     pub accent: String,
+    /// Developer tools: coding mode and its tray entry. Off for everyone who
+    /// did not ask, so none of it loads.
+    pub developer_mode: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -68,6 +71,7 @@ impl Default for Settings {
             hidden: false,
             speed_scale: 1.,
             debug: false,
+            developer_mode: false,
             sounds: false,
             launch_at_login: false,
             awareness: AwarenessConfig::default(),
@@ -222,6 +226,10 @@ mod tests {
         assert!(note.is_none());
         assert_eq!(settings.theme, ThemeMode::System);
         assert_eq!(settings.accent, DEFAULT_ACCENT);
+        assert!(
+            !settings.developer_mode,
+            "coding mode stays off for existing users"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

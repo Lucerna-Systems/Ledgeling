@@ -57,6 +57,34 @@ What those tests actually cover:
   runs through a fake endpoint. These are deterministic executor tests — they
   are not evidence of live provider quality.
 
+## Coding mode (2026-09-27)
+
+- Automated, macOS:
+  - **Rust suite.** New tests cover path confinement (including `..` and symlink
+    escapes), porcelain status/numstat/worktree parsing, and a real temporary
+    repository round trip (status, stage, unstage, discard, commit, and adding
+    and removing a worktree). They also cover gitignore marking, save-conflict
+    detection, lsof/netstat/ps parsing, `run.json` validation messages and
+    project-type guesses, pet↔worktree bindings across a restart, window
+    placement, and a real PTY running a command to exit.
+  - **Privacy tests** pass. The capabilities test now checks every capability
+    file.
+  - **UI suite**, including `src/code/boundary.test.ts` (no pet or dashboard page
+    imports Monaco, xterm or `src/code`) and the Developer tools switch.
+  - **Production build** confirmed by inspection: the chunks `index.html` loads
+    contain no Monaco or xterm code, and the coding entry is about 15 KB before
+    its lazily loaded tabs.
+- Checked as headless-Chrome screenshots of `code.html` against a mocked
+  backend: Files, Changes (a real Monaco diff), Worktrees, Run, the worktree
+  switcher and Chat, in light and dark.
+- Started with `tauri dev` on this Mac, and every coding module compiles in the
+  dev server. **Not yet exercised by hand in the real app:** opening the window
+  from the tray, sidebar or pet bubble; Claude Code in the Terminal tab and the
+  pet's busy/attention clips while it works; a real Run with port detection;
+  worktree creation from the UI; Open in Orca; the install scripts. Windows and
+  Linux builds of coding mode have not run at all (the PTY, `netstat` and
+  PowerShell paths are written but unverified).
+
 ## Simpler companion window and Pet Studio (2026-09-26)
 
 - Navigation cut to Home, Pets, Assistant, History and Settings; advanced pages sit

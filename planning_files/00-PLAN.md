@@ -196,6 +196,15 @@ and awareness, and its automated suites pass (90 Rust tests + 3 UI tests, plus
 desktop behaviour — the pet bubble, Spaces, Finder handoff — has not been
 hand-verified. See `docs/verification.md`.
 
+**Coding mode was also pulled forward** (2026-09-27, at the user's direction).
+It is an opt-in developer workspace behind Settings → Developer tools: one
+floating window with files, a Monaco editor, live diffs, git worktrees bound one
+to one with pets, a run button with port detection, terminals for the user's own
+Claude Code, and the assistant's chat scoped to a worktree. It is a separate page
+and a lazily built backend service, so with the setting off it loads nothing. See
+[`docs/coding-mode.md`](../docs/coding-mode.md). VS Code extensions are
+explicitly not supported; that document says why.
+
 ---
 
 ## 6. What's left before release
