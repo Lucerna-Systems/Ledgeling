@@ -30,7 +30,10 @@ impl Scope {
         Ok(Self { roots, attachments })
     }
     pub fn path(&self, input: &str, write: bool) -> Result<PathBuf, String> {
-        let raw = Path::new(input);
+        // A verbatim (`\\?\`) Windows path only splits on `\`, but callers
+        // (including on-device models) write paths with `/` on any platform.
+        let normalized = input.replace('/', std::path::MAIN_SEPARATOR_STR);
+        let raw = Path::new(&normalized);
         let path = if raw.is_absolute() {
             raw.to_path_buf()
         } else if let Some(inside) = self.roots.iter().find_map(|r| {
@@ -121,6 +124,14 @@ impl Scope {
     /// look instead of exploring. Paths rather than an indented tree, because a
     /// small model misreads indentation and invents entries.
     pub fn overview(&self, budget: usize, cancel: &Cancel) -> Result<String, String> {
+        // Joined with `/` explicitly: this text goes to a model, not the
+        // filesystem, and `Path::display()` would use `\` on Windows.
+        fn portable(path: &Path) -> String {
+            path.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        }
         const PER_FOLDER: usize = 25;
         // Bundles are folders on disk but single things to a person.
         const OPAQUE: [&str; 5] = ["app", "bundle", "framework", "xcodeproj", "photoslibrary"];
@@ -158,7 +169,7 @@ impl Scope {
                     let folder = folders.contains(name);
                     lines.push(format!(
                         "{}{}",
-                        path.display(),
+                        portable(&path),
                         if folder { "/" } else { "" }
                     ));
                     let bundle = Path::new(name)
@@ -174,7 +185,7 @@ impl Scope {
                         if relative.as_os_str().is_empty() {
                             String::new()
                         } else {
-                            format!("{}/", relative.display())
+                            format!("{}/", portable(&relative))
                         },
                         total - PER_FOLDER
                     ));
