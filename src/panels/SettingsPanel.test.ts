@@ -102,6 +102,24 @@ describe('break reminders', () => {
 })
 
 describe('developer tools', () => {
+  beforeEach(() => {
+    snapshot.value = { settings: { ...baseSettings }, codingAvailable: true } as unknown as Snapshot
+  })
+
+  it('are not offered at all in a build without coding mode', () => {
+    snapshot.value = { settings: { ...baseSettings }, codingAvailable: false } as unknown as Snapshot
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.find('[aria-label="Developer tools"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('For developers')
+    wrapper.unmount()
+  })
+
+  it('are labelled experimental', () => {
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.text()).toContain('Experimental')
+    wrapper.unmount()
+  })
+
   it('are off by default and offer nothing until turned on', () => {
     const wrapper = mount(SettingsPanel)
     expect(wrapper.get('[aria-label="Developer tools"]').attributes('aria-checked')).toBe('false')
@@ -113,7 +131,7 @@ describe('developer tools', () => {
     const wrapper = mount(SettingsPanel)
     await wrapper.get('[aria-label="Developer tools"]').trigger('click')
     expect(api.invoke.mock.calls[0]).toEqual(['set_settings', { settings: { ...baseSettings, developerMode: true } }])
-    snapshot.value = { settings: { ...baseSettings, developerMode: true } } as unknown as Snapshot
+    snapshot.value = { settings: { ...baseSettings, developerMode: true }, codingAvailable: true } as unknown as Snapshot
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('Open coding mode')
     wrapper.unmount()

@@ -175,10 +175,11 @@ const neverSeen = [
     </div>
   </section>
 
+  <template v-if="snapshot?.codingAvailable">
   <h2 class="group-title">For developers</h2>
   <section class="settings-group">
     <div class="setting-row">
-      <div><h3>Developer tools</h3><p>Adds coding mode: an editor, live diffs, worktrees, a terminal and a run button in a window beside your browser. Off, none of it loads.</p></div>
+      <div><h3>Developer tools <span class="experimental-tag">Experimental</span></h3><p>Adds coding mode: an editor, live diffs, worktrees, a terminal and a run button in a window beside your browser. It is still being tested and may change or break. Off, none of it loads.</p></div>
       <div class="row-controls">
         <button v-if="settings?.developerMode" :disabled="!native" @click="call('code_open', { petId: null }, false)"><Code2 :size="15" /> Open coding mode</button>
         <button class="toggle" :class="{ enabled: settings?.developerMode }" role="switch" :aria-checked="!!settings?.developerMode" aria-label="Developer tools"
@@ -186,6 +187,7 @@ const neverSeen = [
       </div>
     </div>
   </section>
+  </template>
 
   <h2 class="group-title">Privacy</h2>
   <section class="settings-group privacy-summary">

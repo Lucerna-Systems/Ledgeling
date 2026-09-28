@@ -96,6 +96,8 @@ impl Settings {
         if !self.speed_scale.is_finite() || !(0.25..=3.).contains(&self.speed_scale) {
             self.speed_scale = 1.;
         }
+        // A setting saved by a build with coding mode must not offer it in one without.
+        self.developer_mode &= cfg!(feature = "coding");
         self.pets.retain(|p| !p.pack_id.is_empty());
         self.pets.truncate(8);
         self.accent = self.accent.to_lowercase();

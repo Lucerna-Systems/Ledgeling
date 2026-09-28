@@ -16,11 +16,11 @@ fn main_only(window: &WebviewWindow) -> Result<(), String> {
 }
 /// The coding window's Chat tab runs ordinary tasks in the selected worktree.
 fn main_or_code(window: &WebviewWindow) -> Result<(), String> {
+    #[cfg(feature = "coding")]
     if window.label() == crate::coding::window::LABEL {
-        Ok(())
-    } else {
-        main_only(window)
+        return Ok(());
     }
+    main_only(window)
 }
 #[tauri::command]
 pub async fn task_list(

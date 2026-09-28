@@ -6,6 +6,7 @@
 pub mod app;
 pub mod autostart;
 pub mod awareness;
+#[cfg(feature = "coding")]
 pub mod coding;
 pub mod engine;
 pub mod migrate;

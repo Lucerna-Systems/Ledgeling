@@ -101,6 +101,8 @@ pub struct Snapshot {
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
+    /// Whether this build includes coding mode at all.
+    pub coding_available: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -182,6 +184,7 @@ impl App {
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
+            coding_available: cfg!(feature = "coding"),
         }
     }
 
@@ -400,6 +403,7 @@ async fn set_settings(
     drop(app);
     if developer_changed {
         let handle = window.app_handle();
+        #[cfg(feature = "coding")]
         if !developer {
             crate::coding::commands::shut_down(handle);
         }
@@ -625,54 +629,103 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_pick,
             task_open_url,
             open_assistant,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_open,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_state,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_add_project,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_remove_project,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_select,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_branches,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_worktree_create,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_worktree_remove,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_bind,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_status,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_original,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_git,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_list,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_read,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_write,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_file_op,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_watch,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_pty_spawn,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_pty,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_pty_attach,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_run_setup,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_run_save,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_run_prompt,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_run_start,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_live,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_activate,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_launch,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_launch_open,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_layouts,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_notes,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_note,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_layout_save,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_open_url,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_tools,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_install,
+            #[cfg(feature = "coding")]
             crate::coding::commands::code_window,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_status,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_list,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_view,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_diff,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_branch_pr,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_meta,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_act,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_pr_draft,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_create_pr,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_checkout,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_projects,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_board,
+            #[cfg(feature = "coding")]
             crate::coding::gh_commands::code_gh_board_act,
             get_snapshot,
             pet_action,
@@ -726,6 +779,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                     }
                     crate::platform::pet_ui::update(&task_handle, &task);
                     let _ = task_handle.emit_to("main", "task:changed", &task);
+                    #[cfg(feature = "coding")]
                     let _ =
                         task_handle.emit_to(crate::coding::window::LABEL, "task:changed", &task);
                     let _ = task_handle.emit(
@@ -788,6 +842,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             }));
             app.manage(shared.clone());
             // Empty until Developer tools are on and the window is first opened.
+            #[cfg(feature = "coding")]
             app.manage::<crate::coding::SharedCoding>(Default::default());
             setup_tray(app, developer)?;
             let main_close = main.clone();
@@ -838,7 +893,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             // coding mode may have dev servers running; none may outlive Ledgeling.
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::tasks::apple::shutdown();
+                #[cfg(feature = "coding")]
                 crate::coding::commands::shut_down(handle);
+                #[cfg(not(feature = "coding"))]
+                let _ = handle;
             }
         });
 }
@@ -1117,6 +1175,7 @@ fn handle_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 let _ = window.set_focus();
             }
         }
+        #[cfg(feature = "coding")]
         "code" => {
             // Menu events arrive on the UI thread, which opening the window
             // must not block on.

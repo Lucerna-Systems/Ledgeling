@@ -475,6 +475,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             .map_err(|e| e.to_string())?;
         }
         // Open this pet's working folder in coding mode, bound to this pet.
+        #[cfg(feature = "coding")]
         "code" => {
             let folder = folder(pet).ok_or("Choose a working folder first.")?;
             let handle = app.clone();

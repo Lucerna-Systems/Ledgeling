@@ -4,6 +4,21 @@ Coding mode is an optional developer workspace. It is one compact window that si
 next to your browser, so you can watch a project change as you or an AI agent
 work on it. It is off unless you turn it on, and while it is off none of it loads.
 
+Coding mode is **experimental**. It is labelled so in Settings, and it is only in
+builds made with the `coding` Cargo feature. Release and pre-alpha builds leave it
+out, and the Developer tools setting does not appear in them. It is not part of
+what a release promises until it has been run on macOS, Windows and Linux.
+
+## Building with it
+
+```sh
+npm run dev:coding                       # tauri dev --features coding
+npm run tauri build -- --features coding # a local build that includes it
+```
+
+`npm test` and `npm run check` build with the feature, and `check` also runs
+Clippy without it, so both kinds of build stay compiling.
+
 ## Turning it on
 
 Go to **Settings → For developers → Developer tools**. Turning it on opens

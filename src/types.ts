@@ -178,4 +178,6 @@ export interface Snapshot {
   notes: string[]
   packsDir: string
   native: boolean
+  /** False in builds made without coding mode. */
+  codingAvailable: boolean
 }

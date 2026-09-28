@@ -59,6 +59,10 @@ What those tests actually cover:
 
 ## Coding mode (2026-09-27)
 
+Coding mode is experimental and compiled only with `--features coding`, so
+nothing in this section applies to release or pre-alpha builds, which leave it out.
+
+
 - Automated, macOS:
   - **Rust suite.** New tests cover path confinement (including `..` and symlink
     escapes), porcelain status/numstat/worktree parsing, and a real temporary

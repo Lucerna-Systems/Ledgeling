@@ -8,8 +8,9 @@
     "build": "vue-tsc --noEmit && node --max-old-space-size=6144 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run build && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
+    "dev:coding": "tauri dev --features coding",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml --features coding",
+    "check": "npm run build && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --features coding -- -D warnings",
     "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
     "test:ui": "vitest run"
   },
