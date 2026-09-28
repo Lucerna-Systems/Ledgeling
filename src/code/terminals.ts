@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { palette, terminalTheme, trackPalette } from './theme'
+import { splitShortcut } from './shortcuts'
 import { codeState, problem } from './state'
 import type { PtyOutput, SessionKind } from './types'
 
@@ -40,6 +41,8 @@ function create(): { term: Terminal; fit: FitAddon; element: HTMLDivElement } {
   const fit = new FitAddon()
   term.loadAddon(fit)
   term.loadAddon(new WebLinksAddon((_, url) => { void invoke('code_open_url', { url }).catch(() => {}) }))
+  // Split keys belong to the grid, not the program in the terminal.
+  term.attachCustomKeyEventHandler(event => !splitShortcut(event))
   const element = document.createElement('div')
   element.className = 'term-host'
   // Vue must not proxy xterm's internals.

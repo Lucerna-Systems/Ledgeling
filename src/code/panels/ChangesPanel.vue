@@ -4,6 +4,7 @@ import { Check, CircleDot, FileCode2, GitCommitHorizontal, Minus, Plus, RefreshC
 import { languageFor, monaco, setupMonaco } from '../monaco'
 import { code, diffRequest, fileChanges, fileTick, openFile, refreshStatus, root, short, status } from '../state'
 import type { FileChange, FileText } from '../types'
+import { ask } from '../confirm'
 
 const props = defineProps<{ active?: boolean }>()
 const selected = ref<string | null>(null)
@@ -89,9 +90,9 @@ async function git(action: string, paths: string[], untracked: string[] = []) {
   try { await code('code_git', { worktree: root.value, action, paths, untracked, message: message.value }) } catch { /* banner */ }
   refreshStatus()
 }
-function discard(file: FileChange) {
+async function discard(file: FileChange) {
   const what = file.untracked ? `Delete the new file ${file.path}?` : `Throw away your changes to ${file.path}?`
-  if (!confirm(`${what} This cannot be undone.`)) return
+  if (!await ask(`${what} This cannot be undone.`, file.untracked ? 'Delete file' : 'Discard changes')) return
   void git('discard', file.untracked ? [] : [file.path], file.untracked ? [file.path] : [])
 }
 async function commit() {

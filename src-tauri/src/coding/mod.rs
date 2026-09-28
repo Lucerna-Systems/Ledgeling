@@ -3,9 +3,14 @@
 //! Nothing here runs unless the user turns on Developer tools. The service is
 //! built on first use and dropped (killing every process it started) when the
 //! setting goes off, so ordinary users pay nothing for it.
+pub mod apps;
 pub mod commands;
 pub mod fs;
+pub mod gh_commands;
 pub mod git;
+pub mod github;
+pub mod launch;
+pub mod notes;
 pub mod ports;
 pub mod pty;
 pub mod run;
@@ -28,6 +33,12 @@ pub struct CodingService {
     pub store: Store,
     pub ptys: HashMap<u32, pty::Session>,
     pub watchers: HashMap<PathBuf, watch::Watcher>,
+    /// Each worktree's terminal split layout, as the window last drew it.
+    /// Terminals end with the app, so the layouts are never written to disk.
+    pub layouts: HashMap<String, serde_json::Value>,
+    pub notes: notes::Notes,
+    /// Each worktree's GitHub repository, found once by `gh repo view`.
+    pub github: HashMap<PathBuf, github::Repo>,
     next_pty: u32,
 }
 
@@ -37,6 +48,9 @@ impl CodingService {
             store: Store::load(&config_dir.join("coding")),
             ptys: HashMap::new(),
             watchers: HashMap::new(),
+            layouts: HashMap::new(),
+            notes: notes::Notes::default(),
+            github: HashMap::new(),
             next_pty: 1,
         }
     }
@@ -53,6 +67,7 @@ impl CodingService {
             session.kill();
         }
         self.watchers.clear();
+        self.layouts.clear();
     }
 }
 

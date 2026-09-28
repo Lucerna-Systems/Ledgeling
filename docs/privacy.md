@@ -55,7 +55,14 @@ tools**. When it is on, and only for project folders you add yourself, it:
 - reads the operating system's list of listening ports (`lsof`/`netstat`) and
   process parents (`ps`), so it can show which port your dev server opened.
 
-It opens no network connections and never connects to a port. The add-on
+It opens no network connections and never connects to a port.
+
+The **GitHub view** runs your own GitHub CLI (`gh`), which talks to GitHub with
+your sign-in. Ledgeling itself still opens no connection. Nothing is sent until
+you open that view, and then only requests about the repository your worktree
+pushes to and your boards; the branch's pull request is checked every two
+minutes while the window is open after that. Pictures and avatars from GitHub
+are never loaded. The add-on
 installers download software only when you press Install, and they run in a
 terminal where you can watch them. Its state (your project list, which pet works
 in which worktree, and the window position) is kept in `coding/workspaces.json`

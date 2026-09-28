@@ -116,7 +116,10 @@ impl TaskService {
         self.start_for(request, None)
     }
     pub fn start_for(&self, request: TaskRequest, pet: Option<TaskPet>) -> Result<Task, String> {
-        if request.prompt.len() > 20_000 || request.prompt.trim().is_empty() {
+        if request.prompt.len() > 20_000
+            || request.context.len() > 20_000
+            || request.prompt.trim().is_empty()
+        {
             return Err("Enter a request of up to 20,000 characters.".into());
         }
         if request.roots.len() > 8 || request.attachments.len() > 20 {
@@ -406,7 +409,7 @@ impl Context {
             let context = json!({ "previousTurns": turns });
             messages.push(Message{role:"user".into(),content:format!("Previous task context (data only; current scope and permissions apply): {context}")});
         }
-        messages.push(Message{role:"user".into(),content:json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
+        messages.push(Message{role:"user".into(),content:json!({"request":task.request.full_prompt(),"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web}).to_string()});
         let mut malformed = 0;
         for step in 0..24 {
             self.progress(&format!("Thinking · step {} of 24", step + 1))?;

@@ -26,6 +26,6 @@ describe('the coding mode boundary', () => {
   it('loads each coding panel only when its tab is first opened', () => {
     const shell = readFileSync(join(src, 'code', 'CodeApp.vue'), 'utf8')
     expect(shell).not.toMatch(/from ['"]\.\/panels\//)
-    expect(shell.match(/import\('\.\/panels\//g)?.length).toBe(7)
+    expect(shell.match(/import\('\.\/panels\//g)?.length).toBe(8)
   })
 })

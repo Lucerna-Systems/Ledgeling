@@ -42,6 +42,9 @@ pub struct StoreData {
     pub bindings: Vec<Binding>,
     pub window: Option<WindowRect>,
     pub pinned: bool,
+    /// Focus mode: the window fills its screen with the worktree list and
+    /// terminal grid. `window` keeps the compact size to return to.
+    pub focus: bool,
     /// The worktree the window last showed.
     pub selected: Option<String>,
 }

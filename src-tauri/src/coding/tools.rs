@@ -50,11 +50,11 @@ const KNOWN: &[Known] = &[
         scripted: true,
     },
     Known {
-        id: "orca",
-        name: "Orca",
-        program: "orca",
-        purpose: "Optional: open worktrees in the Orca IDE",
-        homepage: "https://github.com/stablyai/orca",
+        id: "gh",
+        name: "GitHub CLI",
+        program: "gh",
+        purpose: "Pull requests, issues and boards in the GitHub view",
+        homepage: "https://cli.github.com/",
         scripted: true,
     },
 ];

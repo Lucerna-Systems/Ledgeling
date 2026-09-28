@@ -6,7 +6,7 @@ import type { CodeState, Changes, GitStatus, ProjectView, Tab, WorktreeView } fr
 
 /** Rust owns the truth; this is the coding window's copy of it. */
 export const native = isTauri()
-export const codeState = ref<CodeState>({ projects: [], selected: null, pinned: false, sessions: [] })
+export const codeState = ref<CodeState>({ projects: [], selected: null, pinned: false, focus: false, sessions: [], notes: 0 })
 export const loaded = ref(false)
 export const problem = ref('')
 export const tab = ref<Tab>('files')
@@ -30,6 +30,18 @@ export async function refreshState() {
     problem.value = String(e)
   }
 }
+
+/** Focus mode: the window fills its screen, with the terminals in front. */
+export const focus = computed(() => codeState.value.focus)
+
+const width = ref(window.innerWidth)
+window.addEventListener('resize', () => { width.value = window.innerWidth })
+/** Wide windows are laid out like VS Code: an icon bar, a collapsible side
+ *  panel, and the editor or terminals in the main area. Narrow ones keep a
+ *  single row of tabs along the top. */
+export const WIDE_FROM = 760
+export const wide = computed(() => focus.value || width.value >= WIDE_FROM)
+export const narrowTabs = computed(() => !wide.value && width.value < 620)
 
 export const worktrees = computed(() => codeState.value.projects.flatMap(p => p.worktrees.map(w => ({ project: p, worktree: w }))))
 

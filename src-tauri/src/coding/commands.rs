@@ -2,7 +2,7 @@
 //! answered only to the `code` window, and every path is checked against the
 //! worktrees of projects the user added.
 use super::{
-    fs, git, ports, pty, run,
+    apps, fs, git, launch, notes, ports, pty, run,
     store::{Project, StoreData},
     tools, watch, window, CodingService, SharedCoding,
 };
@@ -15,7 +15,7 @@ use std::{
 };
 use tauri::{ipc::Channel, Emitter, Manager, State, WebviewWindow};
 
-fn code_only(window: &WebviewWindow) -> Result<(), String> {
+pub(super) fn code_only(window: &WebviewWindow) -> Result<(), String> {
     if window.label() == window::LABEL {
         Ok(())
     } else {
@@ -32,7 +32,7 @@ fn slot<'a>(
         .map_err(|_| "Coding mode is unavailable. Restart Ledgeling.".to_string())
 }
 
-fn with<T>(
+pub(super) fn with<T>(
     state: &State<'_, SharedCoding>,
     work: impl FnOnce(&mut CodingService) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -50,7 +50,7 @@ fn developer_mode(app: &tauri::AppHandle) -> bool {
 }
 
 /// Live pets as (id, pack), read and released before coding state is touched.
-fn live_pets(app: &tauri::AppHandle) -> Vec<(u64, String)> {
+pub(super) fn live_pets(app: &tauri::AppHandle) -> Vec<(u64, String)> {
     app.try_state::<Shared>()
         .and_then(|s| {
             s.lock().ok().map(|a| {
@@ -66,7 +66,7 @@ fn live_pets(app: &tauri::AppHandle) -> Vec<(u64, String)> {
 
 /// A worktree the user added, as a canonical path. Anything else is refused,
 /// so the window cannot be pointed at arbitrary folders.
-fn worktree(state: &State<'_, SharedCoding>, path: &str) -> Result<PathBuf, String> {
+pub(super) fn worktree(state: &State<'_, SharedCoding>, path: &str) -> Result<PathBuf, String> {
     let projects = with(state, |s| Ok(s.store.data.projects.clone()))?;
     let wanted = Path::new(path)
         .canonicalize()
@@ -135,14 +135,16 @@ pub fn open_window(
             let _ = service.store.save();
         }
     }
-    let (saved, pinned) = coding
+    let (saved, pinned, focus) = coding
         .lock()
         .ok()
         .and_then(|g| {
-            g.as_ref()
-                .map(|s| (s.store.data.window, s.store.data.pinned))
+            g.as_ref().map(|s| {
+                let data = &s.store.data;
+                (data.window, data.pinned, data.focus)
+            })
         })
-        .unwrap_or((None, false));
+        .unwrap_or((None, false, false));
     let (screens, pet_screen) = {
         let shared = app.state::<Shared>();
         let state = shared
@@ -161,7 +163,7 @@ pub fn open_window(
     let (rect, scale) = window::placement(saved, &screens, &pet_screen);
     let handle = app.clone();
     let made = crate::app::on_main(app, move |app| {
-        window::open(app, coding, rect, scale, pinned).map(|_| ())
+        window::open(app, coding, rect, scale, pinned, focus).map(|_| ())
     })
     .ok_or("The coding window could not be opened.")?;
     made?;
@@ -196,12 +198,23 @@ pub fn shut_down(app: &tauri::AppHandle) {
 fn start_attention_loop(app: tauri::AppHandle, coding: SharedCoding) {
     std::thread::spawn(move || {
         let mut marked: HashMap<u64, crate::pet::Attend> = HashMap::new();
+        let mut seen: HashMap<u32, notes::Seen> = HashMap::new();
         loop {
             std::thread::sleep(std::time::Duration::from_millis(700));
             let live = live_pets(&app);
             let wanted = {
-                let Ok(guard) = coding.lock() else { break };
-                let Some(service) = guard.as_ref() else { break };
+                let Ok(mut guard) = coding.lock() else { break };
+                let Some(service) = guard.as_mut() else { break };
+                // The pets' side chats hear what happened in their terminals.
+                let mut now_seen = HashMap::new();
+                for (id, session) in &service.ptys {
+                    let now = notes::Seen::of(session);
+                    if let Some((text, tone)) = notes::change(seen.get(id), &now) {
+                        service.notes.add(&session.worktree, text, tone);
+                    }
+                    now_seen.insert(*id, now);
+                }
+                seen = now_seen;
                 let owners = service.store.resolve(&live);
                 let mut wanted: HashMap<u64, crate::pet::Attend> = HashMap::new();
                 for session in service.ptys.values() {
@@ -272,7 +285,10 @@ pub struct CodeState {
     pub projects: Vec<ProjectView>,
     pub selected: Option<String>,
     pub pinned: bool,
+    pub focus: bool,
     pub sessions: Vec<pty::SessionView>,
+    /// The newest pet note's id, so the window knows when to fetch more.
+    pub notes: u64,
 }
 
 #[tauri::command]
@@ -283,9 +299,14 @@ pub async fn code_state(
 ) -> Result<CodeState, String> {
     code_only(&window)?;
     let live = live_pets(&app);
-    let (data, owners, sessions): (StoreData, _, _) = with(&state, |s| {
+    let (data, owners, sessions, latest): (StoreData, _, _, _) = with(&state, |s| {
         let sessions = s.ptys.iter().map(|(id, p)| p.view(*id)).collect::<Vec<_>>();
-        Ok((s.store.data.clone(), s.store.resolve(&live), sessions))
+        Ok((
+            s.store.data.clone(),
+            s.store.resolve(&live),
+            sessions,
+            s.notes.latest(),
+        ))
     })?;
     let mut projects = Vec::new();
     for project in data.projects {
@@ -329,7 +350,9 @@ pub async fn code_state(
         projects,
         selected: data.selected,
         pinned: data.pinned,
+        focus: data.focus,
         sessions,
+        notes: latest,
     })
 }
 
@@ -808,35 +831,180 @@ pub struct PortView {
     pub session: Option<u32>,
 }
 
-#[tauri::command]
-pub async fn code_ports(
-    window: WebviewWindow,
-    state: State<'_, SharedCoding>,
-) -> Result<Vec<PortView>, String> {
-    code_only(&window)?;
-    let roots: Vec<(u32, u32)> = with(&state, |s| {
+/// A desktop app running under one of this window's terminals.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppView {
+    pub session: u32,
+    pub pid: u32,
+    pub name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Live {
+    pub ports: Vec<PortView>,
+    pub apps: Vec<AppView>,
+}
+
+/// Each live terminal's process tree, from one snapshot of the process table.
+fn trees(
+    state: &State<'_, SharedCoding>,
+    table: &[ports::Process],
+) -> Result<Vec<(u32, std::collections::HashSet<u32>)>, String> {
+    let roots: Vec<(u32, u32)> = with(state, |s| {
         Ok(s.ptys
             .iter()
             .filter(|(_, p)| p.alive())
             .filter_map(|(id, p)| p.pid.map(|pid| (*id, pid)))
             .collect())
     })?;
+    Ok(roots
+        .into_iter()
+        .map(|(session, pid)| (session, ports::descendants(table, pid)))
+        .collect())
+}
+
+/// What the window's terminals have opened: listening ports, and desktop
+/// apps such as one under `tauri dev`, each credited to its terminal.
+#[tauri::command]
+pub async fn code_live(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+) -> Result<Live, String> {
+    code_only(&window)?;
     let listeners = ports::listeners()?;
+    let table = ports::processes();
+    let trees = trees(&state, &table)?;
     let mut owners: HashMap<u32, u32> = HashMap::new();
-    if !roots.is_empty() {
-        for (session, pid) in &roots {
-            for child in ports::descendants(&[*pid]) {
-                owners.insert(child, *session);
-            }
+    for (session, pids) in &trees {
+        for pid in pids {
+            owners.insert(*pid, *session);
         }
     }
-    Ok(listeners
+    let windowed = apps::windowed(&owners.keys().copied().collect());
+    let mut apps: Vec<AppView> = windowed
         .into_iter()
-        .map(|listener| PortView {
-            session: owners.get(&listener.pid).copied(),
-            listener,
+        .map(|pid| AppView {
+            session: owners[&pid],
+            pid,
+            name: table
+                .iter()
+                .find(|p| p.pid == pid)
+                .map(|p| p.name.clone())
+                .unwrap_or_default(),
         })
-        .collect())
+        .collect();
+    apps.sort_by_key(|a| (a.session, a.pid));
+    Ok(Live {
+        ports: listeners
+            .into_iter()
+            .map(|listener| PortView {
+                session: owners.get(&listener.pid).copied(),
+                listener,
+            })
+            .collect(),
+        apps,
+    })
+}
+
+/// Bring forward an app one of this window's terminals started. Other
+/// processes are refused, so the window cannot raise arbitrary apps.
+#[tauri::command]
+pub async fn code_activate(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    pid: u32,
+) -> Result<(), String> {
+    code_only(&window)?;
+    let table = ports::processes();
+    if !trees(&state, &table)?
+        .iter()
+        .any(|(_, pids)| pids.contains(&pid))
+    {
+        return Err("That app was not started here.".into());
+    }
+    crate::app::on_main(&app, move |_| apps::activate(pid))
+        .ok_or("The app could not be brought forward.")?
+}
+
+#[tauri::command]
+pub async fn code_launch(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    worktree: String,
+) -> Result<Option<launch::NativeApp>, String> {
+    code_only(&window)?;
+    Ok(launch::detect(&self::worktree(&state, &worktree)?))
+}
+
+#[tauri::command]
+pub async fn code_launch_open(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    worktree: String,
+) -> Result<(), String> {
+    code_only(&window)?;
+    launch::open_built(&self::worktree(&state, &worktree)?)
+}
+
+#[tauri::command]
+pub async fn code_notes(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    worktree: String,
+    after: u64,
+) -> Result<Vec<notes::Note>, String> {
+    code_only(&window)?;
+    with(&state, |s| Ok(s.notes.for_worktree(&worktree, after)))
+}
+
+/// A note the window noticed itself: a port opening, a pet taking over.
+#[tauri::command]
+pub async fn code_note(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    worktree: String,
+    text: String,
+    tone: notes::Tone,
+) -> Result<(), String> {
+    code_only(&window)?;
+    let tree = self::worktree(&state, &worktree)?
+        .to_string_lossy()
+        .into_owned();
+    let text: String = text.chars().take(300).collect();
+    with(&state, |s| {
+        s.notes.add(&tree, text, tone);
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub async fn code_layouts(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+) -> Result<HashMap<String, serde_json::Value>, String> {
+    code_only(&window)?;
+    with(&state, |s| Ok(s.layouts.clone()))
+}
+
+#[tauri::command]
+pub async fn code_layout_save(
+    window: WebviewWindow,
+    state: State<'_, SharedCoding>,
+    worktree: String,
+    layout: serde_json::Value,
+) -> Result<(), String> {
+    code_only(&window)?;
+    with(&state, |s| {
+        if layout.is_null() {
+            s.layouts.remove(&worktree);
+        } else {
+            s.layouts.insert(worktree, layout);
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -909,52 +1077,6 @@ pub async fn code_install(
     })
 }
 
-/// Hand a worktree to Orca, for people who use it. Optional: everything in
-/// coding mode works without it.
-#[tauri::command]
-pub async fn code_orca_open(
-    window: WebviewWindow,
-    state: State<'_, SharedCoding>,
-    worktree: String,
-) -> Result<(), String> {
-    code_only(&window)?;
-    let tree = self::worktree(&state, &worktree)?;
-    let root = git::main_root(&tree)?;
-    let orca = tools::find("orca").ok_or("Orca is not installed. See Add-ons.")?;
-    let run = |args: &[&str]| -> Result<(), String> {
-        let mut command = std::process::Command::new(&orca);
-        command.args(args);
-        if let Some(path) = pty::login_path() {
-            command.env("PATH", path);
-        }
-        let output = command
-            .output()
-            .map_err(|_| "Orca could not be started.".to_string())?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr)
-                .trim()
-                .chars()
-                .take(300)
-                .collect())
-        }
-    };
-    run(&["open"])?;
-    let root_text = root.to_string_lossy().into_owned();
-    // Adding a repo Orca already knows is harmless; its error is not ours to show.
-    let _ = run(&["repo", "add", "--path", &root_text]);
-    let selector = format!("path:{}", tree.to_string_lossy());
-    run(&[
-        "file",
-        "open-changed",
-        "--mode",
-        "both",
-        "--worktree",
-        &selector,
-    ])
-}
-
 // ----------------------------------------------------------------- window
 
 #[tauri::command]
@@ -975,6 +1097,15 @@ pub async fn code_window(
                 .set_always_on_top(pinned)
                 .map_err(|e| e.to_string())?;
             Ok(pinned)
+        }
+        "focus" => {
+            let focus = with(&state, |s| {
+                s.store.data.focus = !s.store.data.focus;
+                s.store.save()?;
+                Ok(s.store.data.focus)
+            })?;
+            window::set_focus_mode(&window, focus)?;
+            Ok(focus)
         }
         "minimize" => window.minimize().map(|_| false).map_err(|e| e.to_string()),
         "close" => window.close().map(|_| false).map_err(|e| e.to_string()),

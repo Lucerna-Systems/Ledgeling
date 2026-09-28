@@ -603,6 +603,7 @@ pub fn compose_request(
             // Only the question itself is sent; asking is the consent.
             allow_cloud: true,
             allow_web,
+            context: String::new(),
         });
     }
     if connected {
@@ -634,6 +635,7 @@ pub fn compose_request(
             parent_id: parent,
             allow_cloud: cloud,
             allow_web,
+            context: String::new(),
         });
     }
     // Without a connection the built-in actions run deterministically and
@@ -655,6 +657,7 @@ pub fn compose_request(
         parent_id: parent,
         allow_cloud: false,
         allow_web: false,
+        context: String::new(),
     })
 }
 fn send(app: &tauri::AppHandle, value: serde_json::Value) {

@@ -32,6 +32,8 @@ pub enum Kind {
 
 pub struct Session {
     pub kind: Kind,
+    /// Started with a command, rather than an interactive shell.
+    pub command: bool,
     pub worktree: String,
     pub title: String,
     pub pid: Option<u32>,
@@ -211,6 +213,7 @@ pub fn spawn(options: Spawn, channel: Channel<Output>) -> Result<Session, String
     });
     Ok(Session {
         kind: options.kind,
+        command: options.command.is_some(),
         worktree: options.worktree,
         title: options.title,
         pid,
@@ -275,6 +278,11 @@ impl Session {
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())
+    }
+
+    /// `Some` once the program has ended, with its exit code when it had one.
+    pub fn exit(&self) -> Option<Option<u32>> {
+        self.sink.lock().ok().and_then(|sink| sink.exit)
     }
 
     pub fn alive(&self) -> bool {

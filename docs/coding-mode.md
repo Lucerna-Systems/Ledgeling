@@ -34,12 +34,99 @@ appear in the same place.
 | **Files** | The worktree's folders. Git-ignored entries are dimmed, changed files carry their git letter, and files flash when something writes them. |
 | **Editor** | Monaco, with tabs. Cmd/Ctrl+S saves. A file changed on disk reloads in place unless you have unsaved edits, in which case you choose which version to keep. |
 | **Changes** | Every changed file with +/− counts, and a diff against the last commit, inline or side by side. **Follow** jumps to each file as it is written. Stage, unstage, discard and commit are here. |
-| **Worktrees** | Your projects and their worktrees. Create one on a new branch and give it a pet, move a pet, remove a worktree (its branch is kept), or open it in Finder/Explorer or Orca. **Add-ons** is at the bottom. |
+| **Worktrees** | Your projects and their worktrees. Create one on a new branch and give it a pet, move a pet, remove a worktree (its branch is kept), or show its folder in Finder/Explorer. **Add-ons** is at the bottom. |
 | **Run** | How the project runs, one button to start it, and the ports it opened. See below. |
-| **Terminal** | Real terminals in the worktree, running your own login shell. **Claude Code** starts the `claude` you installed. |
+| **Terminal** | Real terminals in the worktree, running your own login shell, split side by side or stacked. **Claude Code** starts the `claude` you installed. |
 | **Chat** | Ledgeling's assistant, working in this worktree's folder with your usual connection and approvals. |
 
-Cmd/Ctrl+1 to 7 switch tabs.
+### Wide windows
+
+From 760 px wide the window is laid out like VS Code. Narrower, it keeps the
+single row of tabs described above.
+
+- **Icon bar** on the far left: Worktrees, Run, and the worktree's pet (its
+  side chat), with managing worktrees and add-ons at the bottom. An icon opens
+  its view in the side panel; clicking the open one hides the panel. Cmd/Ctrl+B
+  also shows and hides it, and its edge can be dragged to resize it.
+- **Worktrees** lists every project and worktree, with its pet, branch, what
+  is happening there, how many terminals are running, and a pill for each
+  address or desktop app they have opened. Click one to switch to it. Under
+  each worktree are its **Files**, which open in the side panel with a link
+  back to the list, and its **Changes**, which open in the main area.
+- **Main area:** Terminals, Editor or Changes, chosen from the tabs above it.
+
+Cmd/Ctrl+1 to 3 open the side views, and 4 to 6 switch the main area. In the
+narrow layout Cmd/Ctrl+1 to 7 switch tabs.
+
+### The pet's side chat
+
+The pet given to a worktree, when it is created or later, keeps a running
+account of what happens there, in its side chat:
+
+- Claude Code (or a run command) starting, waiting for you, finishing or
+  failing with its exit code.
+- A terminal starting to serve an address, or a desktop app opening.
+- The pet introducing itself when it is given the worktree.
+
+These notes stay in the chat. The pet itself still only uses body language,
+and a dot on its icon shows there is something new. Notes last until
+Ledgeling quits.
+
+**What's going on?** makes a summary on this computer, with no AI: each
+terminal's state and last lines, what is being served, the branch and the
+uncommitted changes. Questions typed in the chat go to your chat model, with
+that summary attached unless you untick it. A remote model sees it only with
+the consent box ticked, as for any request.
+
+### Focus mode
+
+The expand button in the header fills the screen with the wide layout and puts
+the terminals in front. The same button returns the window to its compact size
+and place, and the window reopens in whichever mode you left it in. Each
+worktree keeps its own terminal layout, so switching back finds its terminals
+where you left them.
+
+### Split terminals
+
+Every terminal has buttons to split it to the right or downwards, and the new
+terminal opens beside the one you last used. Drag the gap between two
+terminals to resize them.
+
+| | macOS | Windows and Linux |
+|---|---|---|
+| Split right | ⌘D | Ctrl+Shift+E |
+| Split down | ⇧⌘D | Ctrl+Shift+O |
+
+Run commands started from the Run tab or the open button appear in the grid
+too. In the narrow layout the Run tab also shows their output.
+
+### The open button
+
+Each terminal's header has an open button with a chevron:
+
+- When something started in that terminal is **listening on a port**, the
+  button shows the port. Click it to open `http://localhost:<port>` in your
+  default browser.
+- When a **desktop app** started there is running, such as a Tauri or Electron
+  app under its dev command, the button shows the app. Click it to bring that
+  window forward instead of starting a second copy.
+
+The chevron lists everything the terminal has open, plus ways to start the
+project. For a Tauri or Electron project it offers:
+
+- **Show the running dev app**, when another terminal in the worktree has it
+  running.
+- **Start the dev app** (`npm run tauri dev`, `cargo tauri dev`, the Electron
+  `dev` or `start` script), in a new terminal beside this one.
+- **Open the production build**, the newest build output
+  (`target/release/bundle/macos/*.app`, an `.exe`, an AppImage, or Electron's
+  `out/` or `dist/`), with how old it is.
+- **Build for preview**, which runs the build in a new terminal below. On
+  macOS a Tauri build makes only the `.app`, not the installer.
+
+Entries from `.ledgeling/run.json` are listed too, to start or open.
+Bringing an app forward works on macOS and Windows. It is not supported on
+Linux yet.
 
 ### One pet, one worktree
 
@@ -84,21 +171,51 @@ Once a run is going, its port shows up automatically and **Open in browser**
 becomes available. The ports list reads the operating system's table of listening
 sockets (`lsof` on macOS and Linux, `netstat` on Windows). It never connects to a
 port. Ports held by something you started here are marked as yours. Polling runs
-only while the Run tab is open or something you started is running.
+every two seconds, and only while the Run tab is open, something you started is
+running, or terminals are on screen. The terminals and Run tab share one poll.
+
+### GitHub
+
+The **GitHub** view (a main-area tab in the wide layout, the last tab in the
+narrow one; Cmd/Ctrl+7 or 8) shows the repository the worktree pushes to. It
+uses your own GitHub CLI (`gh`): your sign-in and your access, so it sees every
+repository and board you can. If `gh` is missing or signed out, the view offers
+to install it or to sign in with the browser, in a terminal you can watch.
+
+- **Pull requests:** search and filter (open, closed, merged, yours, waiting
+  for your review), then read the conversation, the diff, checks and commits.
+  Comment, approve or request changes, merge (squash, merge commit or rebase,
+  or automatically once requirements pass), mark ready or draft, close, reopen,
+  edit the title, labels and assignees, and re-run failed checks. **Check out
+  in a worktree** puts the pull request in its own worktree beside the project
+  with a free pet, so reviewing never disturbs your work. From there Claude
+  Code can review it or address its review comments.
+- **Issues:** the same, plus closing as completed or not planned, and **Start
+  work**, which makes a worktree on `issue-<n>-<title>` from the default
+  branch, optionally with Claude Code already working on it.
+- **Boards:** GitHub Projects linked to the repository, then the owner's other
+  boards. Cards are grouped by Status (or another single-select field) and can
+  be dragged between columns; add a draft card or `#12` to add an issue, archive
+  cards, and link a board to the repository. Boards need the `project`
+  permission, which **Grant board access** adds.
+- The header shows the pull request for the branch on screen, with its checks,
+  once the view has been opened. When the branch has none, **Create pull
+  request** drafts one from its commits and pushes the branch first.
+
+Links to this repository's issues and pull requests open in the view; other
+links open in your browser. Pictures in descriptions are shown as links, since
+the window loads nothing from the internet.
 
 ### Add-ons
 
-The Worktrees tab lists the tools coding mode can use (Git, Node.js, Claude Code,
-Orca) and whether each is installed. **Install** runs the bundled script from
+The Worktrees tab lists the tools coding mode can use (Git, Node.js, Claude
+Code and the GitHub CLI) and whether each is installed. **Install** runs the bundled script from
 `scripts/dev-addons/` in a Terminal tab, where you can watch it:
 
 - **Claude Code** uses Anthropic's official installer.
-- **Orca** opens its download page. Its `orca` command is installed from inside
-  the Orca app.
+- **GitHub CLI** uses Homebrew, apt, dnf or pacman, or winget on Windows.
 
-Nothing is installed without that click. Orca is optional: worktrees use plain
-`git worktree` either way. With Orca installed, **Open in Orca** registers the
-project with Orca and opens the worktree's changed files there.
+Nothing is installed without that click. Worktrees use plain `git worktree`.
 
 ## Not supported: VS Code extensions
 

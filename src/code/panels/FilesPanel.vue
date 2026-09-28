@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ChevronRight, File, FilePlus, Folder, FolderOpen, FolderPlus, Pencil, RefreshCw, Trash2, ExternalLink } from '@lucide/vue'
 import { code, fileChanges, fileTick, openFile, openRequest, root, status } from '../state'
 import type { Entry } from '../types'
+import { ask } from '../confirm'
 
 const listings = reactive(new Map<string, Entry[]>())
 const expanded = reactive(new Set<string>())
@@ -96,7 +97,7 @@ async function finishRename(entry: Entry) {
   } catch { /* banner */ }
 }
 async function remove(entry: Entry) {
-  if (!root.value || !confirm(`Delete ${entry.path}${entry.dir ? ' and everything in it' : ''}? This cannot be undone here.`)) return
+  if (!root.value || !await ask(`Delete ${entry.path}${entry.dir ? ' and everything in it' : ''}? This cannot be undone here.`, 'Delete')) return
   const parent = entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : ''
   try { await code('code_file_op', { worktree: root.value, op: 'delete', path: entry.path, to: '' }); await load(parent) } catch { /* banner */ }
 }

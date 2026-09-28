@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ExternalLink, FolderGit2, FolderOpen, FolderPlus, GitBranchPlus, Sparkles, Trash2, X } from '@lucide/vue'
+import { ExternalLink, FolderGit2, FolderOpen, FolderPlus, GitBranchPlus, Trash2, X } from '@lucide/vue'
 import PetFace from '../../assistant/PetFace.vue'
 import AddonsSheet from '../components/AddonsSheet.vue'
 import { pets } from '../../state'
-import { activityOf, code, codeState, current, petFor, refreshState, select, tab } from '../state'
-import { tools } from '../tools'
+import { activityOf, code, codeState, current, petFor, refreshState, select, tab, wide } from '../state'
 import type { GitStatus, ProjectView, WorktreeView } from '../types'
+import { ask } from '../confirm'
+import { say } from '../petNotes'
 
 const props = defineProps<{ active?: boolean }>()
 const statuses = reactive(new Map<string, GitStatus | null>())
@@ -44,7 +45,9 @@ async function create() {
   if (!project || !branch.value.trim()) return
   busy.value = true
   try {
-    await code('code_worktree_create', { project: project.path, branch: branch.value.trim(), base: base.value, petId: petChoice.value })
+    const path = await code<string>('code_worktree_create', { project: project.path, branch: branch.value.trim(), base: base.value, petId: petChoice.value })
+    const pet = pets.value.find(p => p.id === petChoice.value)
+    if (pet) void say(path, `Hi, I'm ${pet.name}. I'll look after ${branch.value.trim()}, started from ${base.value}, and tell you what happens here.`)
     creating.value = null
     await refreshState()
     void loadStatuses()
@@ -56,27 +59,30 @@ async function remove(project: ProjectView, tree: WorktreeView) {
   const text = dirty
     ? `${tree.name} has ${s!.files.length} uncommitted change${s!.files.length === 1 ? '' : 's'}. Remove it and lose them? Its branch ${tree.branch ?? ''} is kept.`
     : `Remove the worktree ${tree.name}? Its folder is deleted; the branch ${tree.branch ?? ''} is kept.`
-  if (!confirm(text)) return
+  if (!await ask(text, 'Remove worktree')) return
   try { await code('code_worktree_remove', { project: project.path, path: tree.path, force: dirty }); await refreshState() } catch { /* banner */ }
 }
 async function assign(tree: WorktreeView, petId: number | null) {
   assigning.value = null
-  try { await code('code_bind', { worktree: tree.path, petId }); await refreshState() } catch { /* banner */ }
+  try {
+    await code('code_bind', { worktree: tree.path, petId })
+    const pet = pets.value.find(p => p.id === petId)
+    if (pet) void say(tree.path, `I'm ${pet.name}, looking after ${tree.name} now.`)
+    await refreshState()
+  } catch { /* banner */ }
 }
 async function removeProject(project: ProjectView) {
-  if (!confirm(`Stop showing ${project.name} here? Nothing on disk changes.`)) return
+  if (!await ask(`Stop showing ${project.name} here? Nothing on disk changes.`, 'Remove from list', false)) return
   await code('code_remove_project', { path: project.path }).catch(() => {})
   await refreshState()
 }
 async function addProject() {
   try { await code('code_add_project'); await refreshState() } catch { /* banner */ }
 }
-async function openIn(tree: WorktreeView, target: 'here' | 'finder' | 'orca') {
-  if (target === 'here') { await select(tree.path); tab.value = 'files'; return }
-  if (target === 'finder') { await code('code_file_op', { worktree: tree.path, op: 'reveal', path: '', to: '' }).catch(() => {}); return }
-  await code('code_orca_open', { worktree: tree.path }).catch(() => {})
+async function openIn(tree: WorktreeView, target: 'here' | 'finder') {
+  if (target === 'here') { await select(tree.path); tab.value = wide.value ? 'terminal' : 'files'; return }
+  await code('code_file_op', { worktree: tree.path, op: 'reveal', path: '', to: '' }).catch(() => {})
 }
-const orca = computed(() => tools.value.find(t => t.id === 'orca')?.version)
 function describe(s: GitStatus | null | undefined) {
   if (!s) return null
   const parts = [s.files.length ? `${s.files.length} changed` : 'clean']
@@ -151,7 +157,6 @@ function describe(s: GitStatus | null | undefined) {
             <div class="card-actions">
               <button v-if="tree.path !== current?.worktree.path" class="primary-button" @click="openIn(tree, 'here')"><FolderOpen :size="13" /> Open</button>
               <button class="ghost" @click="openIn(tree, 'finder')"><ExternalLink :size="13" /> Show folder</button>
-              <button v-if="orca" class="ghost" @click="openIn(tree, 'orca')"><Sparkles :size="13" /> Open in Orca</button>
               <button v-if="!tree.main" class="ghost danger-button" @click="remove(project, tree)"><Trash2 :size="13" /> Remove</button>
             </div>
           </article>

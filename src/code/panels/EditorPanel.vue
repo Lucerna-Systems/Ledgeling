@@ -4,6 +4,7 @@ import { ChevronRight, FileCode2, GitCompareArrows, Save, X } from '@lucide/vue'
 import { languageFor, monaco, setupMonaco } from '../monaco'
 import { code, fileChanges, fileTick, openRequest, root, short, showDiff } from '../state'
 import type { FileText } from '../types'
+import { ask } from '../confirm'
 
 const props = defineProps<{ active?: boolean }>()
 
@@ -62,8 +63,8 @@ function show(file: Open) {
   editor.focus()
 }
 
-function closeFile(file: Open) {
-  if (dirty(file) && !confirm(`${short(file.path)} has unsaved changes. Close it anyway?`)) return
+async function closeFile(file: Open) {
+  if (dirty(file) && !await ask(`${short(file.path)} has unsaved changes. Close it anyway?`, 'Close without saving')) return
   const index = files.indexOf(file)
   files.splice(index, 1)
   file.model.dispose()

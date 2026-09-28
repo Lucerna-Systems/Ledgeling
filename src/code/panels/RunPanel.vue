@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Bot, ExternalLink, Globe, MessageSquare, Pencil, Play, RotateCw, Save, Square, Wand2 } from '@lucide/vue'
 import TermView from '../components/TermView.vue'
 import { adopt, close, spawn, terms } from '../terminals'
 import { pendingTerminal } from '../terminalFocus'
 import { chatDraft } from '../chatDraft'
-import { code, codeState, current, fileChanges, fileTick, refreshState, root, tab } from '../state'
+import { code, codeState, current, fileChanges, fileTick, refreshState, root, tab, wide } from '../state'
+import { live as liveState, refreshLive, useLive } from '../live'
 import { has, loadTools } from '../tools'
-import type { PortView, RunConfig, RunSetup } from '../types'
+import type { RunConfig, RunSetup } from '../types'
 
 const props = defineProps<{ active?: boolean }>()
 const setup = ref<RunSetup | null>(null)
-const ports = ref<PortView[]>([])
+const ports = computed(() => liveState.value.ports)
 const editing = ref<RunConfig | null>(null)
 const showAll = ref(false)
 const shownLog = ref<number | null>(null)
@@ -38,7 +39,7 @@ async function run(index: number) {
   const entry = await spawn({ worktree: root.value, kind: 'run', title: config.name, runIndex: index })
   if (entry) shownLog.value = entry.id
   void refreshState()
-  void pollPorts()
+  void refreshLive()
 }
 async function stop(config: RunConfig) {
   const entry = runFor(config)
@@ -82,16 +83,8 @@ async function askAI(via: 'claude' | 'chat') {
 
 async function open(url: string | null) { if (url) await code('code_open_url', { url }).catch(() => {}) }
 
-async function pollPorts() {
-  try { ports.value = await code<PortView[]>('code_ports') } catch { /* banner */ }
-}
 /** Only while you are looking or something of yours is running. */
-let timer: ReturnType<typeof setInterval> | undefined
-watch([() => props.active, live], ([active, running]) => {
-  clearInterval(timer)
-  if (active || running) { void pollPorts(); timer = setInterval(pollPorts, 2000) }
-}, { immediate: true })
-onBeforeUnmount(() => clearInterval(timer))
+useLive(() => !!props.active || live.value)
 onMounted(() => { void adopt(); void loadTools() })
 
 const mine = computed(() => ports.value.filter(p => p.session !== null && runs.value.some(r => r.id === p.session)))
@@ -111,7 +104,7 @@ const sessionTitle = (id: number | null) => id == null ? '' : codeState.value.se
     <div class="panel-bar">
       <h2 class="grow">Run {{ current?.worktree.name }}</h2>
       <button v-if="setup?.fromFile && !editing" class="icon" title="Add another thing to run" @click="edit()"><Pencil :size="13" /></button>
-      <button class="icon" title="Check again" @click="load(); pollPorts()"><RotateCw :size="13" /></button>
+      <button class="icon" title="Check again" @click="load(); refreshLive()"><RotateCw :size="13" /></button>
     </div>
     <div class="panel-scroll">
       <div v-if="setup?.problems.length" class="banner error" role="alert">
@@ -200,11 +193,12 @@ const sessionTitle = (id: number | null) => id == null ? '' : codeState.value.se
         </tbody>
       </table>
     </div>
-    <div v-if="log" class="run-log">
+    <!-- Side by side with the terminals, each run is a pane in their grid instead. -->
+    <div v-if="log && !wide" class="run-log">
       <div class="term-tabs">
         <div v-for="r in runs" :key="r.id" class="term-tab" :class="{ active: r.id === log.id }" @click="shownLog = r.id"><Play :size="11" /> {{ r.title }}<span v-if="!r.alive" class="muted small">· ended</span></div>
       </div>
-      <TermView :id="log.id" :key="log.id" :active="false" />
+      <TermView :id="log.id" :key="log.id" :active="!!props.active" :focus="false" />
     </div>
   </section>
 </template>

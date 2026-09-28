@@ -132,16 +132,54 @@ pub fn listeners() -> Result<Vec<Listener>, String> {
     }
 }
 
-/// Every process descended from `roots`, including the roots, so a port held
-/// by `node` under `npm run dev` is credited to the Run tab that started it.
-pub fn descendants(roots: &[u32]) -> HashSet<u32> {
-    let mut out: HashSet<u32> = roots.iter().copied().collect();
-    let pairs = parent_pairs();
+/// One row of the process table: pid, parent pid and executable name.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Process {
+    pub pid: u32,
+    pub parent: u32,
+    pub name: String,
+}
+
+/// Read once per poll and shared: every lookup below walks the same snapshot.
+pub fn processes() -> Vec<Process> {
+    let text = if cfg!(windows) {
+        output(quiet("powershell").args([
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $($_.Name)\" }",
+        ]))
+    } else {
+        output(quiet("ps").args(["-A", "-o", "pid=,ppid=,comm="]))
+    };
+    parse_processes(&text.unwrap_or_default())
+}
+
+pub fn parse_processes(text: &str) -> Vec<Process> {
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let pid = parts.next()?.parse().ok()?;
+            let parent = parts.next()?.parse().ok()?;
+            let command = parts.collect::<Vec<_>>().join(" ");
+            let name = command
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            Some(Process { pid, parent, name })
+        })
+        .collect()
+}
+
+/// Every process descended from `root`, including the root, so a port held
+/// by `node` under `npm run dev` is credited to the terminal that started it.
+pub fn descendants(table: &[Process], root: u32) -> HashSet<u32> {
+    let mut out: HashSet<u32> = HashSet::from([root]);
     loop {
         let before = out.len();
-        for (pid, parent) in &pairs {
-            if out.contains(parent) {
-                out.insert(*pid);
+        for process in table {
+            if out.contains(&process.parent) {
+                out.insert(process.pid);
             }
         }
         if out.len() == before {
@@ -149,28 +187,6 @@ pub fn descendants(roots: &[u32]) -> HashSet<u32> {
         }
     }
     out
-}
-
-fn parent_pairs() -> Vec<(u32, u32)> {
-    let text = if cfg!(windows) {
-        output(quiet("powershell").args([
-            "-NoProfile",
-            "-Command",
-            "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }",
-        ]))
-    } else {
-        output(quiet("ps").args(["-A", "-o", "pid=,ppid="]))
-    };
-    parse_pairs(&text.unwrap_or_default())
-}
-
-pub fn parse_pairs(text: &str) -> Vec<(u32, u32)> {
-    text.lines()
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -213,7 +229,13 @@ mod tests {
     }
 
     #[test]
-    fn process_pairs_are_parsed() {
-        assert_eq!(parse_pairs("  1  0\n 42 1\nbad\n"), vec![(1, 0), (42, 1)]);
+    fn the_process_table_is_parsed() {
+        let table = parse_processes(
+            "  1  0 /sbin/launchd\n 42 1 /Applications/My App.app/Contents/MacOS/My App\n 43 42 node\nbad\n",
+        );
+        assert_eq!(table.len(), 3);
+        assert_eq!(table[1].name, "My App");
+        assert_eq!(table[2].name, "node");
+        assert_eq!(descendants(&table, 42), HashSet::from([42, 43]));
     }
 }

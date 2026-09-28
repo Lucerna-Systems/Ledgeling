@@ -1,5 +1,6 @@
 //! The coding window: one compact floating window, docked beside the user's
 //! browser on the pet screen the first time and wherever they left it after.
+//! Focus mode maximizes it instead, and leaving focus mode restores that spot.
 use super::{store::WindowRect, SharedCoding};
 use crate::world::MonitorInfo;
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -47,6 +48,7 @@ pub fn open(
     rect: WindowRect,
     scale: f64,
     pinned: bool,
+    focus: bool,
 ) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.unminimize();
@@ -70,6 +72,9 @@ pub fn open(
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
     let window = builder.build().map_err(|e| e.to_string())?;
+    if focus {
+        let _ = window.maximize();
+    }
     let tracked = window.clone();
     window.on_window_event(move |event| {
         if matches!(
@@ -81,7 +86,11 @@ pub fn open(
             let (Ok(position), Ok(size)) = (tracked.outer_position(), tracked.inner_size()) else {
                 return;
             };
-            if size.width == 0 || tracked.is_minimized().unwrap_or(false) {
+            // Focus mode fills the screen; the compact size is what is kept.
+            if size.width == 0
+                || tracked.is_minimized().unwrap_or(false)
+                || tracked.is_maximized().unwrap_or(false)
+            {
                 return;
             }
             if let Ok(mut slot) = coding.lock() {
@@ -100,6 +109,17 @@ pub fn open(
         }
     });
     Ok(window)
+}
+
+/// Focus mode fills the screen the window is on; leaving it returns to the
+/// compact size.
+pub fn set_focus_mode(window: &WebviewWindow, focus: bool) -> Result<(), String> {
+    if focus {
+        window.maximize()
+    } else {
+        window.unmaximize()
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

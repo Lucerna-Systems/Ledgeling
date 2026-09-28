@@ -81,9 +81,66 @@ What those tests actually cover:
   dev server. **Not yet exercised by hand in the real app:** opening the window
   from the tray, sidebar or pet bubble; Claude Code in the Terminal tab and the
   pet's busy/attention clips while it works; a real Run with port detection;
-  worktree creation from the UI; Open in Orca; the install scripts. Windows and
+  worktree creation from the UI; the install scripts. Windows and
   Linux builds of coding mode have not run at all (the PTY, `netstat` and
   PowerShell paths are written but unverified).
+
+## Coding mode: focus mode and split terminals (2026-09-27)
+
+- The Orca hand-off is gone: its button, command, add-on entry and install
+  scripts were removed, so coding mode no longer points people at another app.
+- Unit-tested: the split layout (insert, nest, close, prune, resize limits,
+  malformed stored layouts) in `src/code/layout.test.ts`; the process-table
+  parser and descendant walk; Tauri and Electron detection, their dev and
+  build commands per package manager, and finding the newest build on each OS
+  (`coding/launch.rs`). `vue-tsc`, the Vite build, `cargo test`,
+  `cargo clippy -- -D warnings` and the privacy tests pass.
+- Checked as headless-Chrome screenshots of `code.html` against a mocked IPC:
+  the narrow top-tab layout at 460 px, the wide VS Code-style layout with the
+  side panel open and hidden at 1400 px, and focus mode at 1600 px, with a
+  three-pane split and the open button showing a port and a desktop app.
+- The pet side chat: session notes (started, waiting, finished, failed) and
+  the note store are unit-tested in `coding/notes.rs`, and `full_prompt` in
+  `tasks/types.rs`. Screenshots against a mocked IPC cover the worktree list
+  with Files and Changes under each worktree, Files with its back link,
+  Changes in the main area, and the side chat with notes and a "What's going
+  on?" summary. Asking the chat model with the summary attached has not been
+  tried against a real provider.
+- The terminal close button did nothing on macOS: WKWebView under Tauri has
+  no dialog for `confirm()`, which answered no. Every coding-mode confirmation
+  now uses an in-app dialog; closing a pane was checked in the mocked page.
+- **Not run in the real app yet:** focus mode maximizing and restoring the
+  window, dragging dividers, the split keys, the per-terminal open button
+  finding a port or a `tauri dev` window, bringing that window forward, and
+  opening a production build. Bringing an app forward is written for macOS
+  and Windows and is not supported on Linux.
+
+## Coding mode: GitHub view (2026-09-28)
+
+- The GitHub view drives the user's own `gh` CLI. Every `gh` operation is a
+  fixed argument list built in `coding/github.rs`; the window cannot pass
+  arguments through. Unit-tested there: flag smuggling through repository
+  names, text going on stdin, every action's argument list, auth and repo
+  parsing, board columns and cards, and drafting a pull request from commits.
+  `src/code/github/format.test.ts` covers the diff parser, check roll-up,
+  in-app link routing and issue branch names.
+- Run against the real `Lucerna-Systems/lupetty` repository from Rust through
+  `gh` 2.93: sign-in status, repository, pull request and issue lists and
+  search, a pull request with checks, a diff, the branch's pull request,
+  labels and assignees, the org's boards, and a board with its fields. Every
+  board change (move, clear, add a draft, add an issue, archive, link, unlink)
+  was sent to GitHub against a nonexistent project, which GitHub rejects only
+  after it has checked the request's shape; no real board was changed.
+- Checked as headless-Chrome screenshots of `code.html` with the IPC answering
+  from that captured real data: the pull request list and detail in light and
+  dark, the Files diff, an issue, and the board (its cards were placed for the
+  screenshot, since the real board is empty). This caught file headers
+  covering the first diff lines and missing list bullets, both fixed.
+- **Not run in the real app yet:** signing in, installing `gh`, granting board
+  access, commenting, reviewing, merging, closing, editing labels, checking a
+  pull request out into a worktree, creating an issue or a pull request
+  (including the push), starting work on an issue, dragging cards, and
+  re-running failed checks. None of these writes has been sent to GitHub.
 
 ## Simpler companion window and Pet Studio (2026-09-26)
 

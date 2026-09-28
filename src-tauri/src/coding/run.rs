@@ -231,15 +231,7 @@ pub fn suggest(root: &Path) -> Vec<Suggestion> {
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
     {
-        let runner = if root.join("pnpm-lock.yaml").exists() {
-            "pnpm"
-        } else if root.join("yarn.lock").exists() {
-            "yarn"
-        } else if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
-            "bun"
-        } else {
-            "npm run"
-        };
+        let runner = runner(root);
         let has_dep = |name: &str| {
             ["dependencies", "devDependencies"]
                 .iter()
@@ -329,6 +321,19 @@ pub fn suggest(root: &Path) -> Vec<Suggestion> {
         });
     }
     out
+}
+
+/// How the project's package scripts are run, from its lockfile.
+pub fn runner(root: &Path) -> &'static str {
+    if root.join("pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else if root.join("yarn.lock").exists() {
+        "yarn"
+    } else if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
+        "bun"
+    } else {
+        "npm run"
+    }
 }
 
 /// `--port 4000`, `--port=4000`, `-p 4000` or `PORT=4000` inside a script.
