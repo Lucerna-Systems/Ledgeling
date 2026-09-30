@@ -4,7 +4,10 @@ The quickest way is inside Ledgeling: **Pets → Make your own pet** opens the P
 Draw each animation frame by frame, set the behaviours with plain-language blocks
 ("When you click it, go to say hi"), and press **Save & bring out**. The Studio
 writes an ordinary pack, the same format this guide describes, and the same
-validator checks it.
+validator checks it. If you have connected an AI in the Assistant settings, the
+Behaviour tab's **Describe it** box can draft the blocks from a sentence; it only
+fills in the same blocks you could have placed yourself, and **Undo** puts your
+earlier behaviours back.
 
 This guide is the by-hand route. You need two things: a program that can draw with
 transparency, and a text editor. You do not need to write any code — a pack is

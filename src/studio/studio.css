@@ -152,3 +152,5 @@
   .clip-list { max-height: 220px; }
   .studio-head { flex-direction: column; }
 }
+.ai-form { display: flex; gap: 8px; }
+.ai-form input { flex: 1 1 auto; min-width: 0; }
