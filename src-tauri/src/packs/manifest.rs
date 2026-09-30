@@ -125,6 +125,9 @@ pub struct Jump {
 #[serde(rename_all = "camelCase")]
 pub struct Locomotion {
     pub class: LocomotionClass,
+    /// Author's own name for this kind of pet (`slitherer`); the engine
+    /// still moves it by `class`. Defaults to the class name.
+    pub kind: String,
     pub surfaces: Vec<SurfaceKind>,
     pub speed: Speed,
     pub jump: Jump,
@@ -143,6 +146,7 @@ impl Locomotion {
         };
         Self {
             class,
+            kind: class.as_str().to_string(),
             surfaces,
             speed: Speed {
                 surface: match class {
@@ -218,6 +222,15 @@ pub const ASSISTANT_CLIPS: &[(&str, &str)] = &[
     ("attention", "while its task is waiting for your answer"),
 ];
 
+/// A pack-named action: one of the built-in actions with its own speed. Still
+/// data — the engine only ever runs the built-in `base`.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomAction {
+    pub base: Action,
+    pub speed_scale: f64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -269,6 +282,8 @@ pub struct State {
     pub clip: String,
     pub duration: (f64, f64),
     pub action: Option<Action>,
+    /// Multiplier a custom action puts on movement speed while this state runs.
+    pub speed_scale: f64,
     pub sound: Option<String>,
     pub transitions: Vec<Transition>,
 }
@@ -428,6 +443,7 @@ pub struct Manifest {
     pub locomotion: Locomotion,
     pub animations: BTreeMap<String, Animation>,
     pub behavior: Behavior,
+    pub custom_actions: BTreeMap<String, CustomAction>,
     pub reactions: Vec<Reaction>,
     pub personality: Personality,
 }
@@ -518,8 +534,9 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
     let sprite = read_sprite(root, report);
     let locomotion = read_locomotion(root, report)?;
     let animations = read_animations(root, report);
+    let custom_actions = read_custom_actions(root, report);
     let behavior = match root.get("behavior") {
-        Some(value) => read_behavior(value, &animations, report),
+        Some(value) => read_behavior(value, &animations, &custom_actions, report),
         None => default_behavior(locomotion.class),
     };
     let reactions = read_reactions(root, &behavior, report);
@@ -540,6 +557,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
             "sprite",
             "locomotion",
             "animations",
+            "actions",
             "behavior",
             "reactions",
             "personality",
@@ -559,6 +577,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
         locomotion,
         animations,
         behavior,
+        custom_actions,
         reactions,
         personality,
     })
@@ -662,6 +681,61 @@ fn read_sprite(root: &Map<String, Value>, report: &mut Report) -> SpriteBlock {
         report,
     );
     sprite
+}
+
+/// `"actions": { "scurry": { "base": "patrol_current_surface", "speed": 2 } }`
+/// names a built-in action with its own speed, for states to use.
+fn read_custom_actions(
+    root: &Map<String, Value>,
+    report: &mut Report,
+) -> BTreeMap<String, CustomAction> {
+    let mut out = BTreeMap::new();
+    let Some(map) = root
+        .get("actions")
+        .and_then(|v| expect_object(v, "actions", report))
+    else {
+        return out;
+    };
+    for (name, value) in map {
+        let path = format!("actions.{name}");
+        if Action::parse(name).is_some() {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                path.clone(),
+                format!("`{name}` is already a built-in action."),
+                "Choose a different name for the custom action.",
+            ));
+            continue;
+        }
+        let Some(item) = expect_object(value, &path, report) else {
+            continue;
+        };
+        let Some(base_name) = string(item, &path, "base", true, report) else {
+            continue;
+        };
+        let Some(base) = Action::parse(&base_name) else {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                format!("{path}.base"),
+                format!("Found `{base_name}`."),
+                format!(
+                    "Expected one of: {}.",
+                    Action::ALL
+                        .iter()
+                        .map(|a| a.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ));
+            continue;
+        };
+        let speed_scale = number(item, &path, "speed", false, report)
+            .unwrap_or(1.)
+            .clamp(0.1, 5.);
+        note_unknown(item, &path, &["base", "speed"], report);
+        out.insert(name.clone(), CustomAction { base, speed_scale });
+    }
+    out
 }
 
 fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Locomotion> {
@@ -778,6 +852,19 @@ fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Loc
             );
         }
     }
+    if let Some(kind) = string(map, "locomotion", "type", false, report) {
+        let kind = kind.trim();
+        if kind.is_empty() || kind.chars().count() > 40 {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                "locomotion.type",
+                "The type name is empty or longer than 40 characters.",
+                "Use a short label such as `slitherer`, or omit it to use the class name.",
+            ));
+        } else {
+            locomotion.kind = kind.to_string();
+        }
+    }
     if let Some(gravity) = number(map, "locomotion", "gravity", false, report) {
         locomotion.gravity = gravity.clamp(0., 4.);
     }
@@ -809,6 +896,7 @@ fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Loc
         "locomotion",
         &[
             "class",
+            "type",
             "surfaces",
             "speed",
             "jump",
@@ -984,6 +1072,7 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
 fn read_behavior(
     value: &Value,
     animations: &BTreeMap<String, Animation>,
+    custom_actions: &BTreeMap<String, CustomAction>,
     report: &mut Report,
 ) -> Behavior {
     let mut behavior = Behavior {
@@ -1028,26 +1117,46 @@ fn read_behavior(
             ));
         }
         let duration = read_duration(state, &path, report);
+        let mut speed_scale = 1.;
         let action = match string(state, &path, "action", false, report) {
             None => None,
             Some(name) => match Action::parse(&name) {
                 Some(action) => Some(action),
-                None => {
-                    report.push(Diagnostic::error(
-                        MANIFEST_FILE,
-                        format!("{path}.action"),
-                        format!("Unknown action `{name}`."),
-                        format!(
-                            "Expected one of: {}.",
-                            Action::ALL
-                                .iter()
-                                .map(|a| a.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ),
-                    ));
-                    None
-                }
+                None => match custom_actions.get(&name) {
+                    Some(custom) => {
+                        speed_scale = custom.speed_scale;
+                        Some(custom.base)
+                    }
+                    None => {
+                        report.push(Diagnostic::error(
+                            MANIFEST_FILE,
+                            format!("{path}.action"),
+                            format!("Unknown action `{name}`."),
+                            format!(
+                                "Expected one of: {}{}.",
+                                Action::ALL
+                                    .iter()
+                                    .map(|a| a.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                if custom_actions.is_empty() {
+                                    ", or a name declared in the top-level `actions` block"
+                                        .to_string()
+                                } else {
+                                    format!(
+                                        ", or a custom action: {}",
+                                        custom_actions
+                                            .keys()
+                                            .cloned()
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    )
+                                }
+                            ),
+                        ));
+                        None
+                    }
+                },
             },
         };
         let mut transitions = Vec::new();
@@ -1099,6 +1208,7 @@ fn read_behavior(
                 clip,
                 duration,
                 action,
+                speed_scale,
                 sound: string(state, &path, "sound", false, report),
                 transitions,
             },
@@ -1310,6 +1420,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "idle".into(),
             duration: (6., 18.),
             action: None,
+            speed_scale: 1.,
             sound: None,
             transitions: vec![
                 Transition {
@@ -1341,6 +1452,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveToRandomSurface),
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1369,6 +1481,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "sleep".into(),
             duration: (30., 120.),
             action: None,
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1383,6 +1496,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "happy".into(),
             duration: (2., 3.),
             action: None,
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1397,6 +1511,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "alert".into(),
             duration: (1., 2.),
             action: Some(Action::MoveToNearestSurface),
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1411,6 +1526,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "grabbed".into(),
             duration: (0.5, 0.5),
             action: None,
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
