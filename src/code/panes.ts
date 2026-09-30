@@ -109,6 +109,13 @@ export function openClaude() {
   void spawnPane({ worktree, kind: 'agent', command: 'claude', title: nextTitle(worktree, 'Claude Code') }, focused.get(worktree) ?? null)
 }
 
+/** The user's own Antigravity CLI, when installed, beside the focused terminal. */
+export function openAntigravity() {
+  const worktree = root.value
+  if (!worktree) return
+  void spawnPane({ worktree, kind: 'agent', command: 'antigravity', title: nextTitle(worktree, 'Antigravity') }, focused.get(worktree) ?? null)
+}
+
 /** "Shell", then "Shell 2" and so on, so panes can be told apart. */
 export function nextTitle(worktree: string, base: string) {
   const taken = new Set([...terms.values()].filter(t => t.worktree === worktree).map(t => t.title))

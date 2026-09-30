@@ -6,7 +6,7 @@ import WorktreeSwitcher from './components/WorktreeSwitcher.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import { activityOf, changeCount, code, codeState, current, currentPet, focus, loaded, narrowTabs, native, problem, refreshState, start, status, tab, wide } from './state'
 import type { MainView, Tab } from './types'
-import { openClaude, openShell } from './panes'
+import { openAntigravity, openClaude, openShell } from './panes'
 import { startNotes, unreadNotes } from './petNotes'
 import { splitHint } from './shortcuts'
 import { has } from './tools'
@@ -229,6 +229,7 @@ onUnmounted(() => {
           <template v-if="mainView === 'terminal'">
             <span class="grow" />
             <button class="ghost" :disabled="!has('claude')" :title="has('claude') ? 'Start Claude Code beside the focused terminal' : 'Claude Code is not installed. See Add-ons.'" @click="openClaude"><Bot :size="13" /> Claude Code</button>
+            <button v-if="has('antigravity')" class="ghost" title="Start Antigravity beside the focused terminal" @click="openAntigravity"><Bot :size="13" /> Antigravity</button>
             <button class="icon" :title="`New terminal on the right (${splitHint('row')})`" @click="openShell('row')"><Columns2 :size="14" /></button>
             <button class="icon" :title="`New terminal below (${splitHint('column')})`" @click="openShell('column')"><Rows2 :size="14" /></button>
           </template>
