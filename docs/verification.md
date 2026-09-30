@@ -161,6 +161,19 @@ nothing in this section applies to release or pre-alpha builds, which leave it o
   Chrome. Not yet run in the real app: no Studio save has been made through Tauri,
   and no Studio-made pet has been watched on the desktop.
 
+## Pet Studio AI helper (2026-09-30)
+
+- The Behaviour tab has a **Describe it** box (issue #24). It starts an ordinary
+  Assistant task on the default connection with no folders, asks for a JSON design,
+  and `studio/ai.ts` filters the reply through the editor's closed lists of clips,
+  actions, events, signals and operators before it replaces the behaviours. Only
+  the description and the behaviour outline are sent, never the drawings. Undo
+  restores the previous behaviours. No manifest or Rust change.
+- Automated: `studio/ai.test.ts` (parsing, rejection of out-of-list values, undo,
+  prompt contents) and a Studio test with the assistant task mocked.
+- Not run against any real model, so how well each provider follows the JSON
+  format is unknown, and it has not been run in the real app.
+
 ## Linux adapter (2026-09-24)
 
 `platform/linux/` replaces the stub for Linux. On X11 it reads
