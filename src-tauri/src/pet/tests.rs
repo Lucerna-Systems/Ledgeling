@@ -576,3 +576,72 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
 }
+
+/// Count how often the machine enters each state over many idle cycles, with
+/// no movement pending and no events, so only the weighted transitions act.
+fn idle_state_counts(
+    name: &str,
+    seed: u64,
+    ticks: usize,
+) -> std::collections::HashMap<String, usize> {
+    let pack = pack(name);
+    let manifest = &pack.manifest;
+    let mut rng = crate::pet::fsm::Rng::new(seed);
+    let mut machine = crate::pet::fsm::Machine::new(manifest, &mut rng);
+    let signals = Signals::default();
+    let mut counts = std::collections::HashMap::new();
+    for _ in 0..ticks {
+        if let Some(entered) = machine.tick(0.5, manifest, &signals, &[], true, &mut rng) {
+            *counts.entry(entered.state).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+#[test]
+fn rare_idles_happen_occasionally_but_not_often() {
+    for (name, rare) in [
+        ("budgie-classic", ["fluff", "dance"]),
+        ("squirrel-red", ["nibble", "flip"]),
+    ] {
+        let counts = idle_state_counts(name, 7, 200_000);
+        let total: usize = counts.values().sum();
+        for state in rare {
+            let seen = counts.get(state).copied().unwrap_or(0);
+            assert!(
+                seen > 0,
+                "{name}: `{state}` never triggered in {total} state changes"
+            );
+            assert!(
+                (seen as f64) < total as f64 * 0.05,
+                "{name}: `{state}` is not rare: {seen} of {total} state changes"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_rare_idle_plays_its_own_clip_and_returns_to_rest() {
+    let pack = pack("squirrel-red");
+    let manifest = &pack.manifest;
+    let mut rng = crate::pet::fsm::Rng::new(3);
+    let mut machine = crate::pet::fsm::Machine::new(manifest, &mut rng);
+    machine.force("flip", 0, manifest, &mut rng);
+    assert_eq!(machine.clip, "flip");
+    let signals = Signals::default();
+    let mut next = None;
+    for _ in 0..20 {
+        next = machine.tick(0.5, manifest, &signals, &[], true, &mut rng);
+        if next.is_some() {
+            break;
+        }
+    }
+    assert_eq!(next.map(|e| e.state).as_deref(), Some("rest"));
+}
+
+#[test]
+fn a_pack_without_the_rare_clip_plays_idle_instead() {
+    let mut manifest = pack("squirrel-red").manifest.clone();
+    manifest.animations.remove("flip");
+    assert_eq!(manifest.resolve_clip("flip"), "idle");
+}
