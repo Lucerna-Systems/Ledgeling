@@ -46,6 +46,61 @@ struct Inner {
     answers: Mutex<HashMap<(i64, u64), bool>>,
     sequence: AtomicU64,
     emit: Emit,
+    /// The task the worker is inside right now, from the moment it starts
+    /// until it has really returned, whatever the task's own status says.
+    current: Mutex<Option<i64>>,
+    /// Tasks sent to the worker and not yet picked up, and whether each is an undo.
+    queue: Mutex<Vec<(i64, bool)>>,
+}
+/// What a task is called where it is named: its title, else the start of its request.
+fn task_name(task: &Task) -> String {
+    let text = if task.title.trim().is_empty() {
+        task.request.prompt.trim()
+    } else {
+        task.title.trim()
+    };
+    let name: String = text.chars().take(40).collect();
+    if name.chars().count() < text.chars().count() {
+        format!("{name}…")
+    } else {
+        name
+    }
+}
+/// Tells each queued task what it is waiting for. The single worker serves every
+/// chat, so a task behind another must not look as if it has started, and must
+/// say so while that other task is still stopping.
+fn refresh_queue(inner: &Inner) {
+    let current = *inner.current.lock().unwrap();
+    let reason = match current.and_then(|id| inner.store.lock().unwrap().get(id).ok()) {
+        Some(task) if task.status == "cancelling" => {
+            format!("Waiting for “{}” to stop", task_name(&task))
+        }
+        Some(task) => format!("Waiting for “{}” to finish", task_name(&task)),
+        None => "Waiting to start".into(),
+    };
+    let waiting: Vec<i64> = inner
+        .queue
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, undo)| !undo)
+        .map(|(id, _)| *id)
+        .collect();
+    for id in waiting {
+        let changed = {
+            let store = inner.store.lock().unwrap();
+            match store.get(id) {
+                Ok(mut task) if task.status == "queued" && task.progress != reason => {
+                    task.progress = reason.clone();
+                    store.save(&task).ok().map(|_| task)
+                }
+                _ => None,
+            }
+        };
+        if let Some(task) = changed {
+            (inner.emit)(task);
+        }
+    }
 }
 #[derive(Clone)]
 pub struct TaskService {
@@ -64,11 +119,18 @@ impl TaskService {
             answers: Mutex::new(HashMap::new()),
             sequence: AtomicU64::new(1),
             emit: Arc::new(emit),
+            current: Mutex::new(None),
+            queue: Mutex::new(Vec::new()),
         });
         let (sender, receiver) = mpsc::channel();
         let worker = inner.clone();
         std::thread::spawn(move || {
             while let Ok((id, undo)) = receiver.recv() {
+                worker
+                    .queue
+                    .lock()
+                    .unwrap()
+                    .retain(|(queued, _)| *queued != id);
                 let cancel = worker
                     .controls
                     .lock()
@@ -85,6 +147,8 @@ impl TaskService {
                     worker.controls.lock().unwrap().remove(&id);
                     continue;
                 }
+                *worker.current.lock().unwrap() = Some(id);
+                refresh_queue(&worker);
                 let result = if undo { ctx.undo() } else { ctx.run() };
                 if let Err(error) = result {
                     let cancelled = ctx.cancel.check().is_err();
@@ -100,6 +164,8 @@ impl TaskService {
                     .lock()
                     .unwrap()
                     .retain(|(task, _), _| *task != id);
+                *worker.current.lock().unwrap() = None;
+                refresh_queue(&worker);
             }
         });
         Ok(Self { inner, sender })
@@ -158,7 +224,7 @@ impl TaskService {
             request,
             connection,
             status: "queued".into(),
-            progress: "Waiting for the previous task".into(),
+            progress: "Waiting to start".into(),
             result: String::new(),
             error: None,
             approval: None,
@@ -174,10 +240,18 @@ impl TaskService {
             .unwrap()
             .insert(task.id, Cancel::default());
         (self.inner.emit)(task.clone());
+        self.inner.queue.lock().unwrap().push((task.id, false));
         self.sender
             .send((task.id, false))
             .map_err(|_| "Task worker unavailable".to_string())?;
-        Ok(task)
+        refresh_queue(&self.inner);
+        Ok(self
+            .inner
+            .store
+            .lock()
+            .unwrap()
+            .get(task.id)
+            .unwrap_or(task))
     }
     /// Names a conversation; an empty title falls back to its first request.
     pub fn rename(&self, id: i64, title: &str) -> Result<Task, String> {
@@ -205,7 +279,8 @@ impl TaskService {
             id,
             cancel: Cancel::default(),
         };
-        ctx.update(|t| { if matches!(t.status.as_str(),"queued"|"running"|"waiting"|"undoing") { t.status=if t.status=="queued" {"cancelled"}else{"cancelling"}.into(); t.approval=None;t.progress="Stopping. An in-flight request or file operation may need to finish; no further actions will start.".into(); } })?;
+        ctx.update(|t| { if matches!(t.status.as_str(),"queued"|"running"|"waiting"|"undoing") { t.status=if t.status=="queued" {"cancelled"}else{"cancelling"}.into(); t.approval=None;t.progress="Stopping. No further actions will start; the task is finished once its current step has stopped.".into(); } })?;
+        refresh_queue(&self.inner);
         Ok(())
     }
     pub fn answer(&self, id: i64, approval_id: u64, accept: bool) -> Result<(), String> {
@@ -248,6 +323,7 @@ impl TaskService {
             .unwrap()
             .insert(id, Cancel::default());
         (self.inner.emit)(t);
+        self.inner.queue.lock().unwrap().push((id, true));
         self.sender
             .send((id, true))
             .map_err(|_| "Task worker unavailable".into())
@@ -503,8 +579,13 @@ impl Context {
         let mut malformed = 0;
         let mut done = HashSet::new();
         let mut calls = HashSet::new();
-        for step in 0..24 {
-            self.progress(&format!("Thinking · step {} of 24", step + 1))?;
+        let mut last = None;
+        for _ in 0..24 {
+            // Steps are capped as a guard, not expected, so no count is shown.
+            self.progress(&match last {
+                Some(done) => format!("{done} · thinking"),
+                None => "Thinking".into(),
+            })?;
             let tools = open_tools(scope, task.request.allow_web, &done);
             let text = model.act(&messages, &tools, &self.cancel)?;
             let call = match providers::parse_call(&text).and_then(|call| {
@@ -549,6 +630,7 @@ impl Context {
                 validate_citations(result, &self.task()?.sources)?;
                 return self.finish(result);
             }
+            last = Some(summary::tool_label(&call.tool));
             self.progress(summary::tool_label(&call.tool))?;
             // The same call answers the same way, and small models otherwise
             // repeat one until the step limit.
@@ -1385,6 +1467,40 @@ mod tests {
         let answer = ctx.task().unwrap().result;
         apple::shutdown();
         assert!(answer.contains("Re-Console"), "{answer}");
+    }
+    #[test]
+    fn a_queued_task_says_what_it_waits_for_and_does_not_look_started() {
+        let (_db, service) = service();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        let req = TaskRequest {
+            prompt: "sort my downloads".into(),
+            mode: "standard".into(),
+            preset: "sort_type".into(),
+            roots: vec![root.to_string_lossy().into()],
+            ..Default::default()
+        };
+        let first = service.start(req.clone()).unwrap();
+        wait(&service, first.id, "waiting");
+        let second = service.start(req).unwrap();
+        assert_eq!(second.status, "queued");
+        assert_eq!(second.progress, "Waiting for “sort my downloads” to finish");
+        let get = |id| service.inner.store.lock().unwrap().get(id).unwrap();
+        // The task in front is stopping but the worker is still inside it.
+        let mut stopping = get(first.id);
+        stopping.status = "cancelling".into();
+        service.inner.store.lock().unwrap().save(&stopping).unwrap();
+        refresh_queue(&service.inner);
+        assert_eq!(
+            get(second.id).progress,
+            "Waiting for “sort my downloads” to stop"
+        );
+        assert_eq!(get(second.id).status, "queued");
+        service.cancel(second.id).unwrap();
+        service.cancel(first.id).unwrap();
+        wait(&service, first.id, "cancelled");
+        assert_eq!(*service.inner.current.lock().unwrap(), None);
     }
     #[test]
     fn queued_tasks_wait_and_cancelled_approvals_never_apply() {
