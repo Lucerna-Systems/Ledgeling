@@ -1,0 +1,53 @@
+Ledgeling Art and Pack Format License
+
+Copyright (c) 2026 Lucerna Systems.
+
+The code in this repository is covered by LICENSE.txt. This file covers
+Ledgeling's art, which is reserved, and the pet pack format, which is free for
+anyone to use.
+
+
+Part A. Ledgeling art: all rights reserved
+------------------------------------------
+
+"Ledgeling Art" means:
+
+  - the images in packs/*/sprites/ and packs/*/preview.png;
+  - src/assets/logo.svg and the images in src-tauri/icons/;
+  - any image produced by scripts/make_packs.py or any other script in this
+    repository that generates art; and
+  - the characters those images depict, including their names and
+    descriptions.
+
+All rights in the Ledgeling Art are reserved. You may view and use it only
+as part of running Ledgeling: either an Official Build, or a build You made
+under LICENSE.txt. You may not extract, copy, modify, redistribute, sell or
+use the Ledgeling Art, or derivatives of it, in any other product, pack or
+work.
+
+One exception: You may take and share screenshots, video recordings and live
+streams of Ledgeling running, including in monetised videos, reviews and
+streams, and in posts about Ledgeling.
+
+
+Part B. The pack format: public domain (CC0 1.0)
+------------------------------------------------
+
+To make it as easy as possible to create pets for Ledgeling, the Licensor
+dedicates the following to the public domain under Creative Commons CC0 1.0
+Universal (https://creativecommons.org/publicdomain/zero/1.0/):
+
+  - schema/pet-pack-v1.schema.json;
+  - docs/pack-authoring.md; and
+  - the pet.json file of each pack in packs/.
+
+You may copy, modify and use these for any purpose, without asking and without
+credit. This covers the manifest files and the format only; the sprite art and
+preview images those manifests refer to remain Ledgeling Art under Part A.
+
+
+Part C. Packs made by others
+----------------------------
+
+The Licensor claims no rights in pet packs You create. Your art is Yours, and
+You choose its license in Your pack's LICENSE.txt.

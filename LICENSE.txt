@@ -1,21 +1,128 @@
-MIT License
+Ledgeling Source License, version 1.0
 
-Copyright (c) 2026 Ledgeling contributors
+Copyright (c) 2026 Lucerna Systems. All rights not expressly granted below are
+reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+In short (this summary is not part of the license)
+---------------------------------------------------
+
+You can read this source code, build it and run it on your own devices, change
+it for yourself, and send changes back. You cannot give away, sell or publish
+Ledgeling or your own build of it, in whole or in part. Official builds are
+available from the Licensor. The art and the pet pack format have their own
+terms, in ASSETS-LICENSE.txt.
+
+
+1. Definitions
+
+"Licensor" means Lucerna Systems.
+
+"Software" means the source code, build scripts, configuration and
+documentation of Ledgeling published by the Licensor, and any compiled form of
+them, including any build you make yourself and any modified version. It does
+not include the material covered by ASSETS-LICENSE.txt or the third-party
+components described in section 6.
+
+"Official Build" means a compiled copy of the Software distributed by the
+Licensor, directly or through a store or platform the Licensor has authorised.
+
+"You" means the individual or legal entity exercising rights under this
+license.
+
+"Personal Use" means use by You, on devices You own or control, that is not
+distribution to anyone else.
+
+
+2. What you may do
+
+Subject to the conditions of this license, the Licensor grants You a
+worldwide, non-exclusive, non-transferable, royalty-free license to:
+
+  a. read, study and review the source code of the Software;
+
+  b. compile the Software and run the result for Personal Use;
+
+  c. modify the Software, and compile and run the modified version, for
+     Personal Use;
+
+  d. keep a copy (a "fork") of the source code on the code-hosting service
+     where the Licensor publishes it, only for the purpose of preparing and
+     submitting Contributions as described in section 5; and
+
+  e. install and use an Official Build, subject also to the terms of the store
+     or platform You obtained it from.
+
+
+3. What you may not do
+
+Except as expressly allowed in section 2, You may not:
+
+  a. distribute, publish, sublicense, sell, rent, lease or lend the Software,
+     in source or compiled form, modified or unmodified, in whole or in part;
+
+  b. make the Software or a build of it available for download, or publish it
+     to any app store, game store or package registry;
+
+  c. incorporate the Software, or any part of it, into another product or
+     service that is distributed or made available to others;
+
+  d. remove or alter any copyright, license or trademark notice in the
+     Software; or
+
+  e. bypass or disable any mechanism in an Official Build that controls
+     access to paid features or content.
+
+
+4. Trademarks
+
+This license grants no rights to the name "Ledgeling", the Ledgeling logo, or
+any other name, logo or trademark of the Licensor, except as needed to
+describe the origin of the Software truthfully.
+
+
+5. Contributions
+
+Contributions You submit to the Licensor, such as pull requests, patches and
+suggested code, are accepted only under the Contributor License Agreement in
+CLA.md. Submitting a Contribution does not give You any rights beyond those in
+this license.
+
+
+6. Third-party components
+
+The Software depends on and may bundle components owned by others, each under
+its own license. Those licenses govern those components, and nothing in this
+license limits any right they grant You.
+
+
+7. Termination
+
+Your rights under this license end automatically if You break any of its
+terms. If it is the first time, and You stop the breach within 30 days of
+becoming aware of it, Your rights are reinstated. When Your rights end, You
+must stop using and delete every copy of the Software You made under this
+license, other than an Official Build You are entitled to use under its store
+or platform's terms.
+
+
+8. No warranty
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+
+9. Limitation of liability
+
+TO THE EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OF OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+10. Later versions
+
+The Licensor may publish later versions of the Software under different terms.
+A copy of the Software You received under this license stays under this
+license.

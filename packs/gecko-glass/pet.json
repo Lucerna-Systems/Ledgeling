@@ -5,7 +5,7 @@
   "author": "Ledgeling",
   "version": "1.0.0",
   "description": "Lives only on the vertical sides of windows, flat against the glass. Two sprite strips and twenty lines of settings.",
-  "license": "CC-BY-4.0",
+  "license": "LicenseRef-Ledgeling-Art",
   "tags": ["reptile", "climber", "quiet"],
   "sprite": {
     "width": 48,
