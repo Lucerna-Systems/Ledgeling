@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     #[default]
@@ -33,13 +33,25 @@ impl Default for Connection {
         }
     }
 }
-/// A record of the user accepting Ledgeling's terms for the on-device provider.
-/// Both fields are written by the backend, never taken from the frontend, so a
-/// stored acceptance always reflects text this build actually showed.
+/// The pre-providers record of accepting the on-device terms. Read only so
+/// `setup::normalize` can carry it into the Apple provider's setup.
 #[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AppleTerms {
     pub accepted_version: u32,
+    pub accepted_at: i64,
+}
+/// A provider the user added on the AI providers page. The terms fields are
+/// written by the backend, never taken from the frontend, so a stored
+/// acceptance always reflects text this build actually showed.
+#[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProviderSetup {
+    /// The model a pet runs when this provider is picked without its own.
+    pub model: String,
+    pub endpoint: String,
+    pub executable: String,
+    pub terms_version: u32,
     pub accepted_at: i64,
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -49,6 +61,9 @@ pub struct Connections {
     pub search_enabled: bool,
     /// Per-companion overrides; pets without an entry use `active`.
     pub per_pet: BTreeMap<u64, Connection>,
+    /// Only providers in here can be picked or run.
+    pub providers: BTreeMap<ProviderKind, ProviderSetup>,
+    #[serde(skip_serializing)]
     pub apple_terms: AppleTerms,
 }
 /// The connection a task for `pet_id` actually runs on: the pet's override
@@ -88,6 +103,8 @@ pub struct TaskRequest {
     pub preset: String,
     pub mode: String,
     pub parent_id: Option<i64>,
+    /// Per-request cloud consent from before providers were set up once;
+    /// adding a provider is now that consent, so this is no longer checked.
     pub allow_cloud: bool,
     pub allow_web: bool,
     /// Facts the window attaches for the model, such as what a coding

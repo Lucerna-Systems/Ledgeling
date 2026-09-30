@@ -1,7 +1,7 @@
 use super::{
     apple,
     providers::{self, ModelProvider},
-    runtimes,
+    runtimes, setup,
     types::*,
     Cancel, TaskService,
 };
@@ -91,38 +91,10 @@ pub async fn task_connections(
 pub async fn task_save_connections(
     window: WebviewWindow,
     state: State<'_, TaskService>,
-    mut config: Connections,
-) -> Result<(), String> {
+    config: Connections,
+) -> Result<Connections, String> {
     main_only(&window)?;
-    // Acceptance is recorded here rather than trusted from the frontend: the
-    // version is clamped to what this build can show, and the timestamp is
-    // stamped on the transition so it records a real moment of consent.
-    let stored = state.config();
-    config.apple_terms.accepted_version = config
-        .apple_terms
-        .accepted_version
-        .min(apple::TERMS_VERSION);
-    config.apple_terms.accepted_at =
-        if config.apple_terms.accepted_version > stored.apple_terms.accepted_version {
-            chrono::Utc::now().timestamp()
-        } else {
-            stored.apple_terms.accepted_at
-        };
-    // `fm` accepts only one model, so a model id left over from a previously
-    // chosen provider would otherwise be stored and shown as if it were in use.
-    for connection in std::iter::once(&mut config.active).chain(config.per_pet.values_mut()) {
-        if connection.kind == ProviderKind::Apple {
-            connection.model = apple::MODEL.into();
-        }
-    }
-    let uses_apple = std::iter::once(&config.active)
-        .chain(config.per_pet.values())
-        .any(|c| c.kind == ProviderKind::Apple);
-    if uses_apple && !apple::terms_accepted(&config) {
-        return Err(
-            "Accept the Apple Intelligence terms before choosing the on-device model.".into(),
-        );
-    }
+    let config = setup::accept_choices(&state.config(), config)?;
     // Per-pet overrides must clear the same endpoint bar as the default,
     // or they would become a bypass for the HTTPS/localhost rules.
     for connection in std::iter::once(&config.active).chain(config.per_pet.values()) {
@@ -136,7 +108,43 @@ pub async fn task_save_connections(
             providers::base(connection)?;
         }
     }
-    state.set_config(&config)
+    state.set_config(&config)?;
+    Ok(config)
+}
+/// Adds a provider, or saves changes to one already added. `accept` is the
+/// user ticking the terms shown by `task_provider_terms`; the version and
+/// time are stamped here, never taken from the frontend.
+#[tauri::command]
+pub async fn task_add_provider(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    kind: ProviderKind,
+    setup: ProviderSetup,
+    accept: bool,
+) -> Result<Connections, String> {
+    main_only(&window)?;
+    let mut config = state.config();
+    setup::add(
+        &mut config,
+        kind,
+        setup,
+        accept,
+        chrono::Utc::now().timestamp(),
+    )?;
+    state.set_config(&config)?;
+    Ok(config)
+}
+#[tauri::command]
+pub async fn task_remove_provider(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    kind: ProviderKind,
+) -> Result<Connections, String> {
+    main_only(&window)?;
+    let mut config = state.config();
+    setup::remove(&mut config, &kind);
+    state.set_config(&config)?;
+    Ok(config)
 }
 #[tauri::command]
 pub async fn task_secret(window: WebviewWindow, name: String, value: String) -> Result<(), String> {
@@ -174,9 +182,10 @@ pub async fn task_test_connection(
     config: Connection,
 ) -> Result<Capabilities, String> {
     main_only(&window)?;
-    // Testing runs a real completion, so it is gated exactly like a task.
-    if config.kind == ProviderKind::Apple && !apple::terms_accepted(&state.config()) {
-        return Err("Accept the Apple Intelligence terms before testing this connection.".into());
+    // Testing runs a real completion, so the on-device model is gated exactly
+    // like a task. Other probes send only a fixed synthetic prompt.
+    if config.kind == ProviderKind::Apple && !setup::ready(&state.config(), &config.kind) {
+        return Err(setup::not_ready(&config.kind));
     }
     tauri::async_runtime::spawn_blocking(move || {
         if matches!(config.kind, ProviderKind::Codex | ProviderKind::Claude) {
@@ -199,21 +208,31 @@ pub async fn task_account(
         .await
         .map_err(|_| "Account operation failed".to_string())?
 }
-/// Ledgeling's own terms for the on-device provider, plus whether they have been
-/// accepted, so the panel never has to hardcode the text or the version.
+/// Every provider's terms and their version, so the providers page never has
+/// to hardcode the text or the version the backend checks.
 #[tauri::command]
-pub async fn task_apple_terms(
-    window: WebviewWindow,
-    state: State<'_, TaskService>,
-) -> Result<Value, String> {
+pub async fn task_provider_terms(window: WebviewWindow) -> Result<Value, String> {
     main_only(&window)?;
-    let config = state.config();
-    Ok(serde_json::json!({
-        "version": apple::TERMS_VERSION,
-        "text": apple::TERMS,
-        "accepted": apple::terms_accepted(&config),
-        "acceptedAt": config.apple_terms.accepted_at,
-    }))
+    let kinds = [
+        ProviderKind::Apple,
+        ProviderKind::Codex,
+        ProviderKind::Claude,
+        ProviderKind::Ollama,
+        ProviderKind::Openai,
+        ProviderKind::Anthropic,
+        ProviderKind::Compatible,
+    ];
+    let mut terms = serde_json::Map::new();
+    for kind in kinds {
+        if let Some((version, text)) = setup::terms(&kind) {
+            let key = serde_json::to_value(&kind).map_err(|e| e.to_string())?;
+            terms.insert(
+                key.as_str().unwrap_or_default().into(),
+                serde_json::json!({ "version": version, "text": text }),
+            );
+        }
+    }
+    Ok(Value::Object(terms))
 }
 #[tauri::command]
 pub async fn task_apple_open_settings(window: WebviewWindow) -> Result<(), String> {

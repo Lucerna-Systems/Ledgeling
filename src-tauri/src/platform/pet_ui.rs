@@ -419,7 +419,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
         "models" => {
             let connection = effective_connection(&service.config(), Some(pet));
             if matches!(connection.kind, ProviderKind::None) {
-                return Err("Connect a model in Connections first.".into());
+                return Err("Set up an AI provider in Ledgeling first.".into());
             }
             let models = if matches!(connection.kind, ProviderKind::Codex) {
                 crate::tasks::runtimes::capabilities(&connection).map(|c| c.models)
@@ -433,7 +433,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             let mut config = service.config();
             let mut connection = effective_connection(&config, Some(pet));
             if matches!(connection.kind, ProviderKind::None) {
-                return Err("Connect a model in Connections first.".into());
+                return Err("Set up an AI provider in Ledgeling first.".into());
             }
             // Overrides must clear the same endpoint bar as the default.
             if matches!(
@@ -469,7 +469,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
                     let _ = main.unminimize();
                     let _ = main.show();
                     let _ = main.set_focus();
-                    let _ = handle.emit_to("main", "assistant:open", Some(pet));
+                    let _ = handle.emit_to("main", "providers:open", ());
                 }
             })
             .map_err(|e| e.to_string())?;
@@ -580,18 +580,20 @@ pub fn compose_request(
     let connected = !matches!(kind, ProviderKind::None);
     if mode == "ask" {
         if !connected {
-            return Err("Connect a model in Connections to ask questions.".into());
+            return Err("Set up an AI provider in Ledgeling to ask questions.".into());
         }
         if text.trim().is_empty() {
             return Err("Type a question first.".into());
         }
         // Which loop an ask runs is a property of the connection, not a
         // choice: an agent runtime has no plain-completion call, and a model
-        // connection has no agent loop. The bubble asks neither.
+        // connection has no agent loop. The bubble asks neither. A question
+        // about "this folder" means the pet's folder, so a bound one is shared;
+        // the Documents fallback never is, since nobody chose it.
         return Ok(TaskRequest {
             prompt: text.into(),
             pet_id: Some(pet),
-            roots: vec![],
+            roots: folder.into_iter().collect(),
             attachments: vec![],
             preset: String::new(),
             mode: if agent_runtime {
@@ -601,13 +603,14 @@ pub fn compose_request(
             }
             .into(),
             parent_id: parent,
-            // Only the question itself is sent; asking is the consent.
             allow_cloud: true,
             allow_web,
             context: String::new(),
         });
     }
-    if connected {
+    // The on-device model answers in one turn and cannot act on files, so
+    // Actions with it run the built-in actions as they would with no AI.
+    if connected && kind != ProviderKind::Apple {
         let instruction = action_texts(preset).map(|(_, i)| i);
         let prompt = match (instruction, text.trim()) {
             (Some(i), "") => i.into(),
@@ -615,8 +618,8 @@ pub fn compose_request(
             (None, "") => return Err("Describe what to do, or pick a built-in action.".into()),
             (None, t) => t.into(),
         };
-        // The agent start approval is the consent for cloud use; a model runs
-        // only with the bubble's explicit cloud checkbox.
+        // Cloud consent is given once, when the provider is added; this only
+        // records what an older bubble still sends.
         let cloud = agent_runtime || allow_cloud;
         return Ok(TaskRequest {
             prompt,
@@ -641,8 +644,13 @@ pub fn compose_request(
     }
     // Without a connection the built-in actions run deterministically and
     // offline, and need a folder the user chose.
-    let (title, _) =
-        action_texts(preset).ok_or("Pick a built-in action, or connect a model in Connections.")?;
+    if kind == ProviderKind::Apple && action_texts(preset).is_none() {
+        return Err(
+            "Apple Intelligence can't change files. Pick a built-in action, or use Ask.".into(),
+        );
+    }
+    let (title, _) = action_texts(preset)
+        .ok_or("Pick a built-in action, or set up an AI provider in Ledgeling.")?;
     let folder = folder.ok_or("Choose a folder for built-in actions.")?;
     Ok(TaskRequest {
         prompt: if text.trim().is_empty() {
@@ -745,8 +753,7 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         (name, anchor(&state.engine, pet_id))
     };
     // The bubble states what a mode still needs before it is picked, so it
-    // has to know which runtime is connected and whether it is a cloud API,
-    // whose Actions need explicit consent. Per-pet overrides count: the
+    // has to know which runtime is connected. Per-pet overrides count: the
     // bubble must describe the connection this pet would run on.
     let config = app.state::<TaskService>().config();
     let connection = effective_connection(&config, Some(pet_id));
@@ -755,12 +762,9 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         ProviderKind::Ollama => "ollama",
         ProviderKind::Codex => "codex",
         ProviderKind::Claude => "claude",
+        ProviderKind::Apple => "apple",
         _ => "model",
     };
-    let remote = matches!(
-        connection.kind,
-        ProviderKind::Openai | ProviderKind::Anthropic | ProviderKind::Compatible
-    );
     // Coding mode is offered only to people who turned on Developer tools.
     let developer = app
         .state::<Shared>()
@@ -779,7 +783,6 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
             "petId": pet_id,
             "name": name,
             "runtime": runtime,
-            "remote": remote,
             "model": connection.model,
             "folder": folder(pet_id).unwrap_or_default(),
             "developer": developer,
@@ -873,16 +876,51 @@ mod tests {
     }
 
     #[test]
-    fn ask_uses_the_connection_loop_and_no_scope() {
+    fn ask_uses_the_connection_loop_and_only_a_folder_the_pet_was_given() {
         let r = req(ProviderKind::Ollama, "ask", "", "why is the sky blue?").unwrap();
         assert_eq!(r.mode, "standard");
         assert_eq!(r.preset, "");
-        assert!(r.roots.is_empty());
+        assert!(r.roots.is_empty(), "the Documents fallback is never shared");
         assert!(r.allow_cloud);
         assert_eq!(r.prompt, "why is the sky blue?");
         let r = req(ProviderKind::Claude, "ask", "", "summarize this").unwrap();
         assert_eq!(r.mode, "advanced");
-        assert!(r.roots.is_empty());
+        let bound = compose_request(
+            ProviderKind::Apple,
+            1,
+            "ask",
+            "",
+            "What is in this folder?",
+            Some("/tmp/bound".into()),
+            false,
+            false,
+            None,
+            fixed_root,
+        )
+        .unwrap();
+        assert_eq!(bound.roots, vec!["/tmp/bound".to_string()]);
+    }
+
+    #[test]
+    fn actions_with_apple_run_offline_and_never_hand_it_files_to_change() {
+        let sort = compose_request(
+            ProviderKind::Apple,
+            1,
+            "actions",
+            "sort_date",
+            "",
+            Some("/tmp/bound".into()),
+            false,
+            false,
+            None,
+            fixed_root,
+        )
+        .unwrap();
+        assert_eq!(sort.preset, "sort_date", "a built-in action, not the model");
+        let custom = req(ProviderKind::Apple, "actions", "", "tidy my folder")
+            .err()
+            .unwrap();
+        assert!(custom.contains("can't change files"), "{custom}");
     }
 
     #[test]

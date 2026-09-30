@@ -198,20 +198,8 @@ pub fn hit_test(pet: &Pet, cursor: Point, scale: f64) -> bool {
     };
     let sprite = pet.manifest().sprite;
     let texel = (sprite.scale * scale).max(0.01);
-    // Position within the drawn sprite, in texture pixels.
-    let mut x = (cursor.x - rect.x) / texel;
-    let mut y = (cursor.y - rect.y) / texel;
-    let (w, h) = (mask.width as f64, mask.height as f64);
-    let rotation = ((pet.rotation.round() as i64 % 360) + 360) % 360;
-    (x, y) = match rotation {
-        90 => (y, h - x),
-        180 => (w - x, h - y),
-        270 => (w - y, x),
-        _ => (x, y),
-    };
-    if pet.flip_x {
-        x = w - x;
-    }
+    let local = pet.sprite_local(cursor, scale);
+    let (x, y) = (local.x / texel, local.y / texel);
     if x < 0. || y < 0. {
         return false;
     }

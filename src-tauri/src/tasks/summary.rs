@@ -212,6 +212,7 @@ fn unrecognised(title: &str, details: &Value) -> ApprovalSummary {
 /// internal vocabulary and its models'; progress lines are read by people.
 pub fn tool_label(tool: &str) -> &'static str {
     match tool {
+        "list_folder" => "Looking in a folder",
         "list_files" => "Looking through your files",
         "read_file" => "Reading a file",
         "find_files" => "Searching your files",

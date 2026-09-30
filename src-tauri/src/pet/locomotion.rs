@@ -30,8 +30,10 @@ pub fn sprite_rotation(manifest: &Manifest, surface: &Surface) -> f64 {
     match surface.kind {
         SurfaceKind::WindowTop | SurfaceKind::TaskbarTop | SurfaceKind::MonitorBottom => 0.,
         SurfaceKind::WindowBottom | SurfaceKind::MonitorTop => 180.,
-        SurfaceKind::WindowLeft | SurfaceKind::MonitorRight => 90.,
-        SurfaceKind::WindowRight | SurfaceKind::MonitorLeft => -90.,
+        // CSS rotation is clockwise, so the sprite's head turns to face the
+        // surface normal: left for a window's left side, right for its right.
+        SurfaceKind::WindowLeft | SurfaceKind::MonitorRight => -90.,
+        SurfaceKind::WindowRight | SurfaceKind::MonitorLeft => 90.,
     }
 }
 

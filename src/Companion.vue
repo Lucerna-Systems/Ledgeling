@@ -3,10 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import AssistantPanel from './assistant/AssistantPanel.vue'
 import HistoryPanel from './assistant/HistoryPanel.vue'
+import ProvidersPanel from './assistant/ProvidersPanel.vue'
 import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
 import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
 import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
@@ -17,9 +18,10 @@ import PetStudio from './studio/PetStudio.vue'
 import { syncAppIcon } from './appIcon'
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
 
-type Page = 'pets' | 'assistant' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
+type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
 const nav = [
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
+  { page: 'providers', label: 'AI providers', icon: Bot },
   { page: 'pets', label: 'Pets', icon: PawPrint },
   { page: 'history', label: 'History', icon: History },
   { page: 'settings', label: 'Settings', icon: Settings },
@@ -53,6 +55,7 @@ async function initAssistant() {
   for (const [name, handler] of [
     ['assistant:open', (value: unknown) => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' }],
     ['assistant:drop', (value: unknown) => { droppedFiles.value = value as string[]; page.value = 'assistant' }],
+    ['providers:open', () => { page.value = 'providers' }],
   ] as const) {
     const off = await listen(name, event => handler(event.payload))
     if (assistantDisposed) off(); else assistantOff.push(off)
@@ -137,8 +140,9 @@ onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(
       </div>
       <button v-if="subpages[page]" class="back-link" @click="page = back"><ArrowLeft :size="15" /> {{ titles[back] ?? 'Back' }}</button>
 
-      <div v-if="assistantVisited" v-show="page === 'assistant'" class="assistant-host"><AssistantPanel /></div>
-      <HistoryPanel v-if="page === 'history'" @followup="followup" />
+      <div v-if="assistantVisited" v-show="page === 'assistant'" class="assistant-host"><AssistantPanel @providers="page = 'providers'" /></div>
+      <ProvidersPanel v-if="page === 'providers'" />
+      <HistoryPanel v-else-if="page === 'history'" @followup="followup" />
       <PacksPanel v-else-if="page === 'pets'" @go="go" />
       <SettingsPanel v-else-if="page === 'settings'" @go="go" />
       <DesktopPanel v-else-if="page === 'desktop'" />

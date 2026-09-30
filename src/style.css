@@ -223,6 +223,16 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .app-shell .chat-rename { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); min-height: 22px; width: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); opacity: 0; }
 .chat-row:hover .chat-rename, .app-shell .chat-rename:focus-visible { opacity: 1; }
 .app-shell .chat-rename:not(:disabled):hover { background: var(--soft); color: var(--ink); }
+/* Chats hang under the pet they were with; the guide line runs down from its face. */
+.pet-chats { min-width: 0; }
+.pet-chats-head { position: relative; }
+.pet-chats-head:hover .chat-rename { opacity: 1; }
+.app-shell .pet-chats-toggle { font-weight: 600; color: var(--ink); }
+.pet-chats-count { font-size: 11px; font-weight: 500; color: var(--muted); }
+.pet-chats-chevron { flex-shrink: 0; color: var(--muted); transition: transform 160ms; }
+.pet-chats-toggle[aria-expanded="false"] .pet-chats-chevron { transform: rotate(-90deg); }
+.pet-chats-list { list-style: none; margin: 1px 0 4px 18px; padding: 0 0 0 9px; border-left: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
+.app-shell .pet-chats-list .chat-item { min-height: 28px; padding-left: 8px; font-size: 12px; }
 .chat-item.editing { padding-right: 7px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .app-shell .chat-item.editing input { flex: 1; min-width: 0; min-height: 22px; padding: 0; border: 0; background: transparent; font-size: 12.5px; outline: none; }
 .sidebar-bottom { margin-top: auto; padding: 24px 8px 0; display: grid; gap: 8px; font-size: 12px; color: var(--muted); }

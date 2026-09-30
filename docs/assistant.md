@@ -17,7 +17,7 @@ pets never perch on it. Clicking anywhere else, the close button, or Escape
 closes it. Cmd/Ctrl+Enter runs the request.
 
 The dashboard starts hidden; open it explicitly from the tray menu, Cmd+1 while
-Ledgeling is active, or the bubble's Connections button. On macOS, pet overlays and
+Ledgeling is active, or the bubble's AI providers button. On macOS, pet overlays and
 the bubble are auxiliary panels across Spaces; neither can become the
 application's main window.
 
@@ -46,7 +46,8 @@ Hold Shift while dragging to move a pet normally without a handoff.
 The **Actions / Ask** toggle determines execution:
 
 - **Ask:** a question for the connected model, optionally with web research.
-  Nothing on disk is read. The loop follows from the connection — a local or
+  When the pet has a folder, the question comes with it, so "what is in this
+  folder?" means the pet's folder; with none, nothing on disk is read. The loop follows from the connection — a local or
   API model runs Standard tools; Codex/Claude runtimes run Advanced mode with
   a separate start approval.
 - **Actions:** without a connection the adjacent menu chooses the built-in
@@ -56,9 +57,9 @@ The **Actions / Ask** toggle determines execution:
   connection, local or cloud, the model runs the request itself with file
   tools in the chosen folder — or, when none was chosen, in the Documents/Ledgeling
   folder Ledgeling creates, where it may also add folders. "My instructions" in
-  the menu sends free-form instructions. A cloud API model requires the
-  content checkbox before a folder is read; an agent's start approval is its
-  consent.
+  the menu sends free-form instructions. Consent to send content to a cloud
+  provider is given once, when it is added on the AI providers page; an
+  agent's start approval still asks before each run.
 
 The bubble displays progress, task results and approvals. Approve or reject
 there; completed file changes offer Undo. Further requests include the previous
@@ -113,7 +114,23 @@ started with). The web panel's connection state refreshes through the
 The dashboard's **Your assistant** panel offers attachments, multiple folders,
 full history, source links, connection settings, and the operation journal.
 
-## Connections
+## AI providers
+
+Every provider is set up once on the **AI providers** page in the sidebar:
+its address or executable, its default model, its API key, and its terms.
+Adding a provider is where those terms are accepted — Apple's on-device terms,
+and for cloud APIs and agents, consent to content leaving this computer. The
+backend stamps the terms version and time; a stored acceptance below the
+version this build ships stops counting, so the provider asks again. Removing a
+provider clears every pet choice that pointed at it, and deletes its saved key.
+
+Everywhere else — the Assistant's provider picker, per-pet choices, the pet
+bubble — only switches between added providers. A pick is saved before it is
+shown, so what the picker says is always what a task runs on. The first
+provider added becomes the default when none is picked. Configurations from
+before this page carry over: providers already in use become added ones, and
+only acceptances actually recorded carry over, so a cloud provider that was
+consented to per request asks for its terms once.
 
 Run `npm install` and `npm ci --prefix sidecar`, then `npm run prepare:sidecar`.
 The packaging hook copies the build machine's Node executable into the app with
@@ -152,38 +169,59 @@ bodies or credentials. Model calls are limited to 90 seconds and 4,096 output
 tokens; Standard tasks stop at 24 steps / 350 KB accumulated context. There is
 no silent provider fallback. Tests/probes can incur provider usage.
 
-The Connections panel is split into **Installed apps** (Codex, Claude Code in
-development builds, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
-endpoint). Installed apps are detected automatically — PATH probes for Codex and
-Ollama, a short reachability check against the Ollama endpoint, a packaged-files
-check for the Claude sidecar, and credential-store look-ups for saved API keys —
-so each select shows only what this machine can actually run. A saved provider
-stays selectable even when detection misses it (a stopped Ollama, a Codex at a
-custom path), so detection can never lock a configured connection away.
+The page lists apps this machine could run — PATH probes for Codex and Ollama,
+a short reachability check against the Ollama endpoint, a packaged-files check
+for the Claude sidecar, Apple silicon for Apple Intelligence — and credential-store
+look-ups for saved API keys. An added provider stays listed even when detection
+misses it (a stopped Ollama, a Codex at a custom path).
 
-Model lists load automatically when a provider is selected, through the
-provider's free listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex
-`model/list`). Listing does not run a completion and does not incur provider
-usage; **Test connection** is the action that spends tokens, verifying structured
-task responses. The model field also accepts a typed ID that the listing missed,
-for compatible endpoints that do not implement `/models` or use custom names.
+**Apple Intelligence** is basic, and labelled so on the providers page and in
+the composer. Measured on the real model, exploring a folder with tools answered
+1 of 20 folder questions, while one look at a gathered overview answered 15 of
+16. So it does not run the tool loop: Ledgeling gathers what the request can see
+— the shared folder as relative paths, shallow levels first and deeper ones
+while about 4,000 characters remain (app bundles count as one entry), attached
+files' text, web results when allowed, the last two turns — and the model
+answers once, in plain text, within its 4,000-token context. It cannot change
+files. Actions with it run the built-in actions as they would with no AI; free
+instructions there are refused with a pointer to Ask. `fm serve` offers no
+native tool calling (it ignores `tools`, and forcing one fails).
+
+Other providers run the tool loop. Its folder tool shows one folder's own
+entries, so large folders can be explored; the whole-tree listing refuses more
+than 2,000 files and points to it. A call identical to one already made is
+answered with "already done" instead of running again, and a tool without
+arguments is offered only until it has been called.
+
+For every provider, a request with no folder or attachment tells the model it
+cannot see the disk, and to say a folder is needed only when the request is
+about the user's files. A final answer that only repeats the request is refused
+and asked again, the same as an unreadable action. Asking from the pet bubble
+shares the pet's folder when it has one.
+
+Model lists load when a provider is opened, through the provider's free
+listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex `model/list`).
+Listing does not run a completion and does not incur provider usage; **Test**
+is the action that spends tokens, verifying structured task responses. The
+model field also accepts a typed ID that the listing missed, for compatible
+endpoints that do not implement `/models` or use custom names.
 
 ### Per-companion models
 
 One connection is the default for every pet, and any pet can carry its own
 override. A task runs on the pet's override when one is set, otherwise on the
-default; mode selection and cloud-consent rules follow that effective
-connection. Overrides are stored with the connection metadata in the assistant
-database and persist independently of the default — changing the default later
-does not re-point pets that have their own model. The assistant panel shows the
-chosen companion's effective connection in its badge and request summary, and
-Companion models in Connections lists every pet with its effective connection,
-where an override can be set or cleared. Overrides for pets that are removed from
-the desktop remain stored but are not shown anywhere.
+default; mode selection follows that effective connection. Overrides are
+stored with the connection metadata in the assistant database and persist
+independently of the default — changing the default later does not re-point
+pets that have their own provider. In the Assistant, pick a pet in the
+carousel and choose its provider under it; "Default" makes it follow the
+default again. A pet uses its provider's default model unless one was picked
+for it in the pet bubble. Overrides for pets that are removed from the desktop
+remain stored but are not shown anywhere.
 
 ## Execution and recovery
 
-Standard tools list/read/find selected files, detect byte-identical duplicates,
+Standard tools look inside one folder at a time, list/read/find selected files, detect byte-identical duplicates,
 propose moves/new files, search, fetch public pages, or finish with a text answer.
 Text, Markdown, CSV and text PDFs are supported; scanned PDFs/OCR are not.
 Limits are 2,000 files, 20 directory levels, 10 MB document input, 120 KB extracted
