@@ -50,6 +50,14 @@ const KNOWN: &[Known] = &[
         scripted: true,
     },
     Known {
+        id: "antigravity",
+        name: "Google Antigravity CLI",
+        program: "antigravity",
+        purpose: "Google's AI coding agent, used from the Terminal tab when already installed",
+        homepage: "https://antigravity.google/",
+        scripted: false,
+    },
+    Known {
         id: "gh",
         name: "GitHub CLI",
         program: "gh",
@@ -104,4 +112,18 @@ pub fn detect(scripts: Option<PathBuf>) -> Vec<Tool> {
             homepage: known.homepage,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn antigravity_is_detect_only() {
+        let known = KNOWN.iter().find(|k| k.id == "antigravity").unwrap();
+        assert_eq!(known.program, "antigravity");
+        assert!(!known.scripted, "Antigravity is never installed by the app");
+        let tools = detect(Some(PathBuf::from("/nonexistent")));
+        assert!(tools.iter().find(|t| t.id == "antigravity").unwrap().installer.is_none());
+    }
 }
