@@ -44,6 +44,26 @@ describe('the pet bubble', () => {
     return wrapper
   }
 
+  it('opens as the tour on a new install and reports when it is finished', async () => {
+    const wrapper = await opened({ tour: true })
+    expect(wrapper.text()).toContain('Hi, I live on your windows')
+    expect(wrapper.text()).not.toContain('Run action')
+    await button(wrapper, 'Next')!.trigger('click')
+    await button(wrapper, 'Next')!.trigger('click')
+    expect(wrapper.text()).toContain('Hand me a folder')
+    expect(sent().some(e => e.type === 'tourDone')).toBe(false)
+    await button(wrapper, 'Done')!.trigger('click')
+    expect(sent().filter(e => e.type === 'tourDone')).toEqual([{ type: 'tourDone', petId: 3 }])
+    expect(wrapper.text()).toContain('Ask Budgie')
+  })
+
+  it('lets the tour be skipped', async () => {
+    const wrapper = await opened({ tour: true })
+    await button(wrapper, 'Skip')!.trigger('click')
+    expect(sent().some(e => e.type === 'tourDone')).toBe(true)
+    expect(wrapper.text()).toContain('Ask Budgie')
+  })
+
   it('asks for the opening once it can listen, and names the pet', async () => {
     const wrapper = await opened()
     expect(sent()[0]).toEqual({ type: 'ready' })

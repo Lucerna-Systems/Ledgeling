@@ -7,7 +7,7 @@ import MarkdownResult from '../assistant/MarkdownResult.vue'
 import Dropdown from '../components/Dropdown.vue'
 import { applyCachedTheme } from '../theme'
 import {
-  ACTIONS, NOTCH, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
+  ACTIONS, NOTCH, TOUR, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
   type BubbleShow, type BubbleUpdate, type Draft, type TaskView,
 } from './logic'
 
@@ -38,6 +38,22 @@ let disposed = false
 const mac = /Mac/i.test(navigator.platform || navigator.userAgent)
 /** Window margin around the drawn bubble; matches BUBBLE_MARGIN in pet_ui.rs. */
 const MARGIN = 12
+
+/** Which tour card is showing, or null once the tour is over (or was never due). */
+const step = ref<number | null>(null)
+const tour = computed(() => step.value === null ? null : TOUR[step.value] ?? null)
+
+function tourNext() {
+  if (step.value === null || !show.value) return
+  if (step.value < TOUR.length - 1) { step.value++; return }
+  tourEnd()
+}
+
+function tourEnd() {
+  if (!show.value) return
+  step.value = null
+  void call({ type: 'tourDone', petId: show.value.petId })
+}
 
 const ask = computed(() => draft.mode === 'ask')
 const isConnected = computed(() => !!show.value && connected(show.value.runtime))
@@ -72,6 +88,8 @@ async function open(payload: BubbleShow) {
     note.value = ''
   }
   show.value = payload
+  if (payload.tour && step.value === null) step.value = 0
+  else if (!payload.tour) step.value = null
   place(payload)
   // A fresh open never starts mid-pick, whatever the last pet left behind.
   models.state = 'link'
@@ -198,7 +216,7 @@ function report() {
 
 // Rows appearing and disappearing change the height before the observer has
 // a chance to fire in a hidden window.
-watch([() => draft.mode, hint, task, note, () => models.state], () => { void nextTick(report) })
+watch([step, () => draft.mode, hint, task, note, () => models.state], () => { void nextTick(report) })
 
 async function subscribe<T>(event: string, callback: (value: T) => void) {
   const stop = await listen<T>(event, e => callback(e.payload))
@@ -240,6 +258,18 @@ onUnmounted(() => {
     >
       <svg class="bubble-shape" :viewBox="`0 0 ${size.width} ${size.height}`" aria-hidden="true"><path :d="path" /></svg>
 
+      <template v-if="tour">
+        <header class="bubble-head">
+          <h1>{{ tour.title }}</h1>
+          <button type="button" class="icon-button" aria-label="Skip the tour" @click="tourEnd"><X :size="15" /></button>
+        </header>
+        <p class="tour-text" role="status">{{ tour.text }}</p>
+        <div class="actions">
+          <button type="button" class="secondary" @click="tourEnd">Skip</button>
+          <button type="button" class="primary" @click="tourNext">{{ step === TOUR.length - 1 ? 'Done' : 'Next' }}</button>
+        </div>
+      </template>
+      <template v-else>
       <header class="bubble-head">
         <h1>Ask {{ show.name }}</h1>
         <button type="button" class="icon-button" aria-label="Close" @click="dismiss"><X :size="15" /></button>
@@ -318,6 +348,7 @@ onUnmounted(() => {
         <button v-if="task.undoable" type="button" class="secondary" @click="control('undo')">Undo</button>
         <button v-if="!task.done" type="button" class="secondary" :disabled="task.status === 'cancelling'" @click="control('cancel')">Cancel task</button>
       </div>
+      </template>
     </section>
   </div>
 </template>
@@ -359,6 +390,7 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .bubble .dropdown-button { height: 28px; border-radius: 14px; font-size: 12px; }
 .bubble .dropdown-list { max-height: 164px; }
 .bubble .dropdown-list li { padding: 5px 10px; font-size: 12px; }
+.tour-text { margin: 0; }
 .hint { margin: -2px 0 0; font-size: 11.5px; color: var(--status-waiting-ink); }
 .prompt {
   display: block; width: 100%; height: 84px; resize: none; padding: 10px 12px; border-radius: 14px; font: inherit; line-height: 1.5;
