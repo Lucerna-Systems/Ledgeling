@@ -5,7 +5,18 @@ use std::{io::Read, path::PathBuf, time::Duration};
 
 pub trait ModelProvider {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String>;
+    /// One task action, held to `tools` by providers that can constrain their
+    /// output; the rest are only told about them in the system prompt.
+    fn act(&self, messages: &[Message], tools: &[&str], cancel: &Cancel) -> Result<String, String> {
+        let _ = tools;
+        self.complete(messages, cancel)
+    }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String>;
+    /// Whether the model answers in one turn from context Ledgeling gathers,
+    /// instead of exploring with tools.
+    fn single_turn(&self) -> bool {
+        false
+    }
 }
 pub fn secret_name(kind: &ProviderKind) -> &'static str {
     match kind {
@@ -56,7 +67,7 @@ pub fn set_secret(name: &str, value: &str) -> Result<(), String> {
 pub fn secret(name: &str) -> Result<String, String> {
     keyring::Entry::new(SECRET_SERVICE, name)
         .and_then(|e| e.get_password())
-        .map_err(|_| format!("Add the {name} API key in Connections."))
+        .map_err(|_| format!("Add the {name} API key on the AI providers page."))
 }
 pub fn client() -> Result<Client, String> {
     Client::builder()
@@ -226,9 +237,17 @@ fn has_secret(name: &str) -> bool {
         .and_then(|e| e.get_password())
         .is_ok()
 }
-/// A connection of `kind` anywhere in the config — the default or any per-pet
-/// override — so detection reflects what a task could actually run on.
+/// The added provider of `kind`, else a connection of it anywhere in the
+/// config, so detection reflects what a task could actually run on.
 fn configured(config: &Connections, kind: ProviderKind) -> Option<Connection> {
+    if let Some(setup) = config.providers.get(&kind) {
+        return Some(Connection {
+            kind,
+            model: setup.model.clone(),
+            endpoint: setup.endpoint.clone(),
+            executable: setup.executable.clone(),
+        });
+    }
     if config.active.kind == kind {
         return Some(config.active.clone());
     }
@@ -259,8 +278,15 @@ pub fn detect(config: &Connections) -> ProviderDetection {
     }
 }
 pub struct HttpModel(pub Connection);
-impl ModelProvider for HttpModel {
-    fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
+impl HttpModel {
+    /// A completion; `format` is a `response_format`, sent only to the
+    /// on-device model, the one provider here whose output is constrained.
+    fn request(
+        &self,
+        messages: &[Message],
+        format: Option<Value>,
+        cancel: &Cancel,
+    ) -> Result<String, String> {
         cancel.check()?;
         let config = &self.0;
         // Apple's endpoint is a server Ledgeling starts on demand, not a saved
@@ -271,7 +297,9 @@ impl ModelProvider for HttpModel {
             base(config)?
         };
         if config.model.trim().is_empty() && config.kind != ProviderKind::Apple {
-            return Err("Choose a model in Connections.".into());
+            return Err(
+                "Choose a default model for this provider on the AI providers page.".into(),
+            );
         }
         let http = client()?;
         if config.kind == ProviderKind::Ollama {
@@ -303,7 +331,14 @@ impl ModelProvider for HttpModel {
             }
             // Local server, no credential: `fm serve` speaks Chat Completions
             // and binds to loopback only.
-            ProviderKind::Apple => http.post(format!("{endpoint}/chat/completions")).json(&json!({"model":apple::MODEL,"messages":messages,"stream":false})),
+            ProviderKind::Apple => {
+                // Bounded so a model that copies a listing out cannot take a minute.
+                let mut body = json!({"model":apple::MODEL,"messages":messages,"stream":false,"max_tokens":600});
+                if let Some(format) = format {
+                    body["response_format"] = format;
+                }
+                http.post(format!("{endpoint}/chat/completions")).json(&body)
+            }
             _ => return Err("Choose an AI model connection, or use a built-in preset without AI.".into()),
         };
         let v = response_json(request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?)?;
@@ -335,6 +370,26 @@ impl ModelProvider for HttpModel {
         } else {
             Ok(output)
         }
+    }
+}
+impl ModelProvider for HttpModel {
+    fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
+        self.request(messages, None, cancel)
+    }
+    // The on-device model is small enough to drift off the JSON envelope, but
+    // `fm serve` supports guided generation, so its replies are made valid by
+    // construction instead of being retried.
+    fn act(&self, messages: &[Message], tools: &[&str], cancel: &Cancel) -> Result<String, String> {
+        if self.0.kind == ProviderKind::Apple {
+            self.request(messages, Some(apple::action_format(tools)), cancel)
+        } else {
+            self.complete(messages, cancel)
+        }
+    }
+    // Measured on the real model: exploring with tools answered 1 of 20
+    // folder questions, one look at a gathered overview 15 of 16.
+    fn single_turn(&self) -> bool {
+        self.0.kind == ProviderKind::Apple
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String> {
         if self.0.kind == ProviderKind::Apple {
@@ -369,7 +424,7 @@ impl ModelProvider for HttpModel {
         };
         let mut valid = false;
         for _ in 0..attempts {
-            let response = self.complete(
+            let response = self.act(
                 &[
                     Message {
                         role: "system".into(),
@@ -382,6 +437,7 @@ impl ModelProvider for HttpModel {
                         content: "Check task capability.".into(),
                     },
                 ],
+                &["finish"],
                 cancel,
             )?;
             valid = parse_call(&response)

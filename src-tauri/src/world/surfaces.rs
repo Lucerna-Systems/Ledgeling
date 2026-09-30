@@ -170,6 +170,10 @@ impl Surface {
     }
 }
 
+/// How close, in logical pixels, a window edge must be to a screen edge to count
+/// as pushed up against it.
+const FLUSH: f64 = 4.;
+
 /// Extract every visible edge. `windows` must be front-to-back (index 0 frontmost).
 /// `min_segment` is logical pixels and is scaled per monitor.
 pub fn surfaces(
@@ -241,19 +245,52 @@ pub fn surfaces(
             ));
         }
         for (kind, a, b) in edges {
-            out.push(Surface {
-                owner: monitor.owner(),
-                kind,
-                index: 0,
-                start: a,
-                end: b,
-                span_start: a,
-                span_end: b,
-                monitor: monitor.id,
-            });
+            let pieces = if kind == SurfaceKind::MonitorTop {
+                ceiling_pieces(a, b, windows, monitor, min_segment)
+            } else {
+                vec![(a, b)]
+            };
+            for (index, (start, end)) in pieces.into_iter().enumerate() {
+                out.push(Surface {
+                    owner: monitor.owner(),
+                    kind,
+                    index: index as u32,
+                    start,
+                    end,
+                    span_start: a,
+                    span_end: b,
+                    monitor: monitor.id,
+                });
+            }
         }
     }
     out
+}
+
+/// Hanging from the ceiling above a window pushed up against it would draw the
+/// pet upside down over that window's title bar; the window's own top edge is
+/// the same line, the right way up.
+fn ceiling_pieces(
+    a: Point,
+    b: Point,
+    windows: &[WindowInfo],
+    monitor: &MonitorInfo,
+    min_segment: f64,
+) -> Vec<(Point, Point)> {
+    let mut pieces = vec![(a.x, b.x)];
+    for w in windows.iter().filter(|w| !w.is_minimized) {
+        if w.rect.y <= a.y + FLUSH * monitor.scale && w.rect.bottom() > a.y {
+            pieces = pieces
+                .into_iter()
+                .flat_map(|(s, e)| subtract(s, e, w.rect.x, w.rect.right()))
+                .collect();
+        }
+    }
+    pieces
+        .into_iter()
+        .filter(|(s, e)| e - s >= min_segment * monitor.scale)
+        .map(|(s, e)| (Point::new(s, a.y), Point::new(e, a.y)))
+        .collect()
 }
 
 fn window_edge(r: Rect, kind: SurfaceKind) -> (Point, Point) {
@@ -319,7 +356,15 @@ fn push_segments(
             } else {
                 line >= w.y - 0.5 && line <= w.bottom() + 0.5
             };
-            if !on_monitor {
+            // A pet stands on the outward side of an edge, so one flush with the
+            // screen's side or floor would be drawn off-screen or under the dock.
+            let faces_out = match kind {
+                SurfaceKind::WindowLeft => line <= w.x + FLUSH * monitor.scale,
+                SurfaceKind::WindowRight => line >= w.right() - FLUSH * monitor.scale,
+                SurfaceKind::WindowBottom => line >= w.bottom() - FLUSH * monitor.scale,
+                _ => false,
+            };
+            if !on_monitor || faces_out {
                 continue;
             }
             let (clip_lo, clip_hi) = if vertical {
@@ -546,6 +591,31 @@ mod tests {
             .find(|s| s.owner == 1 && s.kind == SurfaceKind::WindowTop && s.contains_t(t))
             .expect("the right-hand fragment still holds the pet's position");
         assert_eq!(fragment.point(t), Point::new(700., 300.));
+    }
+
+    #[test]
+    fn window_sides_flush_with_the_screen_edge_are_not_perches() {
+        // A pet stands on the outside of an edge; against the screen side or
+        // floor that outside is off-screen.
+        let s = surfaces(&[win(1, 0., 100., 800., 860.)], &screen(), 48.);
+        assert!(of(&s, 1, SurfaceKind::WindowLeft).is_empty());
+        assert!(of(&s, 1, SurfaceKind::WindowBottom).is_empty());
+        assert_eq!(of(&s, 1, SurfaceKind::WindowRight), vec![(100., 960.)]);
+        assert_eq!(of(&s, 1, SurfaceKind::WindowTop), vec![(0., 800.)]);
+    }
+
+    #[test]
+    fn the_ceiling_above_a_window_pushed_against_it_is_not_a_perch() {
+        // Hanging there would draw the pet upside down over the title bar.
+        let owner = screen()[0].owner();
+        let s = surfaces(&[win(1, 400., 0., 600., 500.)], &screen(), 48.);
+        assert_eq!(
+            of(&s, owner, SurfaceKind::MonitorTop),
+            vec![(0., 400.), (1000., 1600.)]
+        );
+        assert_eq!(of(&s, 1, SurfaceKind::WindowTop), vec![(400., 1000.)]);
+        let maximised = surfaces(&[win(1, 0., 0., 1600., 960.)], &screen(), 48.);
+        assert!(of(&maximised, owner, SurfaceKind::MonitorTop).is_empty());
     }
 
     #[test]

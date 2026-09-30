@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import AssistantPanel from './AssistantPanel.vue'
 import ConversationList from './ConversationList.vue'
-import { activeConversation, assignedPet, connections, conversations, tasks } from './state'
+import { activeConversation, assignedPet, connections, conversations, conversationsByPet, tasks } from './state'
 import type { Task } from './types'
 
 const api = vi.hoisted(() => ({ invoke: vi.fn() }))
@@ -20,7 +20,7 @@ beforeEach(() => {
   api.invoke.mockReset().mockResolvedValue(null)
   activeConversation.value = null
   assignedPet.value = null
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, appleTerms: { acceptedVersion: 0, acceptedAt: 0 } }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} }
   tasks.value = [turn(4, 'Something else', null), turn(3, 'And the PDFs?', 2), turn(2, 'Find my invoices', null), turn(1, 'Older chat', null)]
 })
 
@@ -32,7 +32,8 @@ it('groups follow-ups into chats, most recently active first', () => {
 
 it('shows an open chat as a thread and continues it from its latest turn', async () => {
   activeConversation.value = 2
-  connections.value = { ...connections.value, active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' } }
+  connections.value = { ...connections.value, active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' },
+    providers: { ollama: { model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '', termsVersion: 0, acceptedAt: 0 } } }
   const wrapper = mount(AssistantPanel)
   expect(wrapper.findAll('.chat-prompt').map(p => p.text())).toEqual(['Find my invoices', 'And the PDFs?'])
   expect(wrapper.get('.chat-heading h1').text()).toBe('Find my invoices')
@@ -56,5 +57,22 @@ it('renames a chat from the sidebar', async () => {
   await flushPromises()
   expect(api.invoke).toHaveBeenCalledWith('task_rename', { id: 2, title: 'Tax season' })
   expect(wrapper.findAll('.chat-title').map(t => t.text())).toContain('Tax season')
+  wrapper.unmount()
+})
+
+it('groups chats under the pet they were with, newest pet first', async () => {
+  const glass = { packId: 'glass', name: 'Glass the Gecko' }
+  tasks.value = [turn(6, 'Gecko chat', null, { pet: glass }), ...tasks.value, turn(0, 'Nobody in particular', null, { pet: null })]
+  expect(conversationsByPet.value.map(group => [group.name, group.chats.map(chat => chat.id)])).toEqual([
+    ['Glass the Gecko', [6]], ['Pip the Budgie', [4, 2, 1]], ['Any pet', [0]],
+  ])
+  const wrapper = mount(ConversationList, { props: { current: true } })
+  expect(wrapper.findAll('.pet-chats-toggle .chat-title').map(t => t.text())).toEqual(['Glass the Gecko', 'Pip the Budgie', 'Any pet'])
+  await wrapper.findAll('.pet-chats-toggle')[1].trigger('click')
+  expect(wrapper.findAll('.pet-chats-list .chat-title').map(t => t.text())).toEqual(['Gecko chat', 'Nobody in particular'])
+  // A pet's own "+" starts a new chat; the pet itself is out only in the desktop app.
+  activeConversation.value = 6
+  await wrapper.get('[aria-label="New chat with Pip the Budgie"]').trigger('click')
+  expect(activeConversation.value).toBeNull()
   wrapper.unmount()
 })

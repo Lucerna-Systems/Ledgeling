@@ -5,9 +5,7 @@ pub mod locomotion;
 pub mod pathfind;
 
 use crate::{
-    packs::{
-        manifest::Event, Action, LocomotionClass, Manifest, Pack, Signals, SurfaceOrientation,
-    },
+    packs::{manifest::Event, Action, LocomotionClass, Manifest, Pack, Signals},
     world::{EdgeKind, Orientation, Point, Rect, Surface, SurfaceGraph, SurfaceKey},
 };
 use fsm::{Machine, Rng};
@@ -968,22 +966,50 @@ impl Pet {
         }
     }
 
-    /// Rectangle the sprite occupies in physical pixels, for hit-testing.
+    /// Bounding box of the drawn sprite in physical pixels, for hit-testing.
+    /// The webview rotates about the anchor, so a climbing or hanging pet
+    /// sits beside or below its perch rather than above it.
     pub fn sprite_rect(&self, scale: f64) -> Rect {
+        let (w, h, ax, ay) = self.sprite_box(scale);
+        let (sin, cos) = self.rotation.to_radians().sin_cos();
+        let corners = [(-ax, -ay), (w - ax, -ay), (-ax, h - ay), (w - ax, h - ay)]
+            .map(|(x, y)| (x * cos - y * sin, x * sin + y * cos));
+        let (mut left, mut top) = (f64::INFINITY, f64::INFINITY);
+        let (mut right, mut bottom) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (x, y) in corners {
+            left = left.min(x);
+            right = right.max(x);
+            top = top.min(y);
+            bottom = bottom.max(y);
+        }
+        Rect::new(
+            self.position.x + left,
+            self.position.y + top,
+            right - left,
+            bottom - top,
+        )
+    }
+
+    /// Where `point` falls within the unrotated, unflipped sprite, in physical
+    /// pixels from its top-left: the inverse of the webview's transform.
+    pub fn sprite_local(&self, point: Point, scale: f64) -> Point {
+        let (_, _, ax, ay) = self.sprite_box(scale);
+        let (sin, cos) = self.rotation.to_radians().sin_cos();
+        let (dx, dy) = (point.x - self.position.x, point.y - self.position.y);
+        let x = dx * cos + dy * sin;
+        let y = -dx * sin + dy * cos;
+        let x = if self.flip_x { -x } else { x };
+        Point::new(x + ax, y + ay)
+    }
+
+    /// Drawn width, height and anchor offset, in physical pixels.
+    fn sprite_box(&self, scale: f64) -> (f64, f64, f64, f64) {
         let sprite = self.manifest().sprite;
         let (w, h) = (
             sprite.width * sprite.scale * scale,
             sprite.height * sprite.scale * scale,
         );
-        let upright = self.manifest().sprite.surface_orientation == SurfaceOrientation::Upright
-            || self.rotation.abs() < 1.;
-        let (w, h) = if upright { (w, h) } else { (h, w) };
-        Rect::new(
-            self.position.x - w * sprite.anchor_x,
-            self.position.y - h * self.anchored_y(),
-            w,
-            h,
-        )
+        (w, h, w * sprite.anchor_x, h * self.anchored_y())
     }
 }
 
