@@ -51,6 +51,13 @@ struct Inner {
     current: Mutex<Option<i64>>,
     /// Tasks sent to the worker and not yet picked up, and whether each is an undo.
     queue: Mutex<Vec<(i64, bool)>>,
+    /// Tasks force-stopped while the worker was stuck inside them. Whatever that
+    /// worker does when it finally returns is discarded.
+    abandoned: Mutex<std::collections::HashSet<i64>>,
+    /// Test hook standing in for a provider call that never answers: a worker
+    /// given this task waits, deaf to cancel, until it is cleared. 0 means none.
+    #[cfg(test)]
+    stall: std::sync::atomic::AtomicI64,
 }
 /// What a task is called where it is named: its title, else the start of its request.
 fn task_name(task: &Task) -> String {
@@ -106,6 +113,63 @@ fn refresh_queue(inner: &Inner) {
 pub struct TaskService {
     inner: Arc<Inner>,
     sender: mpsc::Sender<(i64, bool)>,
+    receiver: Arc<Mutex<mpsc::Receiver<(i64, bool)>>>,
+}
+/// The single worker that runs tasks one at a time. A worker whose task was
+/// force-stopped retires as soon as that task's step returns; its replacement
+/// is already serving the queue.
+fn run_worker(worker: Arc<Inner>, receiver: Arc<Mutex<mpsc::Receiver<(i64, bool)>>>) {
+    loop {
+        let next = receiver.lock().unwrap().recv();
+        let Ok((id, undo)) = next else { return };
+        worker
+            .queue
+            .lock()
+            .unwrap()
+            .retain(|(queued, _)| *queued != id);
+        let cancel = worker
+            .controls
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        let ctx = Context {
+            inner: worker.clone(),
+            id,
+            cancel,
+        };
+        if ctx.cancel.check().is_err() {
+            worker.controls.lock().unwrap().remove(&id);
+            continue;
+        }
+        *worker.current.lock().unwrap() = Some(id);
+        refresh_queue(&worker);
+        #[cfg(test)]
+        while worker.stall.load(Ordering::SeqCst) == id {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let result = if undo { ctx.undo() } else { ctx.run() };
+        if worker.abandoned.lock().unwrap().remove(&id) {
+            return;
+        }
+        if let Err(error) = result {
+            let cancelled = ctx.cancel.check().is_err();
+            let _ = ctx.update(|t| {
+                t.status = if cancelled { "cancelled" } else { "failed" }.into();
+                t.error = Some(error);
+                t.approval = None;
+            });
+        }
+        worker.controls.lock().unwrap().remove(&id);
+        worker
+            .answers
+            .lock()
+            .unwrap()
+            .retain(|(task, _), _| *task != id);
+        *worker.current.lock().unwrap() = None;
+        refresh_queue(&worker);
+    }
 }
 impl TaskService {
     pub fn new(
@@ -121,54 +185,19 @@ impl TaskService {
             emit: Arc::new(emit),
             current: Mutex::new(None),
             queue: Mutex::new(Vec::new()),
+            abandoned: Mutex::new(Default::default()),
+            #[cfg(test)]
+            stall: std::sync::atomic::AtomicI64::new(0),
         });
         let (sender, receiver) = mpsc::channel();
-        let worker = inner.clone();
-        std::thread::spawn(move || {
-            while let Ok((id, undo)) = receiver.recv() {
-                worker
-                    .queue
-                    .lock()
-                    .unwrap()
-                    .retain(|(queued, _)| *queued != id);
-                let cancel = worker
-                    .controls
-                    .lock()
-                    .unwrap()
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_default();
-                let ctx = Context {
-                    inner: worker.clone(),
-                    id,
-                    cancel,
-                };
-                if ctx.cancel.check().is_err() {
-                    worker.controls.lock().unwrap().remove(&id);
-                    continue;
-                }
-                *worker.current.lock().unwrap() = Some(id);
-                refresh_queue(&worker);
-                let result = if undo { ctx.undo() } else { ctx.run() };
-                if let Err(error) = result {
-                    let cancelled = ctx.cancel.check().is_err();
-                    let _ = ctx.update(|t| {
-                        t.status = if cancelled { "cancelled" } else { "failed" }.into();
-                        t.error = Some(error);
-                        t.approval = None;
-                    });
-                }
-                worker.controls.lock().unwrap().remove(&id);
-                worker
-                    .answers
-                    .lock()
-                    .unwrap()
-                    .retain(|(task, _), _| *task != id);
-                *worker.current.lock().unwrap() = None;
-                refresh_queue(&worker);
-            }
-        });
-        Ok(Self { inner, sender })
+        let receiver = Arc::new(Mutex::new(receiver));
+        let (worker, queue) = (inner.clone(), receiver.clone());
+        std::thread::spawn(move || run_worker(worker, queue));
+        Ok(Self {
+            inner,
+            sender,
+            receiver,
+        })
     }
     pub fn list(&self) -> Result<Vec<Task>, String> {
         self.inner.store.lock().unwrap().list()
@@ -283,6 +312,40 @@ impl TaskService {
         refresh_queue(&self.inner);
         Ok(())
     }
+    /// Gives up on a task stuck in Stopping because a step (a provider call, say)
+    /// will not return. The task becomes Cancelled now, the stuck worker is
+    /// retired and a fresh one takes over the queue. The abandoned step may still
+    /// be running in the background; anything it does afterwards is discarded.
+    pub fn force_stop(&self, id: i64) -> Result<(), String> {
+        let stuck = *self.inner.current.lock().unwrap() == Some(id);
+        let task = {
+            let store = self.inner.store.lock().unwrap();
+            let mut task = store.get(id)?;
+            if task.status != "cancelling" || !stuck {
+                return Err("Only a task that is stuck stopping can be force stopped.".into());
+            }
+            task.status = "cancelled".into();
+            task.approval = None;
+            task.progress = "Force stopped. A step that never answered may still be running in the background; its result is discarded.".into();
+            store.save(&task)?;
+            task
+        };
+        self.inner.abandoned.lock().unwrap().insert(id);
+        if let Some(c) = self.inner.controls.lock().unwrap().remove(&id) {
+            c.cancel();
+        }
+        self.inner
+            .answers
+            .lock()
+            .unwrap()
+            .retain(|(task, _), _| *task != id);
+        *self.inner.current.lock().unwrap() = None;
+        let (worker, queue) = (self.inner.clone(), self.receiver.clone());
+        std::thread::spawn(move || run_worker(worker, queue));
+        (self.inner.emit)(task);
+        refresh_queue(&self.inner);
+        Ok(())
+    }
     pub fn answer(&self, id: i64, approval_id: u64, accept: bool) -> Result<(), String> {
         let store = self.inner.store.lock().unwrap();
         let t = store.get(id)?;
@@ -342,6 +405,10 @@ impl Context {
     pub fn update(&self, f: impl FnOnce(&mut Task)) -> Result<Task, String> {
         let store = self.inner.store.lock().unwrap();
         let mut task = store.get(self.id)?;
+        if self.inner.abandoned.lock().unwrap().contains(&self.id) {
+            // Force-stopped: the step that held the worker no longer speaks for it.
+            return Ok(task);
+        }
         f(&mut task);
         store.save(&task)?;
         drop(store);
@@ -1547,5 +1614,50 @@ mod tests {
                 .status,
             "cancelled"
         );
+    }
+    #[test]
+    fn force_stop_frees_a_worker_stuck_in_a_step_that_ignores_cancel() {
+        let (_db, service) = service();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        let req = TaskRequest {
+            prompt: "sort".into(),
+            mode: "standard".into(),
+            preset: "sort_type".into(),
+            roots: vec![root.to_string_lossy().into()],
+            ..Default::default()
+        };
+        // Task ids count up from 1 and this is the first task.
+        service.inner.stall.store(1, Ordering::SeqCst);
+        let first = service.start(req.clone()).unwrap();
+        assert_eq!(first.id, 1);
+        let second = service.start(req).unwrap();
+        let get = |id| service.inner.store.lock().unwrap().get(id).unwrap();
+        while *service.inner.current.lock().unwrap() != Some(first.id) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut running = get(first.id);
+        running.status = "running".into();
+        service.inner.store.lock().unwrap().save(&running).unwrap();
+        // Not stopping yet, so there is nothing to force.
+        assert!(service.force_stop(first.id).is_err());
+        service.cancel(first.id).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(get(first.id).status, "cancelling");
+        assert_eq!(get(second.id).status, "queued");
+        // A task that is not the one being stopped cannot be force stopped either.
+        assert!(service.force_stop(second.id).is_err());
+        service.force_stop(first.id).unwrap();
+        assert_eq!(get(first.id).status, "cancelled");
+        wait(&service, second.id, "waiting");
+        // The stuck step finally returns: it must not revive or rewrite the task.
+        service.inner.stall.store(0, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(get(first.id).status, "cancelled");
+        assert_eq!(get(second.id).status, "waiting");
+        assert_eq!(*service.inner.current.lock().unwrap(), Some(second.id));
+        service.cancel(second.id).unwrap();
+        wait(&service, second.id, "cancelled");
     }
 }
