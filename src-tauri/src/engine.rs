@@ -12,7 +12,10 @@ use crate::{
         SurfaceTracker, WindowInfo,
     },
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 /// Baseline window poll, bumped for a couple of seconds after any change.
 const SCAN_INTERVAL: f64 = 0.5;
@@ -21,6 +24,8 @@ const FAST_SCAN_WINDOW: f64 = 2.;
 /// A window edge moving faster than this looks alarming to a pet on it.
 const STARTLING_SPEED: f64 = 900.;
 const MIN_SEGMENT: f64 = 48.;
+/// Two pets on the same surface this close (logical pixels) notice each other.
+const PET_NEARBY: f64 = 140.;
 
 pub struct Engine {
     pub packs: HashMap<String, Arc<Pack>>,
@@ -43,6 +48,9 @@ pub struct Engine {
     pub attention: Option<u64>,
     pub sounds: Vec<(u64, String)>,
     tracker: SurfaceTracker,
+    /// Pairs of pet ids currently close together, so `pet_nearby` fires once
+    /// per meeting rather than every frame.
+    neighbours: HashSet<(u64, u64)>,
     next_id: u64,
     clock: f64,
     last_scan: f64,
@@ -71,6 +79,7 @@ impl Engine {
             attention: None,
             sounds: Vec::new(),
             tracker: SurfaceTracker::default(),
+            neighbours: HashSet::new(),
             next_id: 1,
             clock: 0.,
             last_scan: f64::NEG_INFINITY,
@@ -286,6 +295,33 @@ impl Engine {
             }
         }
         self.pets = pets;
+        self.notice_neighbours();
+    }
+
+    /// Pets sharing a surface and standing close notice each other. Purely
+    /// geometric: only ids and positions are compared.
+    fn notice_neighbours(&mut self) {
+        let mut near = HashSet::new();
+        for (i, a) in self.pets.iter().enumerate() {
+            for b in &self.pets[i + 1..] {
+                let (Some(pa), Some(pb)) = (a.perch, b.perch) else {
+                    continue;
+                };
+                if pa.key != pb.key || a.is_held() || b.is_held() {
+                    continue;
+                }
+                let scale = self.scale_at(a.position);
+                if a.position.distance(b.position) / scale < PET_NEARBY {
+                    near.insert((a.id.min(b.id), a.id.max(b.id)));
+                }
+            }
+        }
+        for &(x, y) in near.difference(&self.neighbours) {
+            for pet in self.pets.iter_mut().filter(|p| p.id == x || p.id == y) {
+                pet.queue(Event::PetNearby);
+            }
+        }
+        self.neighbours = near;
     }
 
     fn scan(&mut self, platform: &dyn Platform) {

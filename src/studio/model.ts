@@ -61,6 +61,7 @@ export const events = [
   { value: 'app_category_changed', label: 'you switch kinds of app' },
   { value: 'hour_changed', label: 'a new hour starts' },
   { value: 'startup', label: 'Ledgeling starts' },
+  { value: 'pet_nearby', label: 'another pet comes close' },
   { value: 'low_energy', label: 'it gets tired' },
 ] as const
 
