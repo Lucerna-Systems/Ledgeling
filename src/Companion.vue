@@ -11,14 +11,13 @@ import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, Hi
 import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
-import LabPanel from './panels/LabPanel.vue'
 import AwarenessPanel from './panels/AwarenessPanel.vue'
 import DesktopPanel from './panels/DesktopPanel.vue'
 import PetStudio from './studio/PetStudio.vue'
 import { syncAppIcon } from './appIcon'
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
 
-type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
+type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'studio'
 const nav = [
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
   { page: 'providers', label: 'AI providers', icon: Bot },
@@ -27,7 +26,7 @@ const nav = [
   { page: 'settings', label: 'Settings', icon: Settings },
 ] as const
 /** Pages reached from inside another section, so the sidebar stays short. */
-const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', lab: 'settings', studio: 'pets' }
+const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', studio: 'pets' }
 const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
 
 const page = ref<Page>('assistant')
@@ -147,7 +146,6 @@ onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(
       <SettingsPanel v-else-if="page === 'settings'" @go="go" />
       <DesktopPanel v-else-if="page === 'desktop'" />
       <AwarenessPanel v-else-if="page === 'awareness'" />
-      <LabPanel v-else-if="page === 'lab'" />
       <PetStudio v-else-if="page === 'studio'" @go="go" />
     </main>
   </div>

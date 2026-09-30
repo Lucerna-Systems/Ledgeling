@@ -152,3 +152,4 @@
   .clip-list { max-height: 220px; }
   .studio-head { flex-direction: column; }
 }
+.studio-test { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 14px; }

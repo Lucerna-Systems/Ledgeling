@@ -87,3 +87,18 @@ it('collapses the sidebar to an icon rail and remembers it', async () => {
   wrapper.unmount()
   expect(mount(Companion).get('.sidebar-shell').classes()).toContain('collapsed')
 })
+
+it('has no separate Pet Lab; its tools live in the Pet Studio Test tab', async () => {
+  HTMLCanvasElement.prototype.getContext = (() => new Proxy({}, { get: () => () => {} })) as never
+  globalThis.ImageData ??= class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} } as never
+  const wrapper = mount(Companion)
+  const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
+  await nav('Settings').trigger('click')
+  expect(wrapper.text()).not.toContain('Pet Lab')
+  await nav('Pets').trigger('click')
+  await wrapper.get('.make-pet').trigger('click')
+  await wrapper.findAll('[role=tab]').find(tab => tab.text() === 'Test')!.trigger('click')
+  expect(wrapper.text()).toContain('Validator')
+  expect(wrapper.text()).toContain('Scenarios')
+  wrapper.unmount()
+})
