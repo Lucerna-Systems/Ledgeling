@@ -66,17 +66,33 @@ fn task_name(task: &Task) -> String {
         name
     }
 }
+/// The name of the chat `task` belongs to, as the app shows it: its first turn's
+/// title, else that turn's request. A follow-up turn has no title of its own.
+fn chat_name(store: &Store, task: Task) -> String {
+    let mut root = task;
+    // Bounded so a corrupt parent chain can never loop.
+    for _ in 0..10_000 {
+        match root.request.parent_id.and_then(|id| store.get(id).ok()) {
+            Some(parent) => root = parent,
+            None => break,
+        }
+    }
+    task_name(&root)
+}
 /// Tells each queued task what it is waiting for. The single worker serves every
 /// chat, so a task behind another must not look as if it has started, and must
 /// say so while that other task is still stopping.
 fn refresh_queue(inner: &Inner) {
     let current = *inner.current.lock().unwrap();
-    let reason = match current.and_then(|id| inner.store.lock().unwrap().get(id).ok()) {
-        Some(task) if task.status == "cancelling" => {
-            format!("Waiting for “{}” to stop", task_name(&task))
+    let reason = {
+        let store = inner.store.lock().unwrap();
+        match current.and_then(|id| store.get(id).ok()) {
+            Some(task) if task.status == "cancelling" => {
+                format!("Waiting for “{}” to stop", chat_name(&store, task))
+            }
+            Some(task) => format!("Waiting for “{}” to finish", chat_name(&store, task)),
+            None => "Waiting to start".into(),
         }
-        Some(task) => format!("Waiting for “{}” to finish", task_name(&task)),
-        None => "Waiting to start".into(),
     };
     let waiting: Vec<i64> = inner
         .queue
@@ -1501,6 +1517,36 @@ mod tests {
         service.cancel(first.id).unwrap();
         wait(&service, first.id, "cancelled");
         assert_eq!(*service.inner.current.lock().unwrap(), None);
+    }
+    #[test]
+    fn a_queued_task_names_the_chat_in_front_not_its_latest_turn() {
+        let (_db, service) = service();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        let req = |prompt: &str, parent_id| TaskRequest {
+            prompt: prompt.into(),
+            mode: "standard".into(),
+            preset: "sort_type".into(),
+            roots: vec![root.to_string_lossy().into()],
+            parent_id,
+            ..Default::default()
+        };
+        let first = service.start(req("sort my downloads", None)).unwrap();
+        wait(&service, first.id, "waiting");
+        service.cancel(first.id).unwrap();
+        wait(&service, first.id, "cancelled");
+        service.rename(first.id, "Downloads").unwrap();
+        // A follow-up turn holds the worker; it has no title of its own.
+        let follow = service
+            .start(req("and the second one?", Some(first.id)))
+            .unwrap();
+        wait(&service, follow.id, "waiting");
+        let other = service.start(req("something else", None)).unwrap();
+        assert_eq!(other.progress, "Waiting for “Downloads” to finish");
+        service.cancel(other.id).unwrap();
+        service.cancel(follow.id).unwrap();
+        wait(&service, follow.id, "cancelled");
     }
     #[test]
     fn queued_tasks_wait_and_cancelled_approvals_never_apply() {
