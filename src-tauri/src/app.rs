@@ -296,9 +296,16 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
                 }
             }
         }
-        "release" => {
+        "pet" => {
             for pet in &mut app.engine.pets {
                 if pet.is_held() {
+                    pet.begin_tending();
+                }
+            }
+        }
+        "release" => {
+            for pet in &mut app.engine.pets {
+                if pet.is_held() || pet.is_tended() {
                     pet.release();
                 }
             }
