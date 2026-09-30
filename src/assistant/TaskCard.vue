@@ -18,7 +18,7 @@ async function control(command: string, args = {}) {
   try { await taskCall(command, { id: props.task.id, ...args }); await refreshTasks() } catch { /* shared error banner */ } finally { pending.value = false }
 }
 const statusLabels: Record<string, string> = {
-  queued: 'Starting', running: 'Working', waiting: 'Needs you', cancelling: 'Stopping', completed: 'Done',
+  queued: 'Waiting', running: 'Working', waiting: 'Needs you', cancelling: 'Stopping', completed: 'Done',
   failed: "Didn't work", cancelled: 'Cancelled', interrupted: 'Interrupted', undone: 'Undone',
 }
 const meta = computed(() => {
