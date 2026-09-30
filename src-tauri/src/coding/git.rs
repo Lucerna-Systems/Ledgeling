@@ -22,6 +22,19 @@ pub fn command(dir: &Path) -> Command {
     command
 }
 
+/// `path` in a form git accepts: canonical Windows paths are verbatim
+/// (`\\?\C:\...`), and git cannot create directories under those.
+pub fn plain(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 pub fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
     let output = command(dir).args(args).output().map_err(|_| {
         "Git is not installed or not on your PATH. See Add-ons in the Worktrees tab.".to_string()
@@ -118,9 +131,11 @@ pub fn add_worktree(root: &Path, branch: &str, base: &str) -> Result<PathBuf, St
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "project".into());
     let parent = root.parent().ok_or("The project has no parent folder.")?;
-    let target = parent
-        .join(format!("{name}.worktrees"))
-        .join(branch.replace('/', "-"));
+    let target = plain(
+        &parent
+            .join(format!("{name}.worktrees"))
+            .join(branch.replace('/', "-")),
+    );
     if target.exists() {
         return Err(format!("{} already exists.", target.display()));
     }
@@ -138,7 +153,8 @@ pub fn remove_worktree(root: &Path, path: &str, force: bool) -> Result<(), Strin
     if force {
         args.push("--force");
     }
-    args.push(path);
+    let path = plain(Path::new(path)).to_string_lossy().into_owned();
+    args.push(&path);
     run(root, &args).map(|_| ())
 }
 
@@ -442,6 +458,16 @@ u UU N... 100644 100644 100644 100644 a b c conflict.rs\0\
         remove_worktree(&root, &tree.to_string_lossy(), false).unwrap();
         assert_eq!(worktrees(&root).unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(tree.parent().unwrap());
+    }
+
+    #[test]
+    fn verbatim_windows_paths_are_made_plain_for_git() {
+        assert_eq!(plain(Path::new(r"\\?\C:\a\b")), PathBuf::from(r"C:\a\b"));
+        assert_eq!(
+            plain(Path::new(r"\\?\UNC\server\share\x")),
+            PathBuf::from(r"\\server\share\x")
+        );
+        assert_eq!(plain(Path::new("/tmp/a")), PathBuf::from("/tmp/a"));
     }
 
     #[test]
