@@ -113,6 +113,8 @@ pub struct Pet {
     pub rng: Rng,
     arc: Arc_,
     action_done: bool,
+    /// Speed multiplier of the current state's custom action (1 for built-ins).
+    action_speed: f64,
     was_near_cursor: bool,
     clip_started: f64,
     /// The bubble is open on this pet.
@@ -145,6 +147,7 @@ impl Pet {
             rng,
             arc: Arc_::Fall { velocity: 0. },
             action_done: false,
+            action_speed: 1.,
             was_near_cursor: false,
             clip_started: 0.,
             listening: false,
@@ -457,6 +460,11 @@ impl Pet {
         if let Some(entered) = entered {
             self.clip_started = self.clock;
             self.sound_request = entered.sound;
+            self.action_speed = manifest
+                .behavior
+                .states
+                .get(&entered.state)
+                .map_or(1., |s| s.speed_scale);
             if let Some(action) = entered.action {
                 self.start_action(action, view);
             }
@@ -534,7 +542,10 @@ impl Pet {
             return;
         };
         let destination = view.surfaces[index].point(target.t);
-        let speed = self.manifest().locomotion.speed.air.max(20.) * view.scale * view.speed_scale;
+        let speed = self.manifest().locomotion.speed.air.max(20.)
+            * view.scale
+            * view.speed_scale
+            * self.action_speed;
         let duration = (self.position.distance(destination) / speed).clamp(0.4, 8.);
         self.flip_x = destination.x < self.position.x;
         self.arc = Arc_::Air {
@@ -572,7 +583,10 @@ impl Pet {
             return; // `ride` has already noticed and will recover.
         };
         let surface = &view.surfaces[index];
-        let speed = locomotion::speed(self.manifest(), surface) * view.scale * view.speed_scale;
+        let speed = locomotion::speed(self.manifest(), surface)
+            * view.scale
+            * view.speed_scale
+            * self.action_speed;
         let span = surface.span_length().max(1.);
         let travel = (speed * dt) / span;
         let direction = if step.to_t >= perch.t { 1. } else { -1. };
@@ -604,7 +618,8 @@ impl Pet {
                         let jump = self.manifest().locomotion.jump;
                         let speed = locomotion::speed(self.manifest(), surface).max(60.)
                             * view.scale
-                            * view.speed_scale;
+                            * view.speed_scale
+                            * self.action_speed;
                         self.arc = Arc_::Jump {
                             from: self.position,
                             to,
