@@ -7,7 +7,7 @@ import { FRAME, blankFrame, emptyClip, starterDraft } from './model'
 
 const api = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: api.invoke, isTauri: () => true }))
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }))
 
 // jsdom has no canvas; the Studio only needs a context that accepts calls.
 const context = new Proxy({}, { get: (_, key) => key === 'getImageData' ? () => ({ data: new Uint8ClampedArray(256 * 256 * 4) }) : () => {} })
@@ -19,6 +19,9 @@ beforeEach(() => {
   api.invoke.mockReset().mockImplementation(async (command: string) => {
     if (command === 'list_packs') return []
     if (command === 'export_pack') return '/packs/ember.petpack'
+    if (command === 'task_list') return []
+    if (command === 'task_connections') return { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} }
+    if (command === 'task_provider_terms') return {}
     return { id: 'com.studio.ember', name: 'Ember' }
   })
   draft.value = starterDraft()
@@ -133,5 +136,26 @@ it('zooms the canvas with the scroll wheel and fits again on request', async () 
   expect(parseInt(readout())).toBeGreaterThan(100)
   await wrapper.get('.zoom-readout').trigger('click')
   expect(readout()).toBe('100%')
+  wrapper.unmount()
+})
+
+it('drafts behaviours from a description through the assistant and can undo', async () => {
+  const { tasks, connections } = await import('../assistant/state')
+  connections.value = { ...connections.value, active: { kind: 'ollama', model: 'm', endpoint: '', executable: '' } }
+  const fallback = api.invoke.getMockImplementation()!
+  api.invoke.mockImplementation(async (command: string, args: unknown) => command === 'task_start' ? { id: 5 } : fallback(command, args))
+  const wrapper = mount(PetStudio)
+  await wrapper.findAll('[role=tab]')[1]!.trigger('click')
+  await wrapper.get('.ai-form input').setValue('hide from games')
+  await wrapper.get('.ai-form').trigger('submit')
+  await vi.waitFor(() => expect(api.invoke.mock.calls.find(c => c[0] === 'task_start')).toBeTruthy())
+  const sent = api.invoke.mock.calls.find(c => c[0] === 'task_start')![1].request
+  expect(sent).toMatchObject({ roots: [], mode: 'standard', petId: null })
+  expect(sent.prompt).toContain('hide from games')
+  tasks.value = [{ id: 5, status: 'completed', progress: '', error: null, result: '{"initial":"lurk","states":[{"name":"lurk","clip":"idle","next":[]}],"reactions":[]}' } as never]
+  await vi.waitFor(() => expect(draft.value.states.map(s => s.name)).toEqual(['lurk']))
+  await wrapper.findAll('button').find(b => b.text().includes('Undo'))!.trigger('click')
+  expect(draft.value.states).toHaveLength(4)
+  tasks.value = []
   wrapper.unmount()
 })
