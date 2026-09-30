@@ -188,7 +188,7 @@ impl App {
         }
     }
 
-    fn persist(&mut self) -> Result<(), String> {
+    pub(crate) fn persist(&mut self) -> Result<(), String> {
         self.engine.remember_pets();
         settings::save(&self.config_dir, &self.engine.settings)
     }
@@ -886,6 +886,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             main.hide()?;
             let handle = app.handle().clone();
             std::thread::spawn(move || run_loop(shared, handle));
+            crate::platform::pet_ui::start_tour(app.handle().clone());
             Ok(())
         })
         .build(context)

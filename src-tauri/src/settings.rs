@@ -58,6 +58,13 @@ pub struct Settings {
     /// Developer tools: coding mode and its tray entry. Off for everyone who
     /// did not ask, so none of it loads.
     pub developer_mode: bool,
+    /// The first-run tour has been finished or skipped. A file saved before the
+    /// tour existed reads as done, so only a genuinely new install sees it.
+    #[serde(default = "tour_seen")]
+    pub tour_done: bool,
+}
+fn tour_seen() -> bool {
+    true
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -72,6 +79,7 @@ impl Default for Settings {
             speed_scale: 1.,
             debug: false,
             developer_mode: false,
+            tour_done: false,
             sounds: false,
             launch_at_login: false,
             awareness: AwarenessConfig::default(),
@@ -232,6 +240,22 @@ mod tests {
             !settings.developer_mode,
             "coding mode stays off for existing users"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn only_a_new_install_gets_the_tour() {
+        assert!(!Settings::default().tour_done);
+        let dir = std::env::temp_dir().join(format!("perch-settings-tour-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join(SETTINGS_FILE), r#"{"version":1,"pets":[]}"#).unwrap();
+        assert!(
+            load(&dir).0.tour_done,
+            "an existing install does not get it"
+        );
+        let mut settings = Settings::default();
+        settings.tour_done = true;
+        save(&dir, &settings).unwrap();
+        assert!(load(&dir).0.tour_done);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
