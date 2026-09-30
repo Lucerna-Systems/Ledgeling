@@ -180,6 +180,10 @@ Anything else is an error that tells you so, with the alternatives listed.
 ]
 ```
 
+Two events come from the pet's own body: `landed` (it came down onto a surface
+after a fall, a good hook for a shake-off) and `edge_reached` (it walked to the
+end of a ledge, a good hook for a peek over the side). Give both a `cooldown`.
+
 `cooldown` is seconds, and it is how you keep a pet from becoming annoying. Use it
 generously on anything to do with nudging.
 

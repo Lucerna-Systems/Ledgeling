@@ -19,6 +19,9 @@ const GRAVITY: f64 = 1400.;
 const TERMINAL_VELOCITY: f64 = 2200.;
 /// How close the cursor must be for `cursor_nearby`, in logical pixels.
 const CURSOR_NEARBY: f64 = 120.;
+/// Slack in logical pixels beyond the sprite's half-width that still counts as
+/// standing at the end of a surface; a pet is never planned closer than that.
+const EDGE_SLACK: f64 = 6.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -624,6 +627,12 @@ impl Pet {
             _ => {
                 self.plan = None;
                 self.settle();
+                let reach = self.half_width(view.scale) + EDGE_SLACK * view.scale;
+                let to_end = surface.span_length() * perch.t.min(1. - perch.t);
+                let at_end = to_end <= reach;
+                if at_end && surface.orientation() == Orientation::Horizontal {
+                    self.pending.push(Event::EdgeReached);
+                }
             }
         }
     }
@@ -748,6 +757,7 @@ impl Pet {
                 self.arc = Arc_::None;
                 self.settle();
                 self.action_done = true;
+                self.pending.push(Event::Landed);
             }
             None => {
                 self.position = to;

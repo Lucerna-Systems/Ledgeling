@@ -62,6 +62,8 @@ export const events = [
   { value: 'hour_changed', label: 'a new hour starts' },
   { value: 'startup', label: 'Ledgeling starts' },
   { value: 'low_energy', label: 'it gets tired' },
+  { value: 'landed', label: 'it lands after a fall' },
+  { value: 'edge_reached', label: 'it reaches the end of a ledge' },
 ] as const
 
 export type SignalKind = 'number' | 'category' | 'bool'
