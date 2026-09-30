@@ -6,7 +6,7 @@ import AddonsSheet from '../components/AddonsSheet.vue'
 import { pets } from '../../state'
 import { activityOf, code, codeState, current, petFor, refreshState, select, tab, wide } from '../state'
 import type { GitStatus, ProjectView, WorktreeView } from '../types'
-import { ask } from '../../terminal/confirm'
+import { ask } from '../confirm'
 import { say } from '../petNotes'
 
 const props = defineProps<{ active?: boolean }>()

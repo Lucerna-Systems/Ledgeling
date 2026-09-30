@@ -50,14 +50,6 @@ const KNOWN: &[Known] = &[
         scripted: true,
     },
     Known {
-        id: "antigravity",
-        name: "Google Antigravity CLI",
-        program: "antigravity",
-        purpose: "Google's AI coding agent, used from the Terminal tab when already installed",
-        homepage: "https://antigravity.google/",
-        scripted: false,
-    },
-    Known {
         id: "gh",
         name: "GitHub CLI",
         program: "gh",
@@ -70,13 +62,24 @@ const KNOWN: &[Known] = &[
 /// Where a program lives on the login shell's PATH, which is the one the
 /// Terminal tab uses.
 pub fn find(program: &str) -> Option<PathBuf> {
-    crate::terminal::pty::find_program(program)
+    let path = super::pty::login_path().or_else(|| std::env::var("PATH").ok())?;
+    let extensions: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat", ""]
+    } else {
+        &[""]
+    };
+    std::env::split_paths(&path).find_map(|dir| {
+        extensions.iter().find_map(|ext| {
+            let candidate = dir.join(format!("{program}{ext}"));
+            candidate.is_file().then_some(candidate)
+        })
+    })
 }
 
 fn version(program: &PathBuf) -> Option<String> {
     let mut command = Command::new(program);
     command.arg("--version");
-    if let Some(path) = crate::terminal::pty::login_path() {
+    if let Some(path) = super::pty::login_path() {
         command.env("PATH", path);
     }
     #[cfg(windows)]
@@ -112,23 +115,4 @@ pub fn detect(scripts: Option<PathBuf>) -> Vec<Tool> {
             homepage: known.homepage,
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn antigravity_is_detect_only() {
-        let known = KNOWN.iter().find(|k| k.id == "antigravity").unwrap();
-        assert_eq!(known.program, "antigravity");
-        assert!(!known.scripted, "Antigravity is never installed by the app");
-        let tools = detect(Some(PathBuf::from("/nonexistent")));
-        assert!(tools
-            .iter()
-            .find(|t| t.id == "antigravity")
-            .unwrap()
-            .installer
-            .is_none());
-    }
 }

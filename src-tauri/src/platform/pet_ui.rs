@@ -474,6 +474,21 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             })
             .map_err(|e| e.to_string())?;
         }
+        // Open this pet's working folder in coding mode, bound to this pet.
+        #[cfg(feature = "coding")]
+        "code" => {
+            let folder = folder(pet).ok_or("Choose a working folder first.")?;
+            let handle = app.clone();
+            std::thread::spawn(move || {
+                let opened = crate::coding::commands::open_window(
+                    &handle,
+                    Some((std::path::PathBuf::from(folder), Some(pet))),
+                );
+                if let Err(error) = opened {
+                    message(&handle, &error);
+                }
+            });
+        }
         // The bubble closed, by the close button, Escape, or by losing focus.
         "closed" => close(app, v["session"].as_u64())?,
         // The page laid itself out and says how tall it is.
@@ -590,6 +605,7 @@ pub fn compose_request(
             parent_id: parent,
             allow_cloud: true,
             allow_web,
+            context: String::new(),
         });
     }
     // The on-device model answers in one turn and cannot act on files, so
@@ -623,6 +639,7 @@ pub fn compose_request(
             parent_id: parent,
             allow_cloud: cloud,
             allow_web,
+            context: String::new(),
         });
     }
     // Without a connection the built-in actions run deterministically and
@@ -649,6 +666,7 @@ pub fn compose_request(
         parent_id: parent,
         allow_cloud: false,
         allow_web: false,
+        context: String::new(),
     })
 }
 fn send(app: &tauri::AppHandle, value: serde_json::Value) {
@@ -747,6 +765,12 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         ProviderKind::Apple => "apple",
         _ => "model",
     };
+    // Coding mode is offered only to people who turned on Developer tools.
+    let developer = app
+        .state::<Shared>()
+        .lock()
+        .map(|s| s.engine.settings.developer_mode)
+        .unwrap_or(false);
     let (payload, placement) = {
         let mut bubble = bubble_state();
         bubble.session += 1;
@@ -761,6 +785,7 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
             "runtime": runtime,
             "model": connection.model,
             "folder": folder(pet_id).unwrap_or_default(),
+            "developer": developer,
             "tailX": placement.map(|p| p.tail_x),
             "tailUp": placement.is_some_and(|p| p.tail_up),
         });

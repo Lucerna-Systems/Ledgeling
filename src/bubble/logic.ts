@@ -9,6 +9,8 @@ export interface BubbleShow {
   runtime: string
   model: string
   folder: string
+  /** Developer tools are on, so the bubble offers coding mode. */
+  developer?: boolean
   tailX: number | null
   tailUp: boolean
 }

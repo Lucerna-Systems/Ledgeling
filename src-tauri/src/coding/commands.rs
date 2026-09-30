@@ -207,7 +207,7 @@ fn start_attention_loop(app: tauri::AppHandle, coding: SharedCoding) {
                 let Some(service) = guard.as_mut() else { break };
                 // The pets' side chats hear what happened in their terminals.
                 let mut now_seen = HashMap::new();
-                for (id, session) in service.ptys.iter() {
+                for (id, session) in &service.ptys {
                     let now = notes::Seen::of(session);
                     if let Some((text, tone)) = notes::change(seen.get(id), &now) {
                         service.notes.add(&session.worktree, text, tone);
@@ -672,22 +672,6 @@ pub async fn code_pty_spawn(
         return Err("Run commands start from the Run tab.".into());
     }
     let root = self::worktree(&state, &worktree)?;
-    // An agent that can report its own events does, so its pet shows what it
-    // is really doing rather than what its output suggests.
-    let (command, env, events) = match command.as_deref() {
-        Some(line) if kind == pty::Kind::Agent => {
-            let config_dir = window
-                .app_handle()
-                .state::<Shared>()
-                .lock()
-                .map_err(|_| "Ledgeling's state is unavailable.")?
-                .config_dir
-                .clone();
-            let prepared = crate::terminal::agent::prepare(line, &config_dir);
-            (Some(prepared.command), prepared.env, prepared.events)
-        }
-        other => (other.map(str::to_string), Vec::new(), None),
-    };
     let session = pty::spawn(
         pty::Spawn {
             cwd: &root,
@@ -697,12 +681,15 @@ pub async fn code_pty_spawn(
             title,
             cols,
             rows,
-            env,
-            events,
+            env: Vec::new(),
         },
         channel,
     )?;
-    with(&state, |s| Ok(s.ptys.add(session)))
+    with(&state, |s| {
+        let id = s.next_pty_id();
+        s.ptys.insert(id, session);
+        Ok(id)
+    })
 }
 
 #[tauri::command]
@@ -731,13 +718,6 @@ pub async fn code_pty(
             if let Some(mut session) = s.ptys.remove(&id) {
                 session.kill();
             }
-            Ok(())
-        }
-        "rename" => {
-            s.ptys
-                .get_mut(&id)
-                .ok_or("That terminal has closed.")?
-                .title = crate::terminal::commands::clean_title(&data);
             Ok(())
         }
         other => Err(format!("Unknown terminal action `{other}`.")),
@@ -832,7 +812,6 @@ pub async fn code_run_start(
             cols,
             rows,
             env: config.env.into_iter().collect(),
-            events: None,
         },
         channel,
     )?;
@@ -1088,7 +1067,6 @@ pub async fn code_install(
             cols,
             rows,
             env: Vec::new(),
-            events: None,
         },
         channel,
     )?;

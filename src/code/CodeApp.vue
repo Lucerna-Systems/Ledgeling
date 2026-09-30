@@ -3,12 +3,12 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, 
 import { Bot, ChevronDown, ChevronLeft, CircleCheck, CircleX, Columns2, FileCode2, FolderGit2, FolderOpen, FolderTree, GitBranch, GitCompareArrows, GitPullRequest, LoaderCircle, Maximize2, Minimize2, Minus, PanelLeftClose, PanelLeftOpen, Pin, Play, Rows2, Settings2, SquareTerminal, X } from '@lucide/vue'
 import PetFace from '../assistant/PetFace.vue'
 import WorktreeSwitcher from './components/WorktreeSwitcher.vue'
-import ConfirmDialog from '../terminal/ConfirmDialog.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import { activityOf, changeCount, code, codeState, current, currentPet, focus, loaded, narrowTabs, native, problem, refreshState, start, status, tab, wide } from './state'
 import type { MainView, Tab } from './types'
-import { openAntigravity, openClaude, openShell } from '../terminal/panes'
+import { openClaude, openShell } from './panes'
 import { startNotes, unreadNotes } from './petNotes'
-import { splitHint } from '../terminal/shortcuts'
+import { splitHint } from './shortcuts'
 import { has } from './tools'
 import { branchPr, show as showOnGitHub } from './github/store'
 import { prState, rollup } from './github/format'
@@ -229,7 +229,6 @@ onUnmounted(() => {
           <template v-if="mainView === 'terminal'">
             <span class="grow" />
             <button class="ghost" :disabled="!has('claude')" :title="has('claude') ? 'Start Claude Code beside the focused terminal' : 'Claude Code is not installed. See Add-ons.'" @click="openClaude"><Bot :size="13" /> Claude Code</button>
-            <button v-if="has('antigravity')" class="ghost" title="Start Antigravity beside the focused terminal" @click="openAntigravity"><Bot :size="13" /> Antigravity</button>
             <button class="icon" :title="`New terminal on the right (${splitHint('row')})`" @click="openShell('row')"><Columns2 :size="14" /></button>
             <button class="icon" :title="`New terminal below (${splitHint('column')})`" @click="openShell('column')"><Rows2 :size="14" /></button>
           </template>

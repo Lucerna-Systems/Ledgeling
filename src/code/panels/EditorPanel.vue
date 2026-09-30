@@ -4,7 +4,7 @@ import { ChevronRight, FileCode2, GitCompareArrows, Save, X } from '@lucide/vue'
 import { languageFor, monaco, setupMonaco } from '../monaco'
 import { code, fileChanges, fileTick, openRequest, root, short, showDiff } from '../state'
 import type { FileText } from '../types'
-import { ask } from '../../terminal/confirm'
+import { ask } from '../confirm'
 
 const props = defineProps<{ active?: boolean }>()
 

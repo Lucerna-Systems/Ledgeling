@@ -51,7 +51,7 @@ appear in the same place.
 | **Changes** | Every changed file with +/− counts, and a diff against the last commit, inline or side by side. **Follow** jumps to each file as it is written. Stage, unstage, discard and commit are here. |
 | **Worktrees** | Your projects and their worktrees. Create one on a new branch and give it a pet, move a pet, remove a worktree (its branch is kept), or show its folder in Finder/Explorer. **Add-ons** is at the bottom. |
 | **Run** | How the project runs, one button to start it, and the ports it opened. See below. |
-| **Terminal** | Real terminals in the worktree, running your own login shell, split side by side or stacked. **Claude Code** starts the `claude` you installed. The same terminals are available without Developer tools in each pet's bubble: see [terminal-mode.md](terminal-mode.md). |
+| **Terminal** | Real terminals in the worktree, running your own login shell, split side by side or stacked. **Claude Code** starts the `claude` you installed. |
 | **Chat** | Ledgeling's assistant, working in this worktree's folder with your usual connection and approvals. |
 
 ### Wide windows

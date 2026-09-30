@@ -7,8 +7,8 @@ import ProvidersPanel from './assistant/ProvidersPanel.vue'
 import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
 import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, Bot, ChevronLeft, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
-import { action, busy, error, native, notes, pets, settings, snapshot, start } from './state'
+import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
 import LabPanel from './panels/LabPanel.vue'
@@ -101,6 +101,9 @@ onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(
                   :aria-current="section === item.page ? 'page' : undefined" @click="page = item.page">
             <component :is="item.icon" :size="18" :stroke-width="1.8" /><span class="label">{{ item.label }}</span>
             <span v-if="item.page === 'history' && waiting" class="nav-badge" :aria-label="`${waiting} waiting for you`">{{ waiting }}</span>
+          </button>
+          <button v-if="settings?.developerMode" class="code-entry" :title="collapsed ? 'Coding mode' : 'Open the coding window beside your browser'" :disabled="offline" @click="call('code_open', { petId: null }, false)">
+            <Code2 :size="18" :stroke-width="1.8" /><span class="label">Coding mode</span>
           </button>
         </nav>
         <section v-if="conversations.length && !collapsed" class="chat-section" aria-labelledby="chats-heading">

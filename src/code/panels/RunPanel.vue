@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { Bot, ExternalLink, Globe, MessageSquare, Pencil, Play, RotateCw, Save, Square, Wand2 } from '@lucide/vue'
-import TermView from '../../terminal/TermView.vue'
-import { adopt, close, spawn, terms } from '../../terminal/terminals'
+import TermView from '../components/TermView.vue'
+import { adopt, close, spawn, terms } from '../terminals'
 import { pendingTerminal } from '../terminalFocus'
 import { chatDraft } from '../chatDraft'
 import { code, codeState, current, fileChanges, fileTick, refreshState, root, tab, wide } from '../state'

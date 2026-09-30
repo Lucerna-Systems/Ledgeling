@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ArrowLeft, Bot, Check, CircleCheck, CircleDashed, CircleX, Copy, ExternalLink, FolderGit2, GitBranch, GitMerge, GitPullRequestClosed, GitPullRequestDraft, LoaderCircle, Pencil, RefreshCw, RotateCcw, SkipForward } from '@lucide/vue'
-import { ask as confirm } from '../../terminal/confirm'
+import { ask as confirm } from '../confirm'
 import { refreshState, select, status as gitStatus, tab, worktrees } from '../state'
 import { pendingTerminal } from '../terminalFocus'
 import { has } from '../tools'

@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { AppWindow, ChevronDown, Globe, Hammer, Package, Play, SquareArrowOutUpRight } from '@lucide/vue'
 import { code } from '../state'
 import { appsOf, live, portsOf, refreshLive, urlFor } from '../live'
-import { nextTitle, spawnPane } from '../../terminal/panes'
-import { terms } from '../../terminal/terminals'
+import { nextTitle, spawnPane } from '../panes'
+import { terms } from '../terminals'
 import type { AppView, NativeApp, RunConfig, RunSetup } from '../types'
 
 /** The open button on a terminal: what that terminal is serving, one click
