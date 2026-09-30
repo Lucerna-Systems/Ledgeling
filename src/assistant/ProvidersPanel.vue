@@ -179,11 +179,6 @@ async function saveSearch(enabled: boolean) {
     searchNote.value = enabled ? 'Web search is on.' : 'Web search is off.'
   } catch { /* shared error */ }
 }
-async function saveThinking(enabled: boolean) {
-  try {
-    connections.value = await taskCall<Connections>('task_save_connections', { config: { ...connections.value, ollamaThinking: enabled } })
-  } catch { /* shared error */ }
-}
 async function forgetBrave() {
   try { await taskCall('task_secret', { name: 'brave', value: '' }); await loadDetection(); searchNote.value = 'Search key removed.' } catch { /* shared error */ }
 }
@@ -259,14 +254,6 @@ onMounted(() => { void loadDetection(); void loadProviderTerms() })
       </section>
     </template>
 
-    <h2 v-if="connections.providers.ollama" class="group-title">Local models</h2>
-    <section v-if="connections.providers.ollama" class="settings-group">
-      <div class="setting-row">
-        <div><h3>Let local models think</h3><p>Reasoning models such as Qwen3 can think before they answer. Answers may be better, but a small model can take a minute or more and look stuck. Off by default.</p></div>
-        <button class="toggle" :class="{ enabled: connections.ollamaThinking }" role="switch" :aria-checked="connections.ollamaThinking" aria-label="Let local models think"
-                @click="saveThinking(!connections.ollamaThinking)"><span /></button>
-      </div>
-    </section>
     <h2 class="group-title">Web search</h2>
     <section class="settings-group">
       <div class="setting-row">

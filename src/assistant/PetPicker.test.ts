@@ -21,7 +21,7 @@ beforeEach(() => {
     pets: [{ id: 1, packId: 'pip', name: 'Pip', class: 'flier', state: 'rest', energy: 1, mood: .7, surface: null }],
   } as unknown as Snapshot
   connections.value = {
-    active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {},
+    active: { kind: 'ollama', model: 'llama', endpoint: 'http://127.0.0.1:11434', executable: '' }, searchEnabled: false, perPet: {},
     providers: { ollama: setup('llama', { endpoint: 'http://127.0.0.1:11434', termsVersion: 0 }), apple: setup('system') },
   }
   // The backend's answer is what the picker shows, so the mock echoes the save.
