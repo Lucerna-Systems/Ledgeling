@@ -116,7 +116,8 @@
     { "on": "break_taken", "goto": "sing", "priority": 40, "cooldown": 300 },
     { "on": "user_idle_long", "goto": "doze", "priority": 30 },
     { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
-    { "on": "cursor_nearby", "goto": "peek", "priority": 20, "cooldown": 15 }
+    { "on": "cursor_nearby", "goto": "peek", "priority": 20, "cooldown": 15 },
+    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
   ],
   "personality": {
     "activity": 0.7,

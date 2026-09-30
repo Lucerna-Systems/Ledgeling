@@ -136,7 +136,7 @@
                     "weight": { "type": "number", "minimum": 0 },
                     "when": {
                       "type": "string",
-                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, is_dragging."
+                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, cursor_speed, is_dragging."
                     }
                   }
                 }
@@ -156,7 +156,7 @@
           "on": {
             "enum": [
               "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
-              "cursor_nearby", "user_idle_long", "user_returned", "long_session",
+              "cursor_nearby", "cursor_fast", "user_idle_long", "user_returned", "long_session",
               "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy"
             ]
           },

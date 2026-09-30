@@ -576,3 +576,86 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
 }
+
+// ------------------------------------------------------------------ cursor
+
+fn tick_with_cursor(
+    pet: &mut Pet,
+    world: &World,
+    cursor: Point,
+    events: &mut Vec<Event>,
+) -> Signals {
+    let mut view = world.view();
+    view.cursor = Some(cursor);
+    pet.tick(1. / 60., &view, Signals::default(), events)
+}
+
+#[test]
+fn a_resting_pet_turns_to_watch_the_cursor() {
+    let world = World::new(&[win(1, 200., 400., 600., 300.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 400.));
+    settle(&mut pet, &world, 20.);
+    let mut events = Vec::new();
+    let x = pet.position.x;
+    tick_with_cursor(&mut pet, &world, Point::new(x - 200., 350.), &mut events);
+    if pet.motion == Motion::Settled {
+        assert!(pet.flip_x, "looks left at a cursor on its left");
+        tick_with_cursor(&mut pet, &world, Point::new(x + 200., 350.), &mut events);
+        assert!(!pet.flip_x, "and right at one on its right");
+    }
+}
+
+#[test]
+fn a_slow_cursor_reads_slow_and_a_fast_one_flinches_a_nearby_pet() {
+    let world = World::new(&[win(1, 200., 400., 600., 300.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 400.));
+    settle(&mut pet, &world, 20.);
+    let base = pet.position;
+    let mut events = Vec::new();
+
+    // 60 px/s for a second: well under the flinch threshold.
+    let mut signals = Signals::default();
+    for i in 0..60 {
+        signals = tick_with_cursor(
+            &mut pet,
+            &world,
+            Point::new(base.x + 100. + i as f64, base.y - 50.),
+            &mut events,
+        );
+    }
+    assert!(
+        signals.cursor_speed > 5. && signals.cursor_speed < 400.,
+        "{}",
+        signals.cursor_speed
+    );
+    assert_ne!(pet.machine.state, "startled");
+
+    // 3000 px/s sweep past the pet.
+    for i in 0..30 {
+        signals = tick_with_cursor(
+            &mut pet,
+            &world,
+            Point::new(base.x + 100. - 50. * i as f64, base.y - 50.),
+            &mut events,
+        );
+    }
+    assert!(signals.cursor_speed > 1800.);
+    assert_eq!(pet.machine.state, "startled", "a fast pass makes it flinch");
+}
+
+#[test]
+fn a_fast_cursor_far_from_the_pet_is_ignored() {
+    let world = World::new(&[win(1, 200., 400., 600., 300.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 400.));
+    settle(&mut pet, &world, 20.);
+    let mut events = Vec::new();
+    for i in 0..30 {
+        tick_with_cursor(
+            &mut pet,
+            &world,
+            Point::new(1500. - 50. * (i % 2) as f64 * 40., 900.),
+            &mut events,
+        );
+    }
+    assert_ne!(pet.machine.state, "startled");
+}

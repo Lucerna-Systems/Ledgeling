@@ -167,7 +167,8 @@ hour >= 22 || hour < 6
 ```
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
-`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `is_dragging`.
+`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `cursor_speed` (pixels per second),
+`is_dragging`.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:
