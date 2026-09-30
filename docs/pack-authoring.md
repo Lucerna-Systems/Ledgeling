@@ -19,7 +19,7 @@ Give this an hour. Most of that hour is drawing.
 
 ## 1. Make the folder (2 minutes)
 
-Open Ledgeling → **Settings → Advanced → Pet Lab** → under **New pack folder**, type a
+Open Ledgeling → **Pets → Make your own pet → Test** → under **New pack folder**, type a
 name, pick how it moves, press **New pack**.
 
 You now have a folder with placeholder art and a `pet.json` that already works.
@@ -256,7 +256,7 @@ clips are optional and fall back to `alert`/`happy`, then `idle`.
 
 ## 5. When something is wrong
 
-Open **Pet Lab** and press *Check* on your pack. Every problem names the file, the
+Open **Pet Studio → Test** and press *Check* on your pack. Every problem names the file, the
 exact place in it, what is wrong, and what was expected:
 
 ```
@@ -265,7 +265,7 @@ ERROR  pet.json → animations.climb.frames
        Frame counts must be numbers, not quoted strings.
 ```
 
-Pet Lab also has **scenario buttons**, which fire an event immediately so you can
+The Test tab also has **scenario buttons**, which fire an event immediately so you can
 see your `long_session` reaction without working for 45 minutes first, and a
 **debug overlay** that draws the surfaces, the jumps your pet can and cannot make,
 and its current path over your real windows. If a climber refuses to cross a gap,

@@ -3,15 +3,16 @@ import { computed, ref } from 'vue'
 import { AlertCircle, Check, Download, FlaskConical, Palette, PawPrint, RotateCcw, Workflow } from '@lucide/vue'
 import { call, native, packs, refreshPacks } from '../state'
 import type { PackSummary } from '../types'
+import TestTab from './TestTab.vue'
 import BehaviorEditor from './BehaviorEditor.vue'
 import SpriteEditor from './SpriteEditor.vue'
 import { FRAME, movements, payload, problems, starterDraft } from './model'
 import { draft, openInStudio } from './state'
 import './studio.css'
 
-const emit = defineEmits<{ go: [page: 'lab' | 'pets'] }>()
+const emit = defineEmits<{ go: [page: 'pets'] }>()
 
-const tab = ref<'look' | 'behaviour'>('look')
+const tab = ref<'look' | 'behaviour' | 'test'>('look')
 const edits = ref(0)
 // Read `edits` so drawing, which Vue cannot see, still re-checks the design.
 const issues = computed(() => (edits.value, problems(draft.value)))
@@ -107,13 +108,14 @@ function startOver() {
       <div class="studio-tabs" role="tablist" aria-label="Studio">
         <button type="button" role="tab" :aria-selected="tab === 'look'" @click="tab = 'look'"><Palette :size="15" /> Look</button>
         <button type="button" role="tab" :aria-selected="tab === 'behaviour'" @click="tab = 'behaviour'"><Workflow :size="15" /> Behaviour</button>
+        <button type="button" role="tab" :aria-selected="tab === 'test'" @click="tab = 'test'"><FlaskConical :size="15" /> Test</button>
       </div>
     </div>
 
     <div v-if="saved" class="studio-saved" role="status">
       <Check :size="16" /> <span><strong>{{ saved.name }}</strong> is saved and ready in your Pets.</span>
       <button type="button" class="text-link" @click="emit('go', 'pets')">See it in Pets</button>
-      <button type="button" class="text-link" @click="emit('go', 'lab')"><FlaskConical :size="13" /> Test in Pet Lab</button>
+      <button type="button" class="text-link" @click="tab = 'test'"><FlaskConical :size="13" /> Test it</button>
       <button type="button" class="text-link" @click="exportSaved"><Download :size="13" /> Export .petpack</button>
       <span v-if="exported" class="path-note">Exported to {{ exported }}</span>
     </div>
@@ -124,5 +126,6 @@ function startOver() {
 
     <SpriteEditor v-show="tab === 'look'" :draft="draft" @edited="edits++" />
     <BehaviorEditor v-if="tab === 'behaviour'" :draft="draft" />
+    <TestTab v-if="tab === 'test'" />
   </section>
 </template>

@@ -51,7 +51,7 @@ it('keeps Settings selected on an advanced page and returns to it', async () => 
 it('keeps every page except the default Assistant, and the pet and bubble roots, behind dynamic imports', () => {
   const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8')
   const companion = read('./Companion.vue')
-  for (const page of ['HistoryPanel', 'ProvidersPanel', 'PacksPanel', 'SettingsPanel', 'LabPanel', 'AwarenessPanel', 'DesktopPanel', 'PetStudio'])
+  for (const page of ['HistoryPanel', 'ProvidersPanel', 'PacksPanel', 'SettingsPanel', 'AwarenessPanel', 'DesktopPanel', 'PetStudio'])
     expect(companion).not.toMatch(new RegExp(`^import ${page} from`, 'm'))
   expect(companion).toMatch(/import\('\.\/studio\/PetStudio\.vue'\)/)
   const app = read('./App.vue')
@@ -124,4 +124,19 @@ it('opens on Pets once when the backend reports a first run', async () => {
   expect(wrapper.get('nav button[aria-current="page"]').text()).toBe('History')
   wrapper.unmount()
   snapshot.value = null
+})
+
+it('has no separate Pet Lab; its tools live in the Pet Studio Test tab', async () => {
+  HTMLCanvasElement.prototype.getContext = (() => new Proxy({}, { get: () => () => {} })) as never
+  globalThis.ImageData ??= class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} } as never
+  const wrapper = mount(Companion)
+  const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
+  await nav('Settings').trigger('click')
+  expect(wrapper.text()).not.toContain('Pet Lab')
+  await nav('Pets').trigger('click')
+  await wrapper.get('.make-pet').trigger('click')
+  await wrapper.findAll('[role=tab]').find(tab => tab.text() === 'Test')!.trigger('click')
+  expect(wrapper.text()).toContain('Validator')
+  expect(wrapper.text()).toContain('Scenarios')
+  wrapper.unmount()
 })
