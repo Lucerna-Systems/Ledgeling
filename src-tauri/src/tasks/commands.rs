@@ -69,6 +69,15 @@ pub async fn task_cancel(
     state.cancel(id)
 }
 #[tauri::command]
+pub async fn task_force_stop(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+) -> Result<(), String> {
+    main_or_code(&window)?;
+    state.force_stop(id)
+}
+#[tauri::command]
 pub async fn task_approve(
     window: WebviewWindow,
     state: State<'_, TaskService>,
