@@ -46,7 +46,9 @@
           { "to": "sing", "weight": 1 },
           { "to": "restless", "weight": 4, "when": "session_minutes > 45" },
           { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
-          { "to": "doze", "weight": 4, "when": "energy < 0.25" }
+          { "to": "doze", "weight": 4, "when": "energy < 0.25" },
+          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
+          { "to": "sing", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
       },
       "preen": {

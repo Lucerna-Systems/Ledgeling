@@ -168,6 +168,9 @@ hour >= 22 || hour < 6
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
 `hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `is_dragging`.
+`hour` is the local hour, 0–23. The engine also tires every pet late at night
+(23:00–05:00) and perks it up in the morning (06:00–10:00), so `energy < 0.25`
+rules already make pets sleepy at night; add `hour` rules for more.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:
