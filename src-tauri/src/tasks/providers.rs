@@ -1,7 +1,12 @@
 use super::{apple, types::*, Cancel};
 use reqwest::blocking::{Client, Response};
 use serde_json::{json, Value};
-use std::{io::Read, path::PathBuf, time::Duration};
+use std::{
+    io::{BufRead, BufReader, Read},
+    path::PathBuf,
+    sync::mpsc::{self, RecvTimeoutError},
+    time::Duration,
+};
 
 pub trait ModelProvider {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String>;
@@ -77,11 +82,63 @@ pub fn client() -> Result<Client, String> {
         .build()
         .map_err(|_| "Could not initialise HTTP client".into())
 }
-pub fn response_json(response: Response) -> Result<Value, String> {
+fn check_status(response: &Response) -> Result<(), String> {
     let status = response.status();
-    if !status.is_success() {
-        return Err(format!("Provider returned HTTP {}. Check your connection, model, credentials and usage limits.", status.as_u16()));
+    if status.is_success() {
+        Ok(())
+    } else {
+        Err(format!("Provider returned HTTP {}. Check your connection, model, credentials and usage limits.", status.as_u16()))
     }
+}
+/// Runs a blocking provider call on its own thread, so a cancel is noticed
+/// within 100 ms instead of after the reply or the 90-second timeout. The one
+/// task worker is shared by every chat, so a call it cannot leave holds them all.
+/// The thread is abandoned on cancel and ends when the call does.
+fn cancellable<T: Send + 'static>(
+    cancel: &Cancel,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (done, wait) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(work());
+    });
+    loop {
+        match wait.recv_timeout(Duration::from_millis(100)) {
+            Ok(result) => return result,
+            Err(RecvTimeoutError::Timeout) => cancel.check()?,
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("The request stopped unexpectedly.".into())
+            }
+        }
+    }
+}
+/// The text of an Ollama streamed reply (one JSON object per line). Returning
+/// early drops the connection, which is what makes Ollama stop generating.
+fn read_stream(reader: impl Read, cancel: &Cancel) -> Result<String, String> {
+    let mut text = String::new();
+    for line in BufReader::new(reader.take(2_000_001)).lines() {
+        cancel.check()?;
+        let line = line.map_err(|_| "Provider response interrupted".to_string())?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let chunk: Value = serde_json::from_str(&line)
+            .map_err(|_| "Provider returned invalid JSON.".to_string())?;
+        if let Some(error) = chunk["error"].as_str() {
+            return Err(format!("Ollama reported an error: {error}"));
+        }
+        text.push_str(chunk["message"]["content"].as_str().unwrap_or(""));
+        if text.len() > 2_000_000 {
+            return Err("Provider response exceeded 2 MB.".into());
+        }
+        if chunk["done"].as_bool() == Some(true) {
+            break;
+        }
+    }
+    Ok(text)
+}
+pub fn response_json(response: Response) -> Result<Value, String> {
+    check_status(&response)?;
     let mut body = Vec::new();
     response
         .take(2_000_001)
@@ -303,12 +360,15 @@ impl HttpModel {
         }
         let http = client()?;
         if config.kind == ProviderKind::Ollama {
-            let model_info = response_json(
-                http.post(format!("{endpoint}/api/show"))
-                    .json(&json!({"model":config.model}))
-                    .send()
-                    .map_err(|_| "Could not inspect the local Ollama model".to_string())?,
-            )?;
+            let show = http
+                .post(format!("{endpoint}/api/show"))
+                .json(&json!({"model":config.model}));
+            let model_info = cancellable(cancel, move || {
+                response_json(
+                    show.send()
+                        .map_err(|_| "Could not inspect the local Ollama model".to_string())?,
+                )
+            })?;
             if config.model.contains(":cloud")
                 || model_info.get("remote_host").is_some_and(|v| !v.is_null())
                 || model_info.get("remote_model").is_some_and(|v| !v.is_null())
@@ -318,7 +378,7 @@ impl HttpModel {
             cancel.check()?;
         }
         let request = match config.kind {
-            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&json!({"model":config.model,"messages":messages,"stream":false,"format":"json","options":{"num_predict":4096},"keep_alive":"1m"})),
+            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&json!({"model":config.model,"messages":messages,"stream":true,"format":"json","options":{"num_predict":4096},"keep_alive":"1m"})),
             ProviderKind::Openai => http.post(format!("{endpoint}/responses")).bearer_auth(secret("openai")?).json(&json!({"model":config.model,"input":messages,"max_output_tokens":4096,"store":false})),
             ProviderKind::Anthropic => {
                 let system = messages.iter().filter(|m| m.role=="system").map(|m|m.content.as_str()).collect::<Vec<_>>().join("\n");
@@ -341,7 +401,17 @@ impl HttpModel {
             }
             _ => return Err("Choose an AI model connection, or use a built-in preset without AI.".into()),
         };
-        let v = response_json(request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?)?;
+        let streamed = config.kind == ProviderKind::Ollama;
+        let stop = cancel.clone();
+        let v = cancellable(cancel, move || {
+            let response = request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?;
+            if streamed {
+                check_status(&response)?;
+                read_stream(response, &stop).map(|text| json!({"message":{"content":text}}))
+            } else {
+                response_json(response)
+            }
+        })?;
         cancel.check()?;
         let output = match config.kind {
             ProviderKind::Ollama => v["message"]["content"].as_str().unwrap_or("").to_owned(),
@@ -480,6 +550,146 @@ pub fn parse_call(text: &str) -> Result<ToolCall, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        io::Write,
+        net::{TcpListener, TcpStream},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Instant,
+    };
+
+    fn read_request(stream: &mut TcpStream) -> String {
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            if stream.read(&mut byte).unwrap_or(0) == 0 {
+                break;
+            }
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&head).into_owned();
+        let length = head
+            .lines()
+            .find_map(|l| {
+                l.to_lowercase()
+                    .strip_prefix("content-length:")
+                    .map(|v| v.trim().parse().unwrap_or(0))
+            })
+            .unwrap_or(0usize);
+        let mut body = vec![0u8; length];
+        let _ = stream.read_exact(&mut body);
+        head
+    }
+    /// A stand-in Ollama that streams one token every 50 ms for as long as
+    /// the client stays connected, and records when the client went away.
+    fn slow_ollama() -> (String, Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let dropped = Arc::new(AtomicBool::new(false));
+        let seen = dropped.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let head = read_request(&mut stream);
+                if head.starts_with("POST /api/show") {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    );
+                    continue;
+                }
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nConnection: close\r\n\r\n");
+                loop {
+                    std::thread::sleep(Duration::from_millis(50));
+                    let line = b"{\"message\":{\"content\":\"a\"},\"done\":false}\n";
+                    if stream.write_all(line).and_then(|_| stream.flush()).is_err() {
+                        seen.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                }
+            }
+        });
+        (address, dropped)
+    }
+    fn ollama(endpoint: &str) -> HttpModel {
+        HttpModel(Connection {
+            kind: ProviderKind::Ollama,
+            model: "test".into(),
+            endpoint: endpoint.into(),
+            ..Default::default()
+        })
+    }
+    fn message() -> Vec<Message> {
+        vec![Message {
+            role: "user".into(),
+            content: "hi".into(),
+        }]
+    }
+
+    #[test]
+    fn cancelling_stops_a_streaming_reply_at_once_and_closes_the_connection() {
+        let (endpoint, dropped) = slow_ollama();
+        let cancel = Cancel::default();
+        let worker = cancel.clone();
+        let model = ollama(&endpoint);
+        let started = Instant::now();
+        let handle = std::thread::spawn(move || model.complete(&message(), &worker));
+        std::thread::sleep(Duration::from_millis(400));
+        cancel.cancel();
+        let result = handle.join().unwrap();
+        assert_eq!(result, Err("Task cancelled".into()));
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "cancel took {:?}",
+            started.elapsed()
+        );
+        for _ in 0..40 {
+            if dropped.load(Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("the server was still being read after the task was cancelled");
+    }
+    #[test]
+    fn a_call_that_never_returns_cannot_hold_the_worker_after_a_cancel() {
+        let cancel = Cancel::default();
+        let stop = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            stop.cancel();
+        });
+        let started = Instant::now();
+        let result: Result<(), String> = cancellable(&cancel, || {
+            std::thread::sleep(Duration::from_secs(20));
+            Ok(())
+        });
+        assert_eq!(result, Err("Task cancelled".into()));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+    #[test]
+    fn a_finished_call_returns_its_value() {
+        assert_eq!(cancellable(&Cancel::default(), || Ok(7)), Ok(7));
+    }
+    #[test]
+    fn streamed_replies_are_joined_and_errors_surface() {
+        let cancel = Cancel::default();
+        let body = "{\"message\":{\"content\":\"{\\\"to\"},\"done\":false}\n\n{\"message\":{\"content\":\"ol\\\":1}\"},\"done\":true}\nignored";
+        assert_eq!(
+            read_stream(body.as_bytes(), &cancel).unwrap(),
+            "{\"tool\":1}"
+        );
+        let failed = "{\"error\":\"model not found\"}\n";
+        assert!(read_stream(failed.as_bytes(), &cancel)
+            .unwrap_err()
+            .contains("model not found"));
+        cancel.cancel();
+        assert_eq!(
+            read_stream(body.as_bytes(), &cancel),
+            Err("Task cancelled".into())
+        );
+    }
     #[test]
     fn model_id_parsing_covers_both_listing_shapes() {
         assert_eq!(
