@@ -9,7 +9,7 @@ import Dropdown from '../components/Dropdown.vue'
 const BubbleTerminal = defineAsyncComponent(() => import('../terminal/BubbleTerminal.vue'))
 import { applyCachedTheme } from '../theme'
 import {
-  ACTIONS, NOTCH, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
+  ACTIONS, NOTCH, TOUR, blocker, bubblePath, connected, isTask, shortPath, startEvent, taskView,
   type BubbleShow, type BubbleUpdate, type Draft, type TaskView,
 } from './logic'
 
@@ -46,6 +46,22 @@ let disposed = false
 const mac = /Mac/i.test(navigator.platform || navigator.userAgent)
 /** Window margin around the drawn bubble; matches BUBBLE_MARGIN in pet_ui.rs. */
 const MARGIN = 12
+
+/** Which tour card is showing, or null once the tour is over (or was never due). */
+const step = ref<number | null>(null)
+const tour = computed(() => step.value === null ? null : TOUR[step.value] ?? null)
+
+function tourNext() {
+  if (step.value === null || !show.value) return
+  if (step.value < TOUR.length - 1) { step.value++; return }
+  tourEnd()
+}
+
+function tourEnd() {
+  if (!show.value) return
+  step.value = null
+  void call({ type: 'tourDone', petId: show.value.petId })
+}
 
 const ask = computed(() => draft.mode === 'ask')
 const terminal = computed(() => draft.mode === 'terminal')
@@ -84,6 +100,8 @@ async function open(payload: BubbleShow) {
     note.value = ''
   }
   show.value = payload
+  if (payload.tour && step.value === null) step.value = 0
+  else if (!payload.tour) step.value = null
   place(payload)
   // Every opening starts the window at the ordinary width, so the size has to
   // be reported again even if it is unchanged since the last time: reopening
@@ -261,7 +279,7 @@ function report(snap = false) {
 
 // Rows appearing and disappearing change the height before the observer has
 // a chance to fire in a hidden window.
-watch([() => draft.mode, hint, task, note, () => models.state], () => { void nextTick(() => report()) })
+watch([step, () => draft.mode, hint, task, note, () => models.state], () => { void nextTick(() => report()) })
 watch(terminal, on => { if (!on) void nextTick(() => prompt.value?.focus()) })
 
 async function subscribe<T>(event: string, callback: (value: T) => void) {
@@ -311,6 +329,19 @@ onUnmounted(() => {
       :aria-label="`Ask ${show.name}`"
       :style="{ width: `${contentWidth}px`, paddingTop: `${(tail.up ? NOTCH : 0) + 16}px`, paddingBottom: `${(tail.up ? 0 : NOTCH) + 18}px` }"
     >
+
+      <template v-if="tour">
+        <header class="bubble-head">
+          <h1>{{ tour.title }}</h1>
+          <button type="button" class="icon-button" aria-label="Skip the tour" @click="tourEnd"><X :size="15" /></button>
+        </header>
+        <p class="tour-text" role="status">{{ tour.text }}</p>
+        <div class="actions">
+          <button type="button" class="secondary" @click="tourEnd">Skip</button>
+          <button type="button" class="primary" @click="tourNext">{{ step === TOUR.length - 1 ? 'Done' : 'Next' }}</button>
+        </div>
+      </template>
+      <template v-else>
       <header class="bubble-head">
         <h1>Ask {{ show.name }}</h1>
         <button type="button" class="icon-button" aria-label="Close" @click="dismiss"><X :size="15" /></button>
@@ -440,6 +471,7 @@ html:has(.bubble-page), html:has(.bubble-page) body { overflow: hidden; }
 .bubble .dropdown-button { height: 28px; border-radius: 14px; font-size: 12px; }
 .bubble .dropdown-list { max-height: 164px; }
 .bubble .dropdown-list li { padding: 5px 10px; font-size: 12px; }
+.tour-text { margin: 0; }
 .hint { margin: -2px 0 0; font-size: 11.5px; color: var(--status-waiting-ink); }
 .prompt {
   display: block; width: 100%; height: 84px; resize: none; padding: 10px 12px; border-radius: 14px; font: inherit; line-height: 1.5;

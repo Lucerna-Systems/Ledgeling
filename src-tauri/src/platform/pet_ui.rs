@@ -523,6 +523,17 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
                 }
             });
         }
+        // The tour was finished or skipped; it is not shown again.
+        "tourDone" => {
+            let shared = app.state::<Shared>();
+            let mut state = shared.lock().map_err(|_| "Pet state unavailable")?;
+            state.engine.settings.tour_done = true;
+            state.dirty = true;
+            let _ = state.persist();
+            if let Some(shown) = bubble_state().shown.as_mut() {
+                shown["tour"] = false.into();
+            }
+        }
         // The bubble closed, by the close button, Escape, or by losing focus.
         "closed" => close(app, v["session"].as_u64())?,
         // The page laid itself out and says how tall it is.
@@ -773,6 +784,32 @@ pub fn click_through(window: &tauri::WebviewWindow, click_through: bool) -> taur
     }
     window.set_ignore_cursor_events(click_through)
 }
+/// On a new install, once a pet is standing somewhere, open its bubble as the
+/// tour. Gives up quietly after a while: the tour then waits for the next launch.
+pub fn start_tour(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        for _ in 0..60 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let pet = {
+                let shared = app.state::<Shared>();
+                let Ok(state) = shared.lock() else { return };
+                if state.engine.settings.tour_done {
+                    return;
+                }
+                // The first-run welcome comes first: the tour starts once it has
+                // dropped the pet, never beside it.
+                if state.engine.suspended || state.engine.welcome_pending() {
+                    continue;
+                }
+                state.engine.pets.first().map(|p| p.id)
+            };
+            if let Some(pet) = pet {
+                let _ = tauri::async_runtime::block_on(show_pet_bubble(app.clone(), pet));
+                return;
+            }
+        }
+    });
+}
 #[tauri::command]
 pub async fn pet_folder(pet_id: u64) -> Option<String> {
     folder(pet_id)
@@ -813,6 +850,11 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         .lock()
         .map(|s| s.engine.settings.developer_mode)
         .unwrap_or(false);
+    let tour = app
+        .state::<Shared>()
+        .lock()
+        .map(|s| !s.engine.settings.tour_done)
+        .unwrap_or(false);
     let (payload, placement) = {
         let mut bubble = bubble_state();
         bubble.session += 1;
@@ -831,6 +873,7 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
             "model": connection.model,
             "folder": folder(pet_id).unwrap_or_default(),
             "developer": developer,
+            "tour": tour,
             "tailX": placement.map(|p| p.tail_x),
             "tailUp": placement.is_some_and(|p| p.tail_up),
         });
