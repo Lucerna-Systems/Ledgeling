@@ -576,3 +576,80 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
 }
+
+// -------------------------------------------------------- physical reactions
+
+/// Tick until `event` appears in the stream the machine sees, or time runs out.
+fn sees(pet: &mut Pet, world: &World, event: Event, seconds: f64) -> bool {
+    let mut elapsed = 0.;
+    while elapsed < seconds {
+        elapsed += 1. / 60.;
+        let mut events = Vec::new();
+        pet.tick(1. / 60., &world.view(), Signals::default(), &mut events);
+        if pet.pending.contains(&event) {
+            return true;
+        }
+    }
+    false
+}
+
+#[test]
+fn a_pet_shakes_off_after_landing_from_a_fall() {
+    let world = World::new(&[win(1, 100., 700., 800., 100.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    pet.motion = Motion::Falling;
+    pet.arc = Arc_::Fall { velocity: 0. };
+    assert!(
+        sees(&mut pet, &world, Event::Landed, 5.),
+        "landing is an event"
+    );
+    step(&mut pet, &world, 0.05);
+    assert_eq!(pet.state(), "shake", "the squirrel pack reacts to it");
+}
+
+#[test]
+fn a_pet_startles_when_its_window_closes_under_it() {
+    let before = World::new(&[win(1, 200., 300., 600., 100.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    settle(&mut pet, &before, 30.);
+    let after = World::new(&[]);
+    step(&mut pet, &after, 0.05);
+    assert_eq!(pet.state(), "startled");
+}
+
+#[test]
+fn a_pet_peeks_when_it_walks_to_the_end_of_a_ledge() {
+    let world = World::new(&[win(1, 200., 400., 600., 300.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 400.));
+    settle(&mut pet, &world, 20.);
+    step(&mut pet, &world, 0.05); // let the landing event be consumed
+                                  // Forget the shake-off from its first landing, and keep its own wandering
+                                  // from replacing the hand-built plan below.
+    pet.machine.priority = 0;
+    pet.listen(true);
+    let top = world
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == crate::world::SurfaceKind::WindowTop)
+        .unwrap();
+    let perch = Perch {
+        key: top.key(),
+        t: 0.9,
+    };
+    pet.perch = Some(perch);
+    pet.position = top.point(0.9);
+    pet.plan = Some(Plan {
+        steps: vec![pathfind::Step {
+            key: perch.key,
+            from_t: 0.9,
+            to_t: 0.96,
+            exit: None,
+        }],
+        index: 0,
+    });
+    pet.motion = Motion::Walking;
+    assert!(sees(&mut pet, &world, Event::EdgeReached, 10.));
+    pet.listen(false);
+    step(&mut pet, &world, 0.05);
+    assert_eq!(pet.state(), "peek");
+}
