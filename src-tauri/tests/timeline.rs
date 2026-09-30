@@ -311,3 +311,34 @@ fn awareness_can_be_switched_off_entirely_and_the_pet_still_lives() {
     assert_eq!(summary.nudge_tier, 0);
     assert!(engine.pets[0].perch.is_some(), "the pet is unaffected");
 }
+
+#[test]
+fn two_pets_on_one_window_notice_each_other() {
+    // A window barely wider than the notice radius, so the pair cannot avoid
+    // standing close.
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 260., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    // Spawn spots are random; put the second pet beside the first.
+    let (perch, position) = (engine.pets[0].perch, engine.pets[0].position);
+    engine.pets[1].perch = perch;
+    engine.pets[1].position = position;
+    let mut greeted = false;
+    let mut elapsed = 0.;
+    while elapsed < 30. && !greeted {
+        elapsed += 1. / 60.;
+        engine.tick(1. / 60., &platform);
+        greeted = engine.pets.iter().any(|p| p.state() == "greet");
+    }
+    assert!(greeted, "neighbours never greeted each other");
+}
+
+#[test]
+fn a_lone_pet_never_notices_a_neighbour() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 260., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 10.);
+    assert_ne!(engine.pets[0].state(), "greet");
+}

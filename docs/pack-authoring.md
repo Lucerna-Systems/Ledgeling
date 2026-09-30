@@ -180,6 +180,10 @@ Anything else is an error that tells you so, with the alternatives listed.
 ]
 ```
 
+`pet_nearby` fires when two pets are on the same window edge and close together
+(once per meeting, not every frame), so `{ "on": "pet_nearby", "goto": "greet",
+"priority": 20, "cooldown": 30 }` makes a pet say hello to its neighbour.
+
 `cooldown` is seconds, and it is how you keep a pet from becoming annoying. Use it
 generously on anything to do with nudging.
 
