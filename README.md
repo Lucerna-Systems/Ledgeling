@@ -32,8 +32,9 @@ gecko as well.
   pet, kind and provider filters.
 - **Settings** holds appearance, sounds, awareness, break reminders, login and the
   plain-language privacy summary. Its **Advanced** section leads to the desktop
-  map, awareness details (reminder timing, app categories) and the **Pet Lab**
-  for pack authors: live reload, a validator, scenario buttons and new pack folders.
+  map and awareness details (reminder timing, app categories).
+- **Pet Studio** (Pets → Make your own pet) is where pets are authored: **Look**,
+  **Behaviour**, and **Test** — live reload, a validator, scenario buttons and new pack folders.
 - Cmd/Ctrl+Shift+H shows or hides the pets, Cmd/Ctrl+Shift+P pauses, Cmd/Ctrl+1
   reopens the companion window. Closing that window leaves the pets running;
   quit from the menu-bar icon.

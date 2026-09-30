@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { FlaskConical, FolderOpen, Plus, Zap, Eye, RefreshCw } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, settings, snapshot, saveSettings, validate } from '../state'
 import CollectionToolbar from '../components/CollectionToolbar.vue'
-import DiagnosticList from './DiagnosticList.vue'
+import DiagnosticList from '../panels/DiagnosticList.vue'
 import type { Report } from '../types'
 
 const scenarioQuery = ref('')
@@ -41,14 +41,7 @@ function toggleDebug() {
 </script>
 
 <template>
-  <section class="page-heading">
-    <div>
-      <div class="eyebrow">FOR PACK AUTHORS</div>
-      <h1>Pet Lab<span>.</span></h1>
-      <p>Save a file; the pet changes. No restart, no rebuild.</p>
-    </div>
-  </section>
-
+  <div class="studio-test">
   <div class="lab-grid">
     <section class="controls-card">
       <div class="section-label"><Eye :size="16" /> Debug overlay</div>
@@ -61,7 +54,7 @@ function toggleDebug() {
           <span v-if="pet.surface">on {{ pet.surface }}</span>
           · energy {{ Math.round(pet.energy * 100) }}% · mood {{ Math.round(pet.mood * 100) }}%
         </p>
-        <p v-if="!pets.length">No pets are out. Bring one out from the Pets page.</p>
+        <p v-if="!pets.length">No pets are out. Use Save &amp; bring out, or the Pets page.</p>
       </div>
     </section>
 
@@ -78,7 +71,7 @@ function toggleDebug() {
 
   <section class="new-pack">
     <div class="section-label"><FolderOpen :size="16" /> New pack folder</div>
-    <p class="control-intro">A working pack with placeholder art, for drawing in your own tools and editing <code>pet.json</code> by hand. To draw inside Ledgeling instead, use <strong>Pets → Make your own pet</strong>.</p>
+    <p class="control-intro">A working pack with placeholder art, for drawing in your own tools and editing <code>pet.json</code> by hand. To draw inside Ledgeling instead, use the <strong>Look</strong> tab.</p>
     <div class="new-pack-row">
       <input v-model="newName" aria-label="Pack name" placeholder="Name">
       <select v-model="newClass" aria-label="How it moves">
@@ -99,4 +92,5 @@ function toggleDebug() {
     <p v-if="checking" class="path-note"><code>{{ checking }}</code></p>
     <DiagnosticList v-if="report" :report="report" />
   </section>
+</div>
 </template>
