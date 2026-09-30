@@ -44,7 +44,9 @@
           { "to": "forage", "weight": 4 },
           { "to": "explore", "weight": 3 },
           { "to": "doze", "weight": 5, "when": "idle_seconds > 240" },
-          { "to": "doze", "weight": 3, "when": "energy < 0.2" }
+          { "to": "doze", "weight": 3, "when": "energy < 0.2" },
+          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
+          { "to": "forage", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
       },
       "forage": {

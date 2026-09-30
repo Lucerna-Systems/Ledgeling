@@ -124,6 +124,17 @@ pub struct Pet {
     pub sound_request: Option<String>,
 }
 
+/// Energy pulled by the time of day, per hour: late at night pets tire
+/// faster than sleeping restores them, and mornings perk them up. Applied on
+/// top of the activity-driven change, so it works for every pack.
+pub fn circadian_drift(hour: f64) -> f64 {
+    match hour {
+        h if !(5. ..23.).contains(&h) => -0.3,
+        h if (6. ..10.).contains(&h) => 0.3,
+        _ => 0.,
+    }
+}
+
 impl Pet {
     pub fn new(id: u64, pack: Arc<Pack>, position: Point) -> Self {
         let mut rng = Rng::new(0xA51C_974F ^ (id.wrapping_mul(0x9E37_79B9)));
@@ -371,6 +382,7 @@ impl Pet {
             self.energy =
                 (self.energy - 0.25 * hours * effort * (0.5 + personality.sleepiness)).max(0.);
         }
+        self.energy = (self.energy + circadian_drift(signals.hour) * hours).clamp(0., 1.);
         let mut mood = self.mood;
         if signals.session_minutes > 75. {
             mood -= 0.10 * hours;
