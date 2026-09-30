@@ -576,3 +576,71 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
 }
+
+// ------------------------------------------------------------------- care
+
+fn perched_pet() -> (Pet, World) {
+    let world = World::new(&[win(1, 200., 500., 600., 100.)]);
+    let mut pet = Pet::new(1, pack("budgie-classic"), Point::new(500., 500.));
+    settle(&mut pet, &world, 20.);
+    assert!(pet.perch.is_some());
+    (pet, world)
+}
+
+#[test]
+fn petting_puts_the_pet_back_and_raises_mood_while_held() {
+    let (mut pet, world) = perched_pet();
+    let (spot, perch) = (pet.position, pet.perch);
+    pet.mood = 0.3;
+    pet.grab();
+    pet.position = Point::new(900., 100.);
+    pet.begin_care(Care::Petting);
+    assert_eq!(
+        pet.position, spot,
+        "it is not dragged off by a petting hand"
+    );
+    assert_eq!(pet.perch, perch);
+    assert_eq!(pet.attend(), Some(Attend::Tended));
+    step(&mut pet, &world, 2.);
+    assert!(pet.mood > 0.55, "mood climbs while petted: {}", pet.mood);
+    assert!(
+        (pet.position.x - spot.x).abs() < 1.,
+        "it stays put while petted"
+    );
+    pet.release();
+    assert_eq!(pet.care(), None);
+    assert_eq!(pet.attend(), None);
+    let after = pet.mood;
+    step(&mut pet, &world, 2.);
+    assert!(pet.mood <= after + 0.01, "the effect ends with the hold");
+}
+
+#[test]
+fn feeding_pays_once_per_cooldown() {
+    let (mut pet, world) = perched_pet();
+    pet.energy = 0.2;
+    pet.mood = 0.3;
+    pet.grab();
+    pet.begin_care(Care::Feeding);
+    let (energy, mood) = (pet.energy, pet.mood);
+    assert!(energy > 0.4 && mood > 0.35);
+    pet.release();
+    pet.grab();
+    pet.begin_care(Care::Feeding);
+    assert!(
+        pet.energy <= energy + 0.01,
+        "a second feeding straight away is not free"
+    );
+    pet.release();
+    step(&mut pet, &world, 0.1);
+}
+
+#[test]
+fn a_drag_is_not_mistaken_for_care() {
+    let (mut pet, _) = perched_pet();
+    pet.begin_care(Care::Petting);
+    assert_eq!(pet.care(), None, "only a held pet can be petted");
+    pet.grab();
+    pet.release();
+    assert_eq!(pet.care(), None);
+}

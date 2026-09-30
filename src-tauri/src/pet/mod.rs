@@ -43,7 +43,24 @@ pub enum Attend {
     Busy,
     /// Its task cannot go further without an answer from the user.
     NeedsUser,
+    /// The user is holding the mouse on it to pet or feed it.
+    Tended,
 }
+
+/// What a held click on a pet does once the press has stayed put.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Care {
+    Petting,
+    Feeding,
+}
+
+/// Mood a pet gains per second of being petted.
+const PETTING_MOOD_PER_SECOND: f64 = 0.15;
+/// A feeding is worth this much energy and mood, and is not repeated sooner
+/// than `FEEDING_COOLDOWN` seconds, so holding the button is not a cheat.
+const FEEDING_ENERGY: f64 = 0.25;
+const FEEDING_MOOD: f64 = 0.10;
+const FEEDING_COOLDOWN: f64 = 20.;
 
 impl Attend {
     /// The clip slot this maps to, or `None` to keep playing the pack's own
@@ -52,7 +69,7 @@ impl Attend {
     /// make packs harder to write for no gain.
     pub fn clip(self) -> Option<&'static str> {
         match self {
-            Attend::Listening => None,
+            Attend::Listening | Attend::Tended => None,
             Attend::Busy => Some("busy"),
             Attend::NeedsUser => Some("attention"),
         }
@@ -119,6 +136,13 @@ pub struct Pet {
     listening: bool,
     /// What this pet's task is doing, when it has one.
     working: Option<Attend>,
+    /// Being petted or fed right now.
+    care: Option<Care>,
+    /// Where the pet stood when it was picked up, so a press that turns out
+    /// to be petting puts it back instead of leaving it under the cursor.
+    grabbed_from: Option<(Point, Option<Perch>)>,
+    /// `clock` at the last feeding.
+    last_fed: Option<f64>,
     pending: Vec<Event>,
     /// Sound the pack asked for on the last state change, if any.
     pub sound_request: Option<String>,
@@ -149,6 +173,9 @@ impl Pet {
             clip_started: 0.,
             listening: false,
             working: None,
+            care: None,
+            grabbed_from: None,
+            last_fed: None,
             pending: Vec::new(),
             sound_request: None,
         }
@@ -197,6 +224,9 @@ impl Pet {
     // ------------------------------------------------------------ interaction
 
     pub fn grab(&mut self) {
+        if self.motion != Motion::Held {
+            self.grabbed_from = Some((self.position, self.perch));
+        }
         self.motion = Motion::Held;
         self.arc = Arc_::None;
         self.plan = None;
@@ -204,6 +234,10 @@ impl Pet {
     }
 
     pub fn release(&mut self) {
+        self.grabbed_from = None;
+        if self.care.take().is_some() {
+            return;
+        }
         if self.motion == Motion::Held {
             self.motion = Motion::Falling;
             self.arc = Arc_::Fall { velocity: 0. };
@@ -215,10 +249,52 @@ impl Pet {
         self.motion == Motion::Held
     }
 
+    /// The press stayed where it was: this is petting or feeding, not a drag.
+    /// The pet goes back to where it was picked up and stays there until the
+    /// button comes up. Petting raises mood for as long as it lasts; feeding
+    /// pays out once and then needs a cooldown.
+    pub fn begin_care(&mut self, care: Care) {
+        if self.motion != Motion::Held {
+            return;
+        }
+        if let Some((position, perch)) = self.grabbed_from.take() {
+            self.position = position;
+            self.perch = perch;
+        }
+        if self.perch.is_some() {
+            self.motion = Motion::Settled;
+            self.arc = Arc_::None;
+        } else {
+            // It was airborne when picked up; it drops while being petted.
+            self.motion = Motion::Falling;
+            self.arc = Arc_::Fall { velocity: 0. };
+        }
+        self.plan = None;
+        self.action_done = true;
+        self.care = Some(care);
+        self.pending.push(Event::Clicked);
+        if care == Care::Feeding {
+            let ready = self
+                .last_fed
+                .is_none_or(|at| self.clock - at >= FEEDING_COOLDOWN);
+            if ready {
+                self.last_fed = Some(self.clock);
+                self.energy = (self.energy + FEEDING_ENERGY).min(1.);
+                self.mood = (self.mood + FEEDING_MOOD).min(1.);
+            }
+        }
+    }
+
+    pub fn care(&self) -> Option<Care> {
+        self.care
+    }
+
     /// Whether this pet is with the user, and why. A task outranks the bubble:
     /// what it is doing is more informative than the fact that it is listening.
     pub fn attend(&self) -> Option<Attend> {
-        self.working.or(self.listening.then_some(Attend::Listening))
+        self.working
+            .or(self.care.map(|_| Attend::Tended))
+            .or(self.listening.then_some(Attend::Listening))
     }
 
     /// The bubble opened or closed on this pet.
@@ -372,6 +448,9 @@ impl Pet {
                 (self.energy - 0.25 * hours * effort * (0.5 + personality.sleepiness)).max(0.);
         }
         let mut mood = self.mood;
+        if self.care == Some(Care::Petting) {
+            mood += PETTING_MOOD_PER_SECOND * dt;
+        }
         if signals.session_minutes > 75. {
             mood -= 0.10 * hours;
         }

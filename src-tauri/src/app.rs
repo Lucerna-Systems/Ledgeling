@@ -8,7 +8,7 @@ use crate::{
         builtin, diagnostics::Report, loader, manifest::Event, sprites, LocomotionClass,
         PackListing, PackSummary,
     },
-    pet::{Attend, Motion},
+    pet::{Attend, Care, Motion},
     platform::{NativePlatform, Platform},
     settings::{self, Settings, ThemeMode},
     windows_mgr::{self, hit_test, DebugOverlay, Label, NativeSurface, PetSurface, Scene},
@@ -285,9 +285,21 @@ async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), Stri
                 }
             }
         }
-        "release" => {
+        "pet" | "feed" => {
+            let care = if kind == "feed" {
+                Care::Feeding
+            } else {
+                Care::Petting
+            };
             for pet in &mut app.engine.pets {
                 if pet.is_held() {
+                    pet.begin_care(care);
+                }
+            }
+        }
+        "release" => {
+            for pet in &mut app.engine.pets {
+                if pet.is_held() || pet.care().is_some() {
                     pet.release();
                 }
             }
