@@ -57,6 +57,57 @@ fn the_minimal_pack_from_the_spec_is_a_complete_working_pet() {
 }
 
 #[test]
+fn a_pack_can_name_its_own_pet_type_and_actions() {
+    let text = MINIMAL
+        .replace(
+            r#""class": "flier""#,
+            r#""class": "walker", "type": "slitherer""#,
+        )
+        .replace(
+            r#""animations": {"#,
+            r#""actions": { "scurry": { "base": "patrol_current_surface", "speed": 2.5 } },
+  "behavior": { "initial": "run", "states": {
+    "run": { "clip": "move", "action": "scurry", "transitions": [{ "to": "run" }] } } },
+  "animations": {"#,
+        );
+    let (manifest, report) = parse(&text);
+    let manifest = manifest.expect("loads");
+    assert!(!report.has_errors(), "{}", report.text());
+    assert_eq!(manifest.locomotion.kind, "slitherer");
+    let state = &manifest.behavior.states["run"];
+    assert_eq!(state.action, Some(manifest::Action::PatrolCurrentSurface));
+    assert_eq!(state.speed_scale, 2.5);
+    // Without a declared type the class name stands in.
+    let (plain, _) = parse(MINIMAL);
+    assert_eq!(plain.unwrap().locomotion.kind, "flier");
+}
+
+#[test]
+fn a_bad_custom_action_names_the_path_and_the_fix() {
+    let text = MINIMAL.replace(
+        r#""animations": {"#,
+        r#""actions": { "flee_from_cursor": { "base": "patrol_current_surface" },
+                  "zoom": { "base": "teleport" } },
+  "behavior": { "initial": "a", "states": { "a": { "action": "nope" } } },
+  "animations": {"#,
+    );
+    let (_, report) = parse(&text);
+    let all = errors(&report).join("\n");
+    assert!(
+        all.contains("actions.flee_from_cursor") && all.contains("built-in"),
+        "{all}"
+    );
+    assert!(
+        all.contains("actions.zoom.base") && all.contains("Expected one of"),
+        "{all}"
+    );
+    assert!(
+        all.contains("behavior.states.a.action") && all.contains("`actions` block"),
+        "{all}"
+    );
+}
+
+#[test]
 fn missing_animations_fall_back_down_the_chain() {
     let (manifest, _) = parse(MINIMAL);
     let manifest = manifest.unwrap();

@@ -43,6 +43,7 @@
       "additionalProperties": false,
       "properties": {
         "class": { "enum": ["flier", "climber", "walker", "hopper"] },
+        "type": { "type": "string", "minLength": 1, "maxLength": 40 },
         "surfaces": {
           "type": "array",
           "items": {
@@ -99,6 +100,23 @@
         }
       }
     },
+    "actions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["base"],
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "enum": [
+              "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
+              "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
+            ]
+          },
+          "speed": { "type": "number", "minimum": 0.1, "maximum": 5 }
+        }
+      }
+    },
     "behavior": {
       "type": "object",
       "additionalProperties": false,
@@ -119,10 +137,8 @@
                 ]
               },
               "action": {
-                "enum": [
-                  "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
-                  "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
-                ]
+                "description": "A built-in action, or a name declared in the top-level `actions` block.",
+                "type": "string"
               },
               "sound": { "type": "string" },
               "transitions": {
