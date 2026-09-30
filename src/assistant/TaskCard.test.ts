@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskCard from './TaskCard.vue'
 import type { Task } from './types'
 const api = vi.hoisted(() => ({ call: vi.fn(), refresh: vi.fn() }))
@@ -52,6 +52,34 @@ describe('task approvals', () => {
     await wrapper.setProps({ task: { ...task, status: 'completed' } })
     await wrapper.findAll('button').find(b => b.text() === 'Undo file changes')!.trigger('click')
     expect(api.call).toHaveBeenCalledWith('task_undo', { id: 1 })
+  })
+})
+
+describe('stuck stopping', () => {
+  beforeEach(() => { vi.useFakeTimers(); api.call.mockReset().mockResolvedValue(undefined); api.refresh.mockReset().mockResolvedValue(undefined) })
+  afterEach(() => vi.useRealTimers())
+  it('offers Force stop only once Stopping has dragged on, and sends the task id', async () => {
+    const task = makeTask('cancelling'); task.approval = null
+    const wrapper = mount(TaskCard, { props: { task } })
+    const force = () => wrapper.findAll('button').find(b => b.text() === 'Force stop')
+    expect(force()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(force()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(wrapper.text()).toContain('taking longer than expected to stop')
+    await force()!.trigger('click')
+    await flushPromises()
+    expect(api.call).toHaveBeenCalledWith('task_force_stop', { id: 1 })
+    await wrapper.setProps({ task: { ...task, status: 'cancelled' } })
+    expect(force()).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('never offers Force stop for a task that is not stopping', async () => {
+    const task = makeTask('running'); task.approval = null
+    const wrapper = mount(TaskCard, { props: { task } })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.text()).not.toContain('Force stop')
+    wrapper.unmount()
   })
 })
 

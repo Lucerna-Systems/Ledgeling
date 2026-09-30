@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import MarkdownResult from './MarkdownResult.vue'
 import { taskCall, refreshTasks } from './state'
 import { providerLabels, terminal, type Task } from './types'
@@ -17,6 +17,21 @@ async function control(command: string, args = {}) {
   pending.value = true
   try { await taskCall(command, { id: props.task.id, ...args }); await refreshTasks() } catch { /* shared error banner */ } finally { pending.value = false }
 }
+/** How long a task may sit in Stopping before we say it looks stuck and offer Force stop. */
+const STUCK_AFTER_MS = 10_000
+const now = ref(Date.now())
+const stoppingSince = ref<number | null>(null)
+let ticker: ReturnType<typeof setInterval> | undefined
+watch(() => props.task.status, status => {
+  clearInterval(ticker)
+  if (status === 'cancelling') {
+    stoppingSince.value ??= Date.now()
+    now.value = Date.now()
+    ticker = setInterval(() => { now.value = Date.now() }, 1000)
+  } else stoppingSince.value = null
+}, { immediate: true })
+onBeforeUnmount(() => clearInterval(ticker))
+const stuckStopping = computed(() => props.task.status === 'cancelling' && stoppingSince.value !== null && now.value - stoppingSince.value >= STUCK_AFTER_MS)
 const statusLabels: Record<string, string> = {
   queued: 'Waiting', running: 'Working', waiting: 'Needs you', cancelling: 'Stopping', completed: 'Done',
   failed: "Didn't work", cancelled: 'Cancelled', interrupted: 'Interrupted', undone: 'Undone',
@@ -35,6 +50,7 @@ async function open(url: string) { try { await taskCall('task_open_url', { url }
     <header v-if="!inChat || task.status !== 'completed'"><strong v-if="!inChat">{{ task.request.prompt }}</strong><span class="task-status" :data-status="task.status">{{ statusLabels[task.status] ?? task.status }}</span></header>
     <p class="task-meta">{{ meta }}</p>
     <p v-if="task.progress" role="status">{{ task.progress }}</p>
+    <p v-if="stuckStopping" class="task-problem" role="alert">This is taking longer than expected to stop. The AI provider may not be responding. You can force it to stop now; anything it is still doing in the background will be ignored.</p>
     <div v-if="task.error" class="task-problem" role="alert">{{ task.error }}</div>
     <section v-if="task.approval && task.status === 'waiting'" class="approval-card" aria-label="Pending approval">
       <h3>{{ task.approval.summary.headline || task.approval.title }}</h3>
@@ -65,6 +81,7 @@ async function open(url: string) { try { await taskCall('task_open_url', { url }
     <details v-if="task.operations.length"><summary>Operation journal · {{ task.operations.length }} changes</summary><ul><li v-for="(op, index) in task.operations" :key="index">{{ op.state }} · {{ op.destination }}</li></ul></details>
     <div class="task-actions">
       <button v-if="!terminal(task.status)" :disabled="pending || task.status === 'cancelling'" @click="control('task_cancel')">Cancel task</button>
+      <button v-if="stuckStopping" :disabled="pending" @click="control('task_force_stop')">Force stop</button>
       <button v-if="canUndo" :disabled="pending" @click="control('task_undo')">Undo file changes</button>
       <button v-if="terminal(task.status) && !inChat" @click="emit('followup', task)">Continue chat</button>
     </div>
