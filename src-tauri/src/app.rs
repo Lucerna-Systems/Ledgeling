@@ -264,7 +264,7 @@ async fn pet_action(
             app.engine.settings.paused = false;
             app.engine.settings.hidden = false;
             for pet in &mut app.engine.pets {
-                pet.queue(Event::SurfaceLost);
+                pet.relocate();
             }
         }
         "greet" => {
