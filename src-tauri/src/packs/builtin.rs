@@ -28,6 +28,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/budgie-classic/sprites/alert.png"),
             ),
             (
+                "sprites/dance.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/dance.png"),
+            ),
+            (
+                "sprites/fluff.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/fluff.png"),
+            ),
+            (
                 "sprites/happy.png",
                 include_bytes!("../../../packs/budgie-classic/sprites/happy.png"),
             ),
@@ -93,6 +101,10 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/squirrel-red/sprites/fall.png"),
             ),
             (
+                "sprites/flip.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/flip.png"),
+            ),
+            (
                 "sprites/happy.png",
                 include_bytes!("../../../packs/squirrel-red/sprites/happy.png"),
             ),
@@ -119,6 +131,10 @@ pub const BUILTIN: &[BuiltinPack] = &[
             (
                 "sprites/move.png",
                 include_bytes!("../../../packs/squirrel-red/sprites/move.png"),
+            ),
+            (
+                "sprites/nibble.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/nibble.png"),
             ),
             (
                 "sprites/sleep.png",

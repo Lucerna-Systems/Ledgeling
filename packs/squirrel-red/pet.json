@@ -33,7 +33,9 @@
     "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
     "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
     "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
-    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 },
+    "nibble": { "file": "sprites/nibble.png", "frames": 4, "fps": 6 },
+    "flip": { "file": "sprites/flip.png", "frames": 6, "fps": 10, "loop": false }
   },
   "behavior": {
     "initial": "rest",
@@ -45,6 +47,8 @@
         "transitions": [
           { "to": "forage", "weight": 4 },
           { "to": "explore", "weight": 3 },
+          { "to": "nibble", "weight": 0.3 },
+          { "to": "flip", "weight": 0.2 },
           { "to": "doze", "weight": 5, "when": "idle_seconds > 240" },
           { "to": "doze", "weight": 3, "when": "energy < 0.2" },
           { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
@@ -53,6 +57,16 @@
           { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
           { "to": "forage", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
+      },
+      "nibble": {
+        "clip": "nibble",
+        "duration": [4, 7],
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "flip": {
+        "clip": "flip",
+        "duration": [0.6, 0.6],
+        "transitions": [{ "to": "rest", "weight": 1 }]
       },
       "forage": {
         "clip": "move",

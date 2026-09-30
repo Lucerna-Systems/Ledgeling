@@ -159,6 +159,11 @@ When you want more, describe what it does as a list of states:
   `move_toward_pet` (walk or hop to stand beside the nearest other pet; it does
   nothing when the pet is alone or cannot reach it).
 - `when` is an optional condition. If it is false, that transition cannot happen.
+- **Rare idles.** A tiny `weight` makes a transition rare. Against the 11 total in
+  the example, `{ "to": "fluff", "weight": 0.2 }` fires about once in fifty
+  changes of state. Give it its own clip (any name you like under `animations`)
+  and a short `duration`; if the clip is missing the pet just idles. The bundled
+  budgie (`fluff`, `dance`) and squirrel (`nibble`, `flip`) each have two.
 
 Conditions are deliberately tiny — a signal, a comparison, a value, joined with
 `&&` and `||`:
