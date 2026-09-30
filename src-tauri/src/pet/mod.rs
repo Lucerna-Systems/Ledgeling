@@ -120,6 +120,8 @@ pub struct Pet {
     /// What this pet's task is doing, when it has one.
     working: Option<Attend>,
     pending: Vec<Event>,
+    /// The user asked this pet to go somewhere else; served on the next tick.
+    relocate_requested: bool,
     /// Sound the pack asked for on the last state change, if any.
     pub sound_request: Option<String>,
 }
@@ -150,6 +152,7 @@ impl Pet {
             listening: false,
             working: None,
             pending: Vec::new(),
+            relocate_requested: false,
             sound_request: None,
         }
     }
@@ -304,6 +307,13 @@ impl Pet {
         self.clip_started = self.clock;
     }
 
+    /// Travel to another surface, as asked from the tray or settings. This is
+    /// a command, not a reaction: it must not go through `SurfaceLost`, which
+    /// packs answer with a startled hop on the spot.
+    pub fn relocate(&mut self) {
+        self.relocate_requested = true;
+    }
+
     /// Events raised by the runtime for this pet before the next tick.
     pub fn queue(&mut self, event: Event) {
         self.pending.push(event);
@@ -333,6 +343,11 @@ impl Pet {
             return signals;
         }
         self.ride(view, events);
+        if std::mem::take(&mut self.relocate_requested) && self.motion != Motion::Falling {
+            if let Some(target) = self.random_perch(view) {
+                self.travel_to(target, view);
+            }
+        }
         self.step_machine(dt, &signals, events, view);
         self.step_motion(dt, view);
         self.clamp(view);

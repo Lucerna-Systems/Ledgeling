@@ -576,3 +576,26 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
 }
+
+#[test]
+fn a_relocate_request_travels_to_another_surface_instead_of_hopping() {
+    let world = World::new(&[
+        win(1, 100., 300., 300., 120.),
+        win(2, 1100., 200., 300., 120.),
+    ]);
+    let mut budgie = Pet::new(1, pack("budgie-classic"), Point::new(250., 300.));
+    settle(&mut budgie, &world, 20.);
+    let start = budgie.position;
+    budgie.relocate();
+    step(&mut budgie, &world, 0.2);
+    assert!(
+        budgie.motion != Motion::Settled,
+        "the pet should be under way, not startled in place"
+    );
+    settle(&mut budgie, &world, 30.);
+    assert!(
+        budgie.position.distance(start) > 100.,
+        "the pet should end up somewhere else: {start:?} -> {:?}",
+        budgie.position
+    );
+}
