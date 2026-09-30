@@ -201,6 +201,8 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .sidebar nav > button:hover { background: var(--nav-hover) !important; }
 .sidebar nav > button.selected { background: var(--surface) !important; color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 650 !important; }
 .sidebar nav > button.selected svg { color: var(--accent); }
+.sidebar nav > button.code-entry { margin-top: 6px; color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent); }
+.sidebar nav > button.code-entry:hover { background: var(--accent-soft) !important; }
 .pet-face { display: inline-grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px #0000000f; }
 /* Pack previews are a scene with the pet in its upper middle; zoom onto the pet. */
 .pet-face img { width: 100%; height: 100%; object-fit: cover; transform: scale(2); transform-origin: 53% 30%; image-rendering: pixelated; }
@@ -327,6 +329,7 @@ code { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .setting-row:last-child { border-bottom: 0; }
 .setting-row p { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 60ch; }
 .setting-row.dimmed > div:first-child { opacity: .55; }
+.experimental-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--warn-soft); color: var(--muted); font-size: 11px; font-weight: 600; vertical-align: 1px; }
 .row-controls { display: flex; align-items: center; gap: 12px; }
 .link-row { display: flex; align-items: center; gap: 14px; width: calc(100% + 40px); margin: 0 -20px; padding: 14px 20px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .link-row:first-child { border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }

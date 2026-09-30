@@ -101,6 +101,8 @@ pub struct Snapshot {
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
+    /// Whether this build includes coding mode at all.
+    pub coding_available: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -182,6 +184,7 @@ impl App {
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
+            coding_available: cfg!(feature = "coding"),
         }
     }
 
@@ -365,6 +368,7 @@ async fn set_settings(
     settings.sanitize();
     let screen_changed = settings.pet_screen != app.engine.settings.pet_screen;
     let theme_changed = settings.theme != app.engine.settings.theme;
+    let developer_changed = settings.developer_mode != app.engine.settings.developer_mode;
     app.engine
         .awareness
         .apply(settings.awareness.clone(), settings.category_map());
@@ -395,7 +399,18 @@ async fn set_settings(
     app.dirty = true;
     let snapshot = app.snapshot();
     let _ = app.persist();
+    let developer = app.engine.settings.developer_mode;
     drop(app);
+    if developer_changed {
+        let handle = window.app_handle();
+        #[cfg(feature = "coding")]
+        if !developer {
+            crate::coding::commands::shut_down(handle);
+        }
+        if let Err(error) = set_menus(handle, developer) {
+            eprintln!("Ledgeling could not update its menus: {error}");
+        }
+    }
     if theme_changed {
         // `System` hands control back to the OS appearance, not a stored copy
         // of whatever it happened to be when the user opened the menu.
@@ -616,6 +631,104 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_pick,
             task_open_url,
             open_assistant,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_open,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_state,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_add_project,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_remove_project,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_select,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_branches,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_worktree_create,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_worktree_remove,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_bind,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_status,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_original,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_git,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_list,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_read,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_write,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_file_op,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_watch,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_pty_spawn,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_pty,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_pty_attach,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_run_setup,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_run_save,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_run_prompt,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_run_start,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_live,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_activate,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_launch,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_launch_open,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_layouts,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_notes,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_note,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_layout_save,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_open_url,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_tools,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_install,
+            #[cfg(feature = "coding")]
+            crate::coding::commands::code_window,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_status,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_list,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_view,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_diff,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_branch_pr,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_meta,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_act,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_pr_draft,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_create_pr,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_checkout,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_projects,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_board,
+            #[cfg(feature = "coding")]
+            crate::coding::gh_commands::code_gh_board_act,
             get_snapshot,
             pet_action,
             pet_interact,
@@ -668,6 +781,9 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                     }
                     crate::platform::pet_ui::update(&task_handle, &task);
                     let _ = task_handle.emit_to("main", "task:changed", &task);
+                    #[cfg(feature = "coding")]
+                    let _ =
+                        task_handle.emit_to(crate::coding::window::LABEL, "task:changed", &task);
                     let _ = task_handle.emit(
                         "task:indicator",
                         serde_json::json!({"petId":task.request.pet_id,"status":task.status}),
@@ -713,6 +829,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                     "The pack `{pack_id}` is no longer installed, so that pet did not come back."
                 ));
             }
+            let developer = engine.settings.developer_mode;
             let shared: Shared = Arc::new(Mutex::new(App {
                 engine,
                 config_dir,
@@ -726,7 +843,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 rescan_screens: false,
             }));
             app.manage(shared.clone());
-            setup_tray(app)?;
+            // Empty until Developer tools are on and the window is first opened.
+            #[cfg(feature = "coding")]
+            app.manage::<crate::coding::SharedCoding>(Default::default());
+            setup_tray(app, developer)?;
             let main_close = main.clone();
             let dropped = shared.clone();
             let dropped_handle = app.handle().clone();
@@ -770,11 +890,15 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
         })
         .build(context)
         .expect("Unable to start Ledgeling")
-        .run(|_, event| {
-            // `fm serve` is a child process holding the on-device model; it
-            // must not outlive Ledgeling.
+        .run(|handle, event| {
+            // `fm serve` is a child process holding the on-device model, and
+            // coding mode may have dev servers running; none may outlive Ledgeling.
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::tasks::apple::shutdown();
+                #[cfg(feature = "coding")]
+                crate::coding::commands::shut_down(handle);
+                #[cfg(not(feature = "coding"))]
+                let _ = handle;
             }
         });
 }
@@ -801,7 +925,7 @@ fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBu
 /// Run something on the UI thread and wait for the answer. macOS only reports
 /// monitor geometry, and only creates windows, on the main thread; calling from
 /// the update loop silently returns nothing.
-fn on_main<T: Send + 'static>(
+pub(crate) fn on_main<T: Send + 'static>(
     handle: &tauri::AppHandle,
     work: impl FnOnce(&tauri::AppHandle) -> T + Send + 'static,
 ) -> Option<T> {
@@ -964,12 +1088,36 @@ fn ensure_overlay(
     }
 }
 
-fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::{
-        menu::{Menu, MenuItem, Submenu},
-        tray::TrayIconBuilder,
-    };
+fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::tray::TrayIconBuilder;
+    set_app_menu(app.handle(), developer)?;
+    // macOS tints a template image to match the menu bar, like Apple's own
+    // icons; elsewhere a black silhouette would vanish on a dark taskbar.
+    #[cfg(target_os = "macos")]
+    let tray = TrayIconBuilder::with_id("perch")
+        .icon(tauri::include_image!("icons/tray-template.png"))
+        .icon_as_template(true);
+    #[cfg(not(target_os = "macos"))]
+    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
+    tray.tooltip("Ledgeling · a little company")
+        .menu(&tray_menu(app.handle(), developer)?)
+        .build(app)?;
+    Ok(())
+}
+
+/// Coding mode appears in the menus only while Developer tools are on.
+fn set_menus(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
+    set_app_menu(app, developer)?;
+    if let Some(tray) = app.tray_by_id("perch") {
+        tray.set_menu(Some(tray_menu(app, developer)?))?;
+    }
+    Ok(())
+}
+
+fn set_app_menu(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
+    use tauri::menu::{IsMenuItem, Menu, MenuItem, Submenu};
     let show = MenuItem::with_id(app, "show", "Open Ledgeling", true, Some("CmdOrCtrl+1"))?;
+    let code = MenuItem::with_id(app, "code", "Coding mode", true, Some("CmdOrCtrl+Shift+E"))?;
     let pause = MenuItem::with_id(
         app,
         "pause",
@@ -985,36 +1133,39 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Some("CmdOrCtrl+Shift+H"),
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit Ledgeling", true, Some("CmdOrCtrl+Q"))?;
-    let submenu =
-        Submenu::with_items(app, "Ledgeling", true, &[&show, &pause, &visibility, &quit])?;
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&show];
+    if developer {
+        items.push(&code);
+    }
+    items.extend([&pause as &dyn IsMenuItem<tauri::Wry>, &visibility, &quit]);
+    let submenu = Submenu::with_items(app, "Ledgeling", true, &items)?;
     app.set_menu(Menu::with_items(app, &[&submenu])?)?;
-    // Tray items are separate so their accelerators do not double-fire.
-    let tray_show = MenuItem::with_id(app, "tray-show", "Open Ledgeling", true, None::<&str>)?;
-    let tray_pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
-    let tray_visibility = MenuItem::with_id(
+    Ok(())
+}
+
+/// Tray items are separate so their accelerators do not double-fire.
+fn tray_menu(
+    app: &tauri::AppHandle,
+    developer: bool,
+) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{IsMenuItem, Menu, MenuItem};
+    let show = MenuItem::with_id(app, "tray-show", "Open Ledgeling", true, None::<&str>)?;
+    let code = MenuItem::with_id(app, "tray-code", "Coding mode", true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "tray-pause", "Pause / resume", true, None::<&str>)?;
+    let visibility = MenuItem::with_id(
         app,
         "tray-visibility",
         "Show / hide pets",
         true,
         None::<&str>,
     )?;
-    let tray_quit = MenuItem::with_id(app, "tray-quit", "Quit Ledgeling", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&tray_show, &tray_pause, &tray_visibility, &tray_quit],
-    )?;
-    // macOS tints a template image to match the menu bar, like Apple's own
-    // icons; elsewhere a black silhouette would vanish on a dark taskbar.
-    #[cfg(target_os = "macos")]
-    let tray = TrayIconBuilder::with_id("perch")
-        .icon(tauri::include_image!("icons/tray-template.png"))
-        .icon_as_template(true);
-    #[cfg(not(target_os = "macos"))]
-    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
-    tray.tooltip("Ledgeling · a little company")
-        .menu(&menu)
-        .build(app)?;
-    Ok(())
+    let quit = MenuItem::with_id(app, "tray-quit", "Quit Ledgeling", true, None::<&str>)?;
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&show];
+    if developer {
+        items.push(&code);
+    }
+    items.extend([&pause as &dyn IsMenuItem<tauri::Wry>, &visibility, &quit]);
+    Menu::with_items(app, &items)
 }
 
 fn handle_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
@@ -1025,6 +1176,17 @@ fn handle_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
+        }
+        #[cfg(feature = "coding")]
+        "code" => {
+            // Menu events arrive on the UI thread, which opening the window
+            // must not block on.
+            let handle = app.clone();
+            std::thread::spawn(move || {
+                if let Err(error) = crate::coding::commands::open_window(&handle, None) {
+                    eprintln!("Ledgeling could not open coding mode: {error}");
+                }
+            });
         }
         "pause" | "visibility" => {
             let shared = app.state::<Shared>().inner().clone();

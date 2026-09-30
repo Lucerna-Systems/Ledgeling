@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Check, ChevronRight, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
+import { Activity, Check, ChevronRight, Code2, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
 import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
@@ -26,6 +26,13 @@ const pace = computed(() => {
 
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
+}
+/** Turning Developer tools on opens coding mode straight away, so there is no second step to find. */
+async function toggleDeveloper() {
+  if (!settings.value) return
+  const on = !settings.value.developerMode
+  await saveSettings({ ...settings.value, developerMode: on })
+  if (on && settings.value?.developerMode) void call('code_open', { petId: null }, false)
 }
 function toggleAwareness() {
   if (settings.value) save({ awareness: { ...settings.value.awareness, enabled: !settings.value.awareness.enabled } })
@@ -167,6 +174,20 @@ const neverSeen = [
       <button class="danger-button" :disabled="!native" @click="call('quit_app')"><Power :size="15" /> Quit</button>
     </div>
   </section>
+
+  <template v-if="snapshot?.codingAvailable">
+  <h2 class="group-title">For developers</h2>
+  <section class="settings-group">
+    <div class="setting-row">
+      <div><h3>Developer tools <span class="experimental-tag">Experimental</span></h3><p>Adds coding mode: an editor, live diffs, worktrees, a terminal and a run button in a window beside your browser. It is still being tested and may change or break. Off, none of it loads.</p></div>
+      <div class="row-controls">
+        <button v-if="settings?.developerMode" :disabled="!native" @click="call('code_open', { petId: null }, false)"><Code2 :size="15" /> Open coding mode</button>
+        <button class="toggle" :class="{ enabled: settings?.developerMode }" role="switch" :aria-checked="!!settings?.developerMode" aria-label="Developer tools"
+                @click="toggleDeveloper"><span /></button>
+      </div>
+    </div>
+  </section>
+  </template>
 
   <h2 class="group-title">Privacy</h2>
   <section class="settings-group privacy-summary">

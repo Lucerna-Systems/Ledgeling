@@ -119,3 +119,17 @@ int perch_begin_folder_drag(void *pointer, unsigned long long pet, const char *i
   // A nil image would blank the Dock tile in dev builds, which have no bundle icon.
   if (image) [NSApp setApplicationIconImage:image];
 }
+
+// Coding mode: bring forward an app the user started from one of its
+// terminals, such as a desktop app under `tauri dev`. Only pids Rust found
+// under its own terminals are asked about.
+int perch_app_is_gui(int pid) {
+  NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+  return app != nil && app.activationPolicy == NSApplicationActivationPolicyRegular;
+}
+int perch_app_activate(int pid) {
+  NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+  if (!app) return 0;
+  if (app.hidden) [app unhide];
+  return [app activateWithOptions:NSApplicationActivateAllWindows] ? 1 : 0;
+}

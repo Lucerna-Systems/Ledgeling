@@ -141,6 +141,12 @@ function control(type: 'cancel' | 'undo') {
   if (task.value) void call({ type, id: task.value.id })
 }
 
+function codeHere() {
+  if (!show.value) return
+  void call({ type: 'code', petId: show.value.petId })
+  dismiss()
+}
+
 function settings() {
   if (!show.value) return
   void call({ type: 'settings', petId: show.value.petId })
@@ -283,6 +289,7 @@ onUnmounted(() => {
 
       <div class="actions">
         <button type="button" class="secondary" @click="settings">AI providers</button>
+        <button v-if="show.developer && show.folder" type="button" class="secondary" title="Open this folder in coding mode, with this pet working in it" @click="codeHere">Code here</button>
         <button type="button" class="primary" :disabled="!canSend" @click="send">{{ ask ? 'Send request' : 'Run action' }}</button>
       </div>
 

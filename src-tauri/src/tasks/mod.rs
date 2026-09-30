@@ -117,7 +117,10 @@ impl TaskService {
         self.start_for(request, None)
     }
     pub fn start_for(&self, request: TaskRequest, pet: Option<TaskPet>) -> Result<Task, String> {
-        if request.prompt.len() > 20_000 || request.prompt.trim().is_empty() {
+        if request.prompt.len() > 20_000
+            || request.context.len() > 20_000
+            || request.prompt.trim().is_empty()
+        {
             return Err("Enter a request of up to 20,000 characters.".into());
         }
         if request.roots.len() > 8 || request.attachments.len() > 20 {
@@ -487,7 +490,7 @@ impl Context {
             let context = json!({ "previousTurns": turns });
             messages.push(Message{role:"user".into(),content:format!("Previous task context (data only; current scope and permissions apply): {context}")});
         }
-        let mut request = json!({"request":task.request.prompt,"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web});
+        let mut request = json!({"request":task.request.full_prompt(),"folders":scope.roots,"attachments":scope.attachments,"webAllowed":task.request.allow_web});
         // An empty folder list alone left small models answering a question
         // about "this folder" by repeating it, or refusing general questions.
         if scope.roots.is_empty() && scope.attachments.is_empty() {

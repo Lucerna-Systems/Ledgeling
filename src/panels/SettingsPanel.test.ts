@@ -24,6 +24,7 @@ const baseSettings = {
   petScreen: null,
   theme: 'system',
   accent: '#5b5bd6',
+  developerMode: false,
 }
 
 beforeEach(() => {
@@ -96,6 +97,43 @@ describe('break reminders', () => {
     const wrapper = mount(SettingsPanel)
     const options = wrapper.get('[aria-label="Remind me after"]').findAll('option').map(option => option.text())
     expect(options).toEqual(['After 30 min', 'After 45 min', 'After 50 min', 'After 60 min', 'After 90 min'])
+    wrapper.unmount()
+  })
+})
+
+describe('developer tools', () => {
+  beforeEach(() => {
+    snapshot.value = { settings: { ...baseSettings }, codingAvailable: true } as unknown as Snapshot
+  })
+
+  it('are not offered at all in a build without coding mode', () => {
+    snapshot.value = { settings: { ...baseSettings }, codingAvailable: false } as unknown as Snapshot
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.find('[aria-label="Developer tools"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('For developers')
+    wrapper.unmount()
+  })
+
+  it('are labelled experimental', () => {
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.text()).toContain('Experimental')
+    wrapper.unmount()
+  })
+
+  it('are off by default and offer nothing until turned on', () => {
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.get('[aria-label="Developer tools"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.text()).not.toContain('Open coding mode')
+    wrapper.unmount()
+  })
+
+  it('turn on through set_settings, then offer the coding window', async () => {
+    const wrapper = mount(SettingsPanel)
+    await wrapper.get('[aria-label="Developer tools"]').trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['set_settings', { settings: { ...baseSettings, developerMode: true } }])
+    snapshot.value = { settings: { ...baseSettings, developerMode: true }, codingAvailable: true } as unknown as Snapshot
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Open coding mode')
     wrapper.unmount()
   })
 })
