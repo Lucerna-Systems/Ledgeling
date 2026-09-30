@@ -55,6 +55,31 @@ describe('task approvals', () => {
   })
 })
 
+describe('deleting from history', () => {
+  beforeEach(() => { api.call.mockReset().mockResolvedValue(undefined); api.refresh.mockReset().mockResolvedValue(undefined) })
+  const done = (): Task => ({ ...makeTask('completed'), approval: null })
+  const button = (w: ReturnType<typeof mount>, label: string) => w.findAll('button').find(b => b.text() === label)
+  it('asks once more before deleting, and can be backed out of', async () => {
+    const wrapper = mount(TaskCard, { props: { task: done() } })
+    await button(wrapper, 'Delete')!.trigger('click')
+    expect(api.call).not.toHaveBeenCalled()
+    await button(wrapper, 'Keep')!.trigger('click')
+    expect(button(wrapper, 'Delete for good?')).toBeUndefined()
+    await button(wrapper, 'Delete')!.trigger('click')
+    await button(wrapper, 'Delete for good?')!.trigger('click')
+    await flushPromises()
+    expect(api.call).toHaveBeenCalledWith('task_delete', { id: 1 })
+    expect(api.refresh).toHaveBeenCalled()
+  })
+  it('is not offered while running, inside a chat, or while file changes can still be undone', async () => {
+    const running = { ...done(), status: 'running' }
+    expect(button(mount(TaskCard, { props: { task: running } }), 'Delete')).toBeUndefined()
+    expect(button(mount(TaskCard, { props: { task: done(), inChat: true } }), 'Delete')).toBeUndefined()
+    const applied = { ...done(), operations: [{ kind: 'write', source: null, destination: '/a', content: 'x', state: 'applied' }] }
+    expect(button(mount(TaskCard, { props: { task: applied } }), 'Delete')).toBeUndefined()
+  })
+})
+
 it('keeps long responses compact until expanded and renders Markdown on expansion', async () => {
   const task = makeTask('completed')
   task.approval = null

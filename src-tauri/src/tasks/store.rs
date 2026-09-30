@@ -47,6 +47,12 @@ impl Store {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+    pub fn delete(&self, id: i64) -> Result<(), String> {
+        self.0
+            .execute("DELETE FROM tasks WHERE id=?1", [id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
     pub fn list(&self) -> Result<Vec<Task>, String> {
         let mut statement = self
             .0
