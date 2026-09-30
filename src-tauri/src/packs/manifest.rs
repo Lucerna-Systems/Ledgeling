@@ -284,6 +284,7 @@ pub enum Event {
     Released,
     Clicked,
     CursorNearby,
+    CursorFast,
     UserIdleLong,
     UserReturned,
     LongSession,
@@ -294,13 +295,14 @@ pub enum Event {
     LowEnergy,
 }
 impl Event {
-    pub const ALL: [Event; 14] = [
+    pub const ALL: [Event; 15] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
         Event::Released,
         Event::Clicked,
         Event::CursorNearby,
+        Event::CursorFast,
         Event::UserIdleLong,
         Event::UserReturned,
         Event::LongSession,
@@ -318,6 +320,7 @@ impl Event {
             Event::Released => "released",
             Event::Clicked => "clicked",
             Event::CursorNearby => "cursor_nearby",
+            Event::CursorFast => "cursor_fast",
             Event::UserIdleLong => "user_idle_long",
             Event::UserReturned => "user_returned",
             Event::LongSession => "long_session",
@@ -336,7 +339,7 @@ impl Event {
         match self {
             Event::SurfaceLost | Event::SurfaceMovedFast => 100,
             Event::Grabbed | Event::Released | Event::Clicked => 90,
-            Event::UserReturned | Event::CursorNearby => 60,
+            Event::UserReturned | Event::CursorNearby | Event::CursorFast => 60,
             Event::LongSession | Event::BreakTaken => 50,
             _ => 30,
         }

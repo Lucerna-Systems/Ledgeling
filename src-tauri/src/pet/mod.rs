@@ -19,6 +19,14 @@ const GRAVITY: f64 = 1400.;
 const TERMINAL_VELOCITY: f64 = 2200.;
 /// How close the cursor must be for `cursor_nearby`, in logical pixels.
 const CURSOR_NEARBY: f64 = 120.;
+/// Pointer speed, in logical pixels per second, above which `cursor_fast` fires.
+const CURSOR_FAST: f64 = 1800.;
+/// A fast pointer only startles a pet it is passing this close, in logical pixels.
+const CURSOR_FLINCH_RANGE: f64 = 260.;
+/// A resting pet turns to look at a pointer within this many logical pixels.
+const CURSOR_WATCH_RANGE: f64 = 360.;
+/// Weight of the newest sample in the smoothed pointer speed.
+const CURSOR_SPEED_SMOOTHING: f64 = 0.25;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -114,6 +122,9 @@ pub struct Pet {
     arc: Arc_,
     action_done: bool,
     was_near_cursor: bool,
+    was_fast_cursor: bool,
+    last_cursor: Option<Point>,
+    cursor_speed: f64,
     clip_started: f64,
     /// The bubble is open on this pet.
     listening: bool,
@@ -146,6 +157,9 @@ impl Pet {
             arc: Arc_::Fall { velocity: 0. },
             action_done: false,
             was_near_cursor: false,
+            was_fast_cursor: false,
+            last_cursor: None,
+            cursor_speed: 0.,
             clip_started: 0.,
             listening: false,
             working: None,
@@ -321,6 +335,7 @@ impl Pet {
         let dt = dt.clamp(0., 0.1);
         self.clock += dt;
         events.append(&mut self.pending);
+        self.track_cursor(dt, view);
         let signals = self.signals(base, view);
         self.update_scalars(dt, &signals);
         self.detect_events(&signals, view, events);
@@ -348,9 +363,20 @@ impl Pet {
                 .cursor
                 .map(|c| c.distance(self.position) / view.scale)
                 .unwrap_or(f64::INFINITY),
+            cursor_speed: self.cursor_speed,
             is_dragging: self.motion == Motion::Held,
             ..base
         }
+    }
+
+    /// Smooth the pointer's speed so one jittery sample is not a flinch.
+    fn track_cursor(&mut self, dt: f64, view: &WorldView<'_>) {
+        let sample = match (self.last_cursor, view.cursor) {
+            (Some(from), Some(to)) if dt > 0. => from.distance(to) / view.scale / dt,
+            _ => 0.,
+        };
+        self.last_cursor = view.cursor;
+        self.cursor_speed += (sample - self.cursor_speed) * CURSOR_SPEED_SMOOTHING;
     }
 
     /// Energy and mood move on a timescale of minutes, so the pet has
@@ -389,10 +415,26 @@ impl Pet {
             events.push(Event::CursorNearby);
         }
         self.was_near_cursor = near;
+        let fast = self.cursor_speed > CURSOR_FAST && signals.cursor_distance < CURSOR_FLINCH_RANGE;
+        if fast && !self.was_fast_cursor {
+            events.push(Event::CursorFast);
+        }
+        self.was_fast_cursor = fast;
+        self.watch_cursor(signals, view);
         if self.energy < 0.15 {
             events.push(Event::LowEnergy);
         }
         let _ = view;
+    }
+
+    /// A resting pet turns its head toward a nearby pointer.
+    fn watch_cursor(&mut self, signals: &Signals, view: &WorldView<'_>) {
+        if self.motion != Motion::Settled || signals.cursor_distance > CURSOR_WATCH_RANGE {
+            return;
+        }
+        if let Some(cursor) = view.cursor {
+            self.flip_x = cursor.x < self.position.x;
+        }
     }
 
     /// Hold `(surface, t)` as windows move, and notice when the perch is gone.

@@ -21,7 +21,7 @@ const checking = ref('')
 
 /** Scenario buttons: fire an awareness event now instead of waiting an hour. */
 const scenarios = [
-  'surface_lost', 'surface_moved_fast', 'grabbed', 'released', 'clicked', 'cursor_nearby',
+  'surface_lost', 'surface_moved_fast', 'grabbed', 'released', 'clicked', 'cursor_nearby', 'cursor_fast',
   'user_idle_long', 'user_returned', 'long_session', 'break_taken', 'app_category_changed',
   'hour_changed', 'startup', 'low_energy',
 ]

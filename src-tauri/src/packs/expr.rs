@@ -25,10 +25,11 @@ pub enum Signal {
     Mood,
     SurfaceCount,
     CursorDistance,
+    CursorSpeed,
     IsDragging,
 }
 impl Signal {
-    pub const ALL: [Signal; 9] = [
+    pub const ALL: [Signal; 10] = [
         Signal::IdleSeconds,
         Signal::SessionMinutes,
         Signal::AppCategory,
@@ -37,6 +38,7 @@ impl Signal {
         Signal::Mood,
         Signal::SurfaceCount,
         Signal::CursorDistance,
+        Signal::CursorSpeed,
         Signal::IsDragging,
     ];
     pub fn as_str(self) -> &'static str {
@@ -49,6 +51,7 @@ impl Signal {
             Signal::Mood => "mood",
             Signal::SurfaceCount => "surface_count",
             Signal::CursorDistance => "cursor_distance",
+            Signal::CursorSpeed => "cursor_speed",
             Signal::IsDragging => "is_dragging",
         }
     }
@@ -82,6 +85,8 @@ pub struct Signals {
     pub mood: f64,
     pub surface_count: f64,
     pub cursor_distance: f64,
+    /// Pointer speed in logical pixels per second, smoothed over a few ticks.
+    pub cursor_speed: f64,
     pub is_dragging: bool,
 }
 impl Default for Signals {
@@ -95,6 +100,7 @@ impl Default for Signals {
             mood: 0.7,
             surface_count: 0.,
             cursor_distance: f64::INFINITY,
+            cursor_speed: 0.,
             is_dragging: false,
         }
     }
@@ -201,6 +207,7 @@ impl Test {
                     Signal::Mood => s.mood,
                     Signal::SurfaceCount => s.surface_count,
                     Signal::CursorDistance => s.cursor_distance,
+                    Signal::CursorSpeed => s.cursor_speed,
                     _ => return false,
                 };
                 self.op.apply(actual, v)

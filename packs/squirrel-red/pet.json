@@ -41,6 +41,7 @@
         "clip": "idle",
         "duration": [4, 12],
         "transitions": [
+          { "to": "chase", "weight": 8, "when": "cursor_speed > 5 && cursor_speed < 400 && cursor_distance < 500" },
           { "to": "forage", "weight": 4 },
           { "to": "explore", "weight": 3 },
           { "to": "doze", "weight": 5, "when": "idle_seconds > 240" },
@@ -56,6 +57,11 @@
       "explore": {
         "clip": "move",
         "action": "move_to_random_surface",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "chase": {
+        "clip": "move",
+        "action": "move_toward_cursor",
         "transitions": [{ "to": "rest", "weight": 1 }]
       },
       "fret": {
@@ -95,7 +101,8 @@
     { "on": "long_session", "goto": "fret", "priority": 50, "cooldown": 900 },
     { "on": "break_taken", "goto": "greet", "priority": 40, "cooldown": 300 },
     { "on": "user_idle_long", "goto": "doze", "priority": 30 },
-    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 }
+    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
+    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
   ],
   "personality": {
     "activity": 0.9,
