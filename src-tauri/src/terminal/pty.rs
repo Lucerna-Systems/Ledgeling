@@ -1,5 +1,7 @@
 //! Terminals: real pseudo-terminals running the user's own shell and tools,
-//! including the Claude Code they installed themselves.
+//! including the Claude Code they installed themselves. Shared by coding mode
+//! and terminal mode.
+use super::agent::{self, AgentStatus, State};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -35,6 +37,7 @@ pub struct Session {
     /// Started with a command, rather than an interactive shell.
     pub command: bool,
     pub worktree: String,
+    /// What the tab is called. The user can rename it.
     pub title: String,
     pub pid: Option<u32>,
     master: Box<dyn MasterPty + Send>,
@@ -44,6 +47,8 @@ pub struct Session {
     pub last_output: Arc<AtomicU64>,
     /// Set when the program rang the terminal bell: it wants the user.
     pub bell: Arc<AtomicU64>,
+    /// What the agent reports about itself, when it can (Claude Code's hooks).
+    events: Option<Mutex<agent::Tracker>>,
     sink: Arc<Mutex<Sink>>,
 }
 
@@ -86,6 +91,8 @@ pub struct SessionView {
     pub alive: bool,
     /// For agents: `busy` while printing, `needs_user` after a bell.
     pub attention: Option<crate::pet::Attend>,
+    /// For agents that report their own events: what they are doing, and with what.
+    pub agent: Option<AgentStatus>,
 }
 
 pub fn now_ms() -> u64 {
@@ -120,6 +127,27 @@ pub fn login_path() -> Option<String> {
     }
 }
 
+/// Where a program lives on the login shell's PATH, which is the one terminals use.
+pub fn find_program(program: &str) -> Option<std::path::PathBuf> {
+    let path = login_path().or_else(|| std::env::var("PATH").ok())?;
+    find_in(program, &path)
+}
+
+/// Where `program` lives on the given PATH.
+pub fn find_in(program: &str, path: &str) -> Option<std::path::PathBuf> {
+    let extensions: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat", ""]
+    } else {
+        &[""]
+    };
+    std::env::split_paths(path).find_map(|dir| {
+        extensions.iter().find_map(|ext| {
+            let candidate = dir.join(format!("{program}{ext}"));
+            candidate.is_file().then_some(candidate)
+        })
+    })
+}
+
 pub struct Spawn<'a> {
     pub cwd: &'a Path,
     /// `None` runs the user's login shell.
@@ -130,6 +158,8 @@ pub struct Spawn<'a> {
     pub cols: u16,
     pub rows: u16,
     pub env: Vec<(String, String)>,
+    /// The file an agent's hooks append their events to, when it has them.
+    pub events: Option<std::path::PathBuf>,
 }
 
 pub fn spawn(options: Spawn, channel: Channel<Output>) -> Result<Session, String> {
@@ -222,6 +252,9 @@ pub fn spawn(options: Spawn, channel: Channel<Output>) -> Result<Session, String
         killer,
         last_output,
         bell,
+        events: options
+            .events
+            .map(|path| Mutex::new(agent::Tracker::new(path))),
         sink,
     })
 }
@@ -248,6 +281,13 @@ impl Session {
     pub fn write(&mut self, data: &str) -> Result<(), String> {
         // Typing answers whatever the bell asked for.
         self.bell.store(0, Ordering::Relaxed);
+        if let Some(tracker) = &self.events {
+            if let Ok(mut tracker) = tracker.lock() {
+                if tracker.status.state == State::Waiting {
+                    tracker.status = AgentStatus::idle();
+                }
+            }
+        }
         self.writer
             .write_all(data.as_bytes())
             .and_then(|_| self.writer.flush())
@@ -318,13 +358,43 @@ impl Session {
             pid: self.pid,
             alive: self.alive(),
             attention: self.attention(),
+            agent: self.agent(),
         }
+    }
+
+    /// What the agent says it is doing. A turn that never reported its end (the
+    /// user pressed Escape, or the agent was killed mid-way) must not read as
+    /// working forever, and a spinner keeps printing for as long as it truly is.
+    pub fn agent(&self) -> Option<AgentStatus> {
+        if self.kind != Kind::Agent || !self.alive() {
+            return None;
+        }
+        let mut tracker = self.events.as_ref()?.lock().ok()?;
+        tracker.poll();
+        if !tracker.seen {
+            return None;
+        }
+        let silent = now_ms().saturating_sub(self.last_output.load(Ordering::Relaxed));
+        Some(
+            if tracker.status.state == State::Working && silent > 20_000 {
+                AgentStatus::idle()
+            } else {
+                tracker.status.clone()
+            },
+        )
     }
 
     /// What this session means for its pet right now.
     pub fn attention(&self) -> Option<crate::pet::Attend> {
         if self.kind != Kind::Agent || !self.alive() {
             return None;
+        }
+        if let Some(status) = self.agent() {
+            return match status.state {
+                State::Working => Some(crate::pet::Attend::Busy),
+                State::Waiting => Some(crate::pet::Attend::NeedsUser),
+                State::Idle | State::Done => None,
+            };
         }
         let now = now_ms();
         if self.bell.load(Ordering::Relaxed) != 0 {
@@ -368,6 +438,7 @@ mod tests {
                 cols: 80,
                 rows: 24,
                 env: vec![],
+                events: None,
             },
             channel,
         )

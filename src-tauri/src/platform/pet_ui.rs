@@ -27,6 +27,17 @@ pub fn folder(pet: u64) -> Option<String> {
         .get(&pet)
         .cloned()
 }
+/// Loads the folders pets were restored with, so the bubble and the terminal
+/// find them. Called after pets are restored, which gives them new ids.
+pub fn seed_folders(folders: Vec<(u64, String)>) {
+    let mut map = FOLDERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+    map.clear();
+    map.extend(folders);
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn perch_ui_init(callback: extern "C" fn(*const std::ffi::c_char));
@@ -107,7 +118,13 @@ pub struct Placement {
 /// work area is in the way. Both are clamped on-screen, which can push the
 /// window off-centre, so the tail is aimed at the pet rather than fixed.
 pub fn place(anchor: Rect, work: Rect, height: f64) -> Placement {
-    let width = BUBBLE_WIDTH + BUBBLE_MARGIN * 2.;
+    place_wide(anchor, work, BUBBLE_WIDTH, height)
+}
+
+/// As [`place`], for a bubble whose content is `content_width` wide: the
+/// terminal needs more room than a task form.
+pub fn place_wide(anchor: Rect, work: Rect, content_width: f64, height: f64) -> Placement {
+    let width = content_width + BUBBLE_MARGIN * 2.;
     let centre = anchor.x + anchor.width / 2.;
     // The window's shadow margin may hang past the work area; the bubble may not.
     let min_x = work.x + EDGE_GAP - BUBBLE_MARGIN;
@@ -157,6 +174,8 @@ struct State {
     /// late, cannot close — or unpin the pet of — the current one.
     session: u64,
     height: f64,
+    /// The drawn bubble's width, which is wider while a terminal is on show.
+    width: f64,
     anchor: Option<(Rect, Rect)>,
     placement: Option<Placement>,
     /// The last opening, re-sent when the page (re)loads and asks for it.
@@ -172,6 +191,7 @@ fn bubble_state() -> std::sync::MutexGuard<'static, State> {
                 pet: None,
                 session: 0,
                 height: DEFAULT_HEIGHT,
+                width: BUBBLE_WIDTH,
                 anchor: None,
                 placement: None,
                 shown: None,
@@ -206,14 +226,15 @@ fn tail(app: &tauri::AppHandle, placement: Placement) {
 }
 
 /// Re-place the bubble at `height` against its stored anchor.
-fn resize(app: &tauri::AppHandle, height: f64) {
+fn resize(app: &tauri::AppHandle, height: f64, width: f64) {
     let placement = {
         let mut bubble = bubble_state();
         bubble.height = height;
+        bubble.width = width;
         let Some((anchor, work)) = bubble.anchor else {
             return;
         };
-        let placement = place(anchor, work, height);
+        let placement = place_wide(anchor, work, width, height);
         if bubble.placement == Some(placement) {
             return;
         }
@@ -245,7 +266,7 @@ pub fn follow(app: &tauri::AppHandle, anchor: Option<(Rect, Rect)>) {
             return;
         }
         bubble.anchor = Some((anchor, work));
-        let placement = place(anchor, work, bubble.height);
+        let placement = place_wide(anchor, work, bubble.width, bubble.height);
         bubble.placement = Some(placement);
         placement
     };
@@ -374,6 +395,13 @@ fn bind(app: &tauri::AppHandle, pet: u64, raw: &str) -> Result<(), String> {
         .lock()
         .unwrap()
         .insert(pet, path.clone());
+    // Kept as the pet's default, so it is still there after a restart.
+    if let Some(shared) = app.try_state::<Shared>() {
+        if let Ok(mut state) = shared.lock() {
+            state.engine.set_pet_folder(pet, Some(path.clone()));
+            state.dirty = true;
+        }
+    }
     let _ = app.emit_to(
         "main",
         "pet:folder",
@@ -474,6 +502,15 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             })
             .map_err(|e| e.to_string())?;
         }
+        // This pet's own terminal window, in its working folder.
+        "terminal" => {
+            let handle = app.clone();
+            std::thread::spawn(move || {
+                if let Err(error) = crate::terminal::commands::open_window(&handle, pet) {
+                    message(&handle, &error);
+                }
+            });
+        }
         // Open this pet's working folder in coding mode, bound to this pet.
         #[cfg(feature = "coding")]
         "code" => {
@@ -495,7 +532,15 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
         "size" => {
             let height = v["height"].as_f64().ok_or("Missing height")?;
             if height.is_finite() {
-                resize(app, height.clamp(120., 900.));
+                let width = v["width"]
+                    .as_f64()
+                    .filter(|w| w.is_finite())
+                    .unwrap_or(BUBBLE_WIDTH);
+                resize(
+                    app,
+                    height.clamp(120., 900.),
+                    width.clamp(BUBBLE_WIDTH, 760.),
+                );
             }
         }
         // The page (re)loaded after the opening was sent; tell it again.
@@ -776,6 +821,9 @@ pub async fn show_pet_bubble(app: tauri::AppHandle, pet_id: u64) -> Result<(), S
         bubble.session += 1;
         bubble.pet = Some(pet_id);
         bubble.anchor = anchor;
+        // Every opening starts as the ordinary form; the page asks for the
+        // wider terminal when that is what it shows.
+        bubble.width = BUBBLE_WIDTH;
         bubble.placement = anchor.map(|(anchor, work)| place(anchor, work, bubble.height));
         let placement = bubble.placement;
         let payload = serde_json::json!({

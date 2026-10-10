@@ -68,6 +68,17 @@ terminal where you can watch them. Its state (your project list, which pet works
 in which worktree, and the window position) is kept in `coding/workspaces.json`
 in Ledgeling's config folder. See [coding-mode.md](coding-mode.md).
 
+## Terminals and agent events
+
+A pet's terminal (**Terminal** in its bubble, see [terminal-mode.md](terminal-mode.md))
+runs your own login shell in the folder you gave the pet. It opens no network
+connection of its own. For `claude` only, Ledgeling passes a settings file for
+that run (`--settings`) so Claude Code runs `ledgeling --agent-event` on its
+events. That appends the event name, tool name and notification text to a file in
+Ledgeling's config folder, readable only by you and deleted with the session;
+prompts, file contents and tool input are dropped before anything is written.
+Your own Claude configuration is never edited.
+
 ## Turning it off
 
 **Settings** has one switch, **Notice my day**, that disables all of it: no idle polling, no

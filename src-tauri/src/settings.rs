@@ -18,6 +18,9 @@ pub struct PetSetting {
     /// until the pet has actually stood somewhere.
     pub x: Option<f64>,
     pub y: Option<f64>,
+    /// The folder this pet works in: where its terminal opens and what its
+    /// actions run on. Chosen from its bubble, kept across launches.
+    pub folder: Option<String>,
 }
 /// How the companion UI is coloured. `System` follows the OS appearance,
 /// resolved per-window on the frontend and via `set_theme(None)` natively.

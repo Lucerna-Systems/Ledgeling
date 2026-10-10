@@ -1,0 +1,47 @@
+/* Terminal panes: the xterm view, and the grid of split panes around it. */
+.term-view { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; background: var(--surface); overflow: hidden; }
+.term-host { width: 100%; height: 100%; }
+.term-view .xterm { height: 100%; }
+.term-view .xterm-viewport { background: transparent !important; }
+/* Terminal grid */
+.grid-wrap { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
+.panel > .grid-wrap { height: 100%; }
+.grid-bar { display: flex; align-items: center; gap: 4px; min-height: 38px; padding: 4px 6px 4px 12px; border-bottom: 1px solid var(--line); background: var(--canvas); flex-shrink: 0; }
+.grid-bar .grow { flex: 1; }
+.grid-root { flex: 1; min-height: 0; display: flex; padding: 6px; }
+.grid-root > .pane, .grid-root > .split { flex: 1; }
+.split { display: flex; min-width: 0; min-height: 0; flex: 1; }
+.split.dir-row { flex-direction: row; }
+.split.dir-column { flex-direction: column; }
+.split.dragging { user-select: none; }
+.split-cell { display: flex; min-width: 0; min-height: 0; }
+.split-cell > .pane, .split-cell > .split { flex: 1; }
+.divider { position: relative; flex: 0 0 6px; touch-action: none; }
+.divider.dir-row { cursor: col-resize; }
+.divider.dir-column { cursor: row-resize; }
+.divider::after { content: ''; position: absolute; border-radius: 2px; transition: background 120ms; }
+.divider.dir-row::after { inset: 8px 2px; }
+.divider.dir-column::after { inset: 2px 8px; }
+.divider:hover::after, .split.dragging > .divider:active::after { background: var(--accent); }
+
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; transition: border-color 120ms, box-shadow 120ms; }
+.pane.focused { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 0 0 2px var(--accent-soft); }
+.pane-head { display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 3px 0 9px; border-bottom: 1px solid var(--line); background: var(--canvas); flex-shrink: 0; overflow: hidden; }
+.pane-head .grow { flex: 1; }
+.pane-head .icon { width: 22px; min-height: 22px; }
+.pane-icon { color: var(--muted); flex-shrink: 0; }
+.pane.focused .pane-icon { color: var(--accent); }
+.pane-title { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pane.ended .pane-title { color: var(--muted); }
+.pane .term-view { padding: 4px 2px 2px 8px; }
+
+
+/* Terminal mode: a pet's own terminal window */
+.term-body { margin: 0; background: var(--surface); overflow: hidden; }
+.term-body #app { background: var(--surface); }
+.term-header { display: flex; align-items: center; gap: 8px; height: 40px; flex-shrink: 0; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); background: var(--canvas); -webkit-user-select: none; user-select: none; }
+.term-header .grow { flex: 1; }
+.term-glyph { color: var(--accent); flex-shrink: 0; }
+.term-where { display: grid; min-width: 0; line-height: 1.2; }
+.term-where strong { font-size: 13px; font-weight: 650; }
+.term-where small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }

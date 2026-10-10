@@ -1,8 +1,10 @@
 import { reactive, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { ids, insert, keep, parse, type Direction, type Layout } from './layout'
-import { adopt, close, spawn, terms, type SpawnOptions } from './terminals'
-import { refreshState, root } from './state'
+import { backend, type SpawnOptions } from './backend'
+import { adopt, close, spawn, terms } from './terminals'
+
+/** The folder whose terminals are on screen. */
+const root = { get value() { return backend().scope.value } }
 
 /** Each worktree's split layout, kept in Rust so it outlives the window. */
 export const layouts = reactive(new Map<string, Layout | null>())
@@ -16,7 +18,7 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 function save(worktree: string) {
   clearTimeout(timers.get(worktree))
   timers.set(worktree, setTimeout(() => {
-    void invoke('code_layout_save', { worktree, layout: layouts.get(worktree) ?? null }).catch(() => {})
+    void backend().saveLayout(worktree, layouts.get(worktree) ?? null).catch(() => {})
   }, 300))
 }
 
@@ -69,13 +71,13 @@ function reconcileAll() {
 export function initPanes() {
   ready ??= (async () => {
     try {
-      const stored = await invoke<Record<string, unknown>>('code_layouts')
+      const stored = await backend().layouts()
       for (const [tree, value] of Object.entries(stored)) layouts.set(tree, parse(value))
     } catch { /* start empty */ }
     await adopt()
     reconcileAll()
     watch(() => [...terms.keys()].join(','), reconcileAll)
-    watch(root, reconcileAll)
+    watch(() => backend().scope.value, reconcileAll)
   })()
   return ready
 }
@@ -86,13 +88,13 @@ export async function spawnPane(options: SpawnOptions, near: number | null, dir:
   hint = { worktree: options.worktree || root.value || '', near, dir }
   const entry = await spawn(options)
   if (!entry) hint = null
-  void refreshState()
+  backend().changed()
   return entry
 }
 
 export async function closePane(id: number) {
   await close(id)
-  void refreshState()
+  backend().changed()
 }
 
 /** A shell beside the focused terminal of the worktree on screen. */
@@ -102,12 +104,15 @@ export function openShell(dir: Direction, near: number | null = focused.get(root
   void spawnPane({ worktree, kind: 'shell', title: nextTitle(worktree, 'Shell') }, near, dir)
 }
 
-/** The user's own `claude`, beside the focused terminal. */
-export function openClaude() {
+/** An agent the user has installed, beside the focused terminal. */
+export function openAgent(agent: { name: string; command: string }) {
   const worktree = root.value
   if (!worktree) return
-  void spawnPane({ worktree, kind: 'agent', command: 'claude', title: nextTitle(worktree, 'Claude Code') }, focused.get(worktree) ?? null)
+  void spawnPane({ worktree, kind: 'agent', command: agent.command, title: nextTitle(worktree, agent.name) }, focused.get(worktree) ?? null)
 }
+
+/** The user's own `claude`, beside the focused terminal. */
+export const openClaude = () => openAgent({ name: 'Claude Code', command: 'claude' })
 
 /** "Shell", then "Shell 2" and so on, so panes can be told apart. */
 export function nextTitle(worktree: string, base: string) {

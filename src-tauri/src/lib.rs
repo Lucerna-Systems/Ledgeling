@@ -14,6 +14,7 @@ pub mod packs;
 pub mod pet;
 pub mod platform;
 pub mod settings;
+pub mod terminal;
 pub mod windows_mgr;
 pub mod world;
 

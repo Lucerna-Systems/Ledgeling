@@ -382,6 +382,26 @@ display servers.
   and the note is gone. The replug half — picking the external again — is
   still engine-test-only.
 
+## Terminal mode (2026-10-10)
+
+Built, unit-tested and exercised in part. **Not driven by hand on macOS inside
+the bubble, nor at all on Windows or Linux.**
+
+- Rust: 226 library tests (agent event parsing, the tracker following a file as it
+  grows, command wrapping, pet folders surviving a restart), 7 privacy, clippy
+  clean with and without the `coding` feature. Frontend: 135 tests, `vue-tsc`
+  clean, production build splits xterm out of the main bundle.
+- **Claude Code hooks, run for real:** with Claude Code 2.1.296,
+  `claude -p … --settings <file>` fired `SessionStart`, `UserPromptSubmit`,
+  `Stop` and `SessionEnd` through `ledgeling --agent-event`, and the recorded lines
+  carried only the fields we keep. **Not observed:** `PreToolUse`/`PostToolUse`
+  and `Notification` payloads (the `notification_type` and `message` fields are
+  read as documented, not seen), and an interactive session.
+- **Not verified:** typing into xterm inside the non-activating bubble panel on
+  macOS, the wider bubble's placement, the terminal's focus and Escape handling
+  there, and the pop-out window. Agent events on Windows are untested (the hook
+  runs the app's own binary, so it should work, but it has not been run).
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":

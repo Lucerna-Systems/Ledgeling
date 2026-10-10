@@ -276,12 +276,47 @@ fn pets_and_positions_survive_a_restart() {
 }
 
 #[test]
+fn a_pets_working_folder_survives_a_restart_unless_the_folder_is_gone() {
+    let directory = std::env::temp_dir().join(format!("ledgeling-folder-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let folder = directory.to_string_lossy().into_owned();
+    let mut engine = Engine::new(Settings::default(), packs());
+    engine.set_monitors(monitors());
+    let id = engine.spawn("com.perch.budgie-classic").unwrap();
+    engine.set_pet_folder(id, Some(folder.clone()));
+    engine.remember_pets();
+    assert_eq!(
+        engine.settings.pets.last().and_then(|p| p.folder.clone()),
+        Some(folder.clone())
+    );
+
+    let mut restarted = Engine::new(engine.settings.clone(), packs());
+    restarted.set_monitors(monitors());
+    restarted.settings.pets.retain(|p| p.folder.is_some());
+    assert!(restarted.restore_pets().is_empty());
+    assert_eq!(
+        restarted.pet_folders().first().map(|f| f.1.clone()),
+        Some(folder)
+    );
+
+    std::fs::remove_dir_all(&directory).unwrap();
+    let mut later = Engine::new(restarted.settings.clone(), packs());
+    later.set_monitors(monitors());
+    later.restore_pets();
+    assert!(
+        later.pet_folders().is_empty(),
+        "a deleted folder is forgotten"
+    );
+}
+
+#[test]
 fn a_pet_whose_pack_was_uninstalled_is_dropped_rather_than_crashing() {
     let mut settings = Settings::default();
     settings.pets = vec![ledgeling::settings::PetSetting {
         pack_id: "com.example.gone".into(),
         x: Some(10.),
         y: Some(10.),
+        folder: None,
     }];
     let mut engine = Engine::new(settings, packs());
     engine.set_monitors(monitors());

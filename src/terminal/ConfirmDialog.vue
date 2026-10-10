@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { question } from '../confirm'
+import { question } from './confirm'
 
 const yes = ref<HTMLButtonElement | null>(null)
 // Enter answers yes from the focused button; Escape (on the dialog) answers no.

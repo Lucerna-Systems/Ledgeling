@@ -122,6 +122,8 @@ pub struct Pet {
     pending: Vec<Event>,
     /// Sound the pack asked for on the last state change, if any.
     pub sound_request: Option<String>,
+    /// The folder this pet works in, if the user gave it one.
+    pub folder: Option<String>,
 }
 
 impl Pet {
@@ -151,6 +153,7 @@ impl Pet {
             working: None,
             pending: Vec::new(),
             sound_request: None,
+            folder: None,
         }
     }
 
