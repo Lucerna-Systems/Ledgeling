@@ -4,7 +4,7 @@ import { Check, CircleDot, FileCode2, GitCommitHorizontal, Minus, Plus, RefreshC
 import { languageFor, monaco, setupMonaco } from '../monaco'
 import { code, diffRequest, fileChanges, fileTick, openFile, refreshStatus, root, short, status } from '../state'
 import type { FileChange, FileText } from '../types'
-import { ask } from '../confirm'
+import { ask } from '../../terminal/confirm'
 
 const props = defineProps<{ active?: boolean }>()
 const selected = ref<string | null>(null)

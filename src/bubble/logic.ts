@@ -30,7 +30,7 @@ export const ACTIONS = [
   { preset: '', label: 'My instructions' },
 ] as const
 
-export type Mode = 'actions' | 'ask'
+export type Mode = 'actions' | 'ask' | 'terminal'
 
 export interface Draft {
   mode: Mode

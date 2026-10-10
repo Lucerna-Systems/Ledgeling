@@ -58,8 +58,8 @@ idle.png →  [frame 1][frame 2][frame 3][frame 4]
 Save over `sprites/idle.png` and `sprites/move.png`. The pet on screen changes as
 soon as you save — no restart, nothing to press.
 
-**Only `idle` and `move` are required.** Every other animation is optional, and if
-it is missing Ledgeling uses one you did draw:
+**No single animation is required — one is enough.** `idle` and `move` stand in
+for each other, and if any other is missing Ledgeling uses one you did draw:
 
 ```
 climb → move → idle        land  → idle        sleep → idle

@@ -8,7 +8,7 @@ Vue 3 · TypeScript · Tailwind 4 · Tauri 2 · Rust.
 
 ## Run it
 
-Requirements: Node.js 22.12+, Rust stable, and the native
+Requirements: Node.js 22.12+ (CI runs on Node 24), Rust stable, and the native
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS,
 install the Xcode Command Line Tools.
 
@@ -42,7 +42,8 @@ gecko as well.
 
 ```sh
 npm run build      # type-check and build the frontend
-npm test           # 74 Rust tests
+npm test           # 149 Rust tests: 132 unit, 10 timeline, 7 privacy
+npm run test:ui    # 62 UI vitest tests
 npm run check      # frontend build plus Clippy with warnings denied
 npm run tauri build
 ```
@@ -91,10 +92,11 @@ Everything in milestones M0–M4 that is code:
 ## What is not
 
 - **Windows has only had a first run.** It has been compiled and run by hand in
-  dev mode on one Windows 11 machine; see `docs/verification.md` for exactly what
-  was and was not checked. The pet bubble is now the same webview on every
-  platform but has not been opened by hand on Windows, and the Windows folder
-  drag-and-drop is written but has not been run on Windows.
+  dev mode on one Windows 11 machine at 100% DPI; see `docs/verification.md`
+  ("Windows — first run only") for the exact record of what was and was not checked.
+  The NSIS installer, pet bubble on hardware, window riding while dragging,
+  occlusion, multi-monitor, scaling ≠ 100%, fullscreen suspension, task layer
+  against real files, and Windows folder handoff remain unverified on hardware.
 - **No signing or notarisation.** No certificate is available, so bundles are
   unsigned. On Windows, SmartScreen will warn about an unknown publisher until the
   installer builds reputation or is signed; some antivirus tools flag unsigned
@@ -147,4 +149,5 @@ that `src-tauri/tests/privacy.rs` fails the build if any of that stops being tru
 
 ## Environment variables
 
-- `PERCH_DIAGNOSTICS=1` prints a scan/state summary to stderr every five seconds.
+- `LEDGELING_DIAGNOSTICS=1` prints a scan/state summary to stderr every five seconds
+  (`PERCH_DIAGNOSTICS=1` is supported for backwards compatibility).

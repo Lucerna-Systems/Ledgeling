@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue'
 import TermPane from './TermPane.vue'
-import { ids, resize, type Layout } from '../layout'
-import { gridKey } from '../gridContext'
+import { ids, resize, type Layout } from './layout'
+import { gridKey } from './gridContext'
 
 defineOptions({ name: 'PaneNode' })
 const props = defineProps<{ node: Layout }>()

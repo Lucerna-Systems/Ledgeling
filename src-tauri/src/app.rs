@@ -395,6 +395,7 @@ async fn set_settings(
             app.engine.despawn(id);
         }
         app.engine.restore_pets();
+        crate::platform::pet_ui::seed_folders(app.engine.pet_folders());
     }
     app.dirty = true;
     let snapshot = app.snapshot();
@@ -631,6 +632,12 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_pick,
             task_open_url,
             open_assistant,
+            crate::terminal::commands::terminal_state,
+            crate::terminal::commands::terminal_spawn,
+            crate::terminal::commands::terminal_io,
+            crate::terminal::commands::terminal_attach,
+            crate::terminal::commands::terminal_layout_save,
+            crate::terminal::commands::terminal_open_url,
             #[cfg(feature = "coding")]
             crate::coding::commands::code_open,
             #[cfg(feature = "coding")]
@@ -824,6 +831,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 let _ = crate::autostart::apply(engine.settings.launch_at_login, &executable);
             }
             let missing = engine.restore_pets();
+            crate::platform::pet_ui::seed_folders(engine.pet_folders());
             for pack_id in missing {
                 notes.push(format!(
                     "The pack `{pack_id}` is no longer installed, so that pet did not come back."
@@ -843,6 +851,15 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 rescan_screens: false,
             }));
             app.manage(shared.clone());
+            // Terminal mode: empty until a pet opens its terminal. Event files
+            // from an earlier run belong to sessions that no longer exist.
+            crate::terminal::agent::reset(
+                &shared
+                    .lock()
+                    .map(|a| a.config_dir.clone())
+                    .unwrap_or_default(),
+            );
+            app.manage::<crate::terminal::SharedTerminal>(Default::default());
             // Empty until Developer tools are on and the window is first opened.
             #[cfg(feature = "coding")]
             app.manage::<crate::coding::SharedCoding>(Default::default());
@@ -1094,11 +1111,11 @@ fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::erro
     // macOS tints a template image to match the menu bar, like Apple's own
     // icons; elsewhere a black silhouette would vanish on a dark taskbar.
     #[cfg(target_os = "macos")]
-    let tray = TrayIconBuilder::with_id("perch")
+    let tray = TrayIconBuilder::with_id("ledgeling")
         .icon(tauri::include_image!("icons/tray-template.png"))
         .icon_as_template(true);
     #[cfg(not(target_os = "macos"))]
-    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
+    let tray = TrayIconBuilder::with_id("ledgeling").icon(tauri::include_image!("icons/icon.png"));
     tray.tooltip("Ledgeling · a little company")
         .menu(&tray_menu(app.handle(), developer)?)
         .build(app)?;
@@ -1108,7 +1125,7 @@ fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::erro
 /// Coding mode appears in the menus only while Developer tools are on.
 fn set_menus(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
     set_app_menu(app, developer)?;
-    if let Some(tray) = app.tray_by_id("perch") {
+    if let Some(tray) = app.tray_by_id("ledgeling") {
         tray.set_menu(Some(tray_menu(app, developer)?))?;
     }
     Ok(())
@@ -1250,7 +1267,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
     let mut last_watch = Instant::now();
     let mut last_save = Instant::now();
     let mut watch_signature = String::new();
-    let diagnostics = std::env::var_os("PERCH_DIAGNOSTICS").is_some();
+    let diagnostics = std::env::var_os("LEDGELING_DIAGNOSTICS")
+        .or_else(|| std::env::var_os("PERCH_DIAGNOSTICS"))
+        .is_some();
     let mut last_diagnostic = Instant::now();
     loop {
         let now = Instant::now();
@@ -1290,6 +1309,11 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                         if let Ok(mut app) = shared.lock() {
                             app.screens = found;
                             app.pet_screen = Some(name.clone());
+                            // Readable again after a lock or display sleep. Only
+                            // `set_monitors` used to clear this, and it runs
+                            // only when the screen changed, so pets stayed
+                            // suspended for good once the session came back.
+                            app.engine.screens_available = true;
                             if changed {
                                 app.engine.set_monitors(vec![monitor]);
                             }

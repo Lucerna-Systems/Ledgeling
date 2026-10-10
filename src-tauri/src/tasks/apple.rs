@@ -273,18 +273,18 @@ impl Drop for Server {
 }
 
 fn state_file() -> std::path::PathBuf {
+    std::env::temp_dir().join("ledgeling-fm-serve.pid")
+}
+
+fn legacy_state_file() -> std::path::PathBuf {
     std::env::temp_dir().join("perch-fm-serve.pid")
 }
 
-/// A hard kill — a crash, or the dev watcher restarting the app — never runs
-/// `Drop` or the exit hook, and an orphaned server keeps the model resident.
-/// The pid of the one we started is recorded so the next launch can reap it.
-pub fn reap_stale() {
-    let path = state_file();
-    let Ok(text) = std::fs::read_to_string(&path) else {
+fn reap_pid_file(path: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
-    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(path);
     let Ok(pid) = text.trim().parse::<i32>() else {
         return;
     };
@@ -305,6 +305,14 @@ pub fn reap_stale() {
             libc::kill(pid, libc::SIGTERM);
         }
     }
+}
+
+/// A hard kill — a crash, or the dev watcher restarting the app — never runs
+/// `Drop` or the exit hook, and an orphaned server keeps the model resident.
+/// The pid of the one we started is recorded so the next launch can reap it.
+pub fn reap_stale() {
+    reap_pid_file(&state_file());
+    reap_pid_file(&legacy_state_file());
 }
 
 static SERVER: OnceLock<Mutex<Option<Server>>> = OnceLock::new();
