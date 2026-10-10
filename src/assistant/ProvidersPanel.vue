@@ -259,7 +259,7 @@ onMounted(() => { void loadDetection(); void loadProviderTerms() })
       </section>
     </template>
 
-    <h2 class="group-title">Web search</h2>
+    <h2 v-if="connections.providers.ollama" class="group-title">Local models</h2>
     <section v-if="connections.providers.ollama" class="settings-group">
       <div class="setting-row">
         <div><h3>Let local models think</h3><p>Reasoning models such as Qwen3 can think before they answer. Answers may be better, but a small model can take a minute or more and look stuck. Off by default.</p></div>
@@ -267,6 +267,7 @@ onMounted(() => { void loadDetection(); void loadProviderTerms() })
                 @click="saveThinking(!connections.ollamaThinking)"><span /></button>
       </div>
     </section>
+    <h2 class="group-title">Web search</h2>
     <section class="settings-group">
       <div class="setting-row">
         <div><h3>Brave Search</h3><p>Lets any provider look things up when you turn on Web for a request. Uses your own Brave Search API key.</p></div>
