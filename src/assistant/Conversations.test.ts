@@ -20,7 +20,7 @@ beforeEach(() => {
   api.invoke.mockReset().mockResolvedValue(null)
   activeConversation.value = null
   assignedPet.value = null
-  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} }
+  connections.value = { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} }
   tasks.value = [turn(4, 'Something else', null), turn(3, 'And the PDFs?', 2), turn(2, 'Find my invoices', null), turn(1, 'Older chat', null)]
 })
 

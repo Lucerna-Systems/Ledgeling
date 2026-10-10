@@ -137,6 +137,14 @@ fn read_stream(reader: impl Read, cancel: &Cancel) -> Result<String, String> {
     }
     Ok(text)
 }
+/// Request body for Ollama's chat endpoint. Thinking is off unless the user turns
+/// it on: the reply is a JSON tool call, and a reasoning model (Qwen3) otherwise
+/// spends the token budget and the timeout on `message.thinking`, which is never
+/// read. The context is
+/// raised from Ollama's 4096 default so a folder listing plus the prompt fit.
+fn ollama_chat_body(model: &str, messages: &[Message], thinking: bool) -> Value {
+    json!({"model":model,"messages":messages,"stream":true,"format":"json","think":thinking,"options":{"num_predict":4096,"num_ctx":8192},"keep_alive":"1m"})
+}
 pub fn response_json(response: Response) -> Result<Value, String> {
     check_status(&response)?;
     let mut body = Vec::new();
@@ -303,6 +311,7 @@ fn configured(config: &Connections, kind: ProviderKind) -> Option<Connection> {
             model: setup.model.clone(),
             endpoint: setup.endpoint.clone(),
             executable: setup.executable.clone(),
+            thinking: false,
         });
     }
     if config.active.kind == kind {
@@ -378,7 +387,7 @@ impl HttpModel {
             cancel.check()?;
         }
         let request = match config.kind {
-            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&json!({"model":config.model,"messages":messages,"stream":true,"format":"json","options":{"num_predict":4096},"keep_alive":"1m"})),
+            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&ollama_chat_body(&config.model, messages, config.thinking)),
             ProviderKind::Openai => http.post(format!("{endpoint}/responses")).bearer_auth(secret("openai")?).json(&json!({"model":config.model,"input":messages,"max_output_tokens":4096,"store":false})),
             ProviderKind::Anthropic => {
                 let system = messages.iter().filter(|m| m.role=="system").map(|m|m.content.as_str()).collect::<Vec<_>>().join("\n");
@@ -625,6 +634,15 @@ mod tests {
             role: "user".into(),
             content: "hi".into(),
         }]
+    }
+
+    #[test]
+    fn ollama_thinking_is_opt_in_and_context_is_raised() {
+        let body = ollama_chat_body("qwen3:4b", &[], false);
+        assert_eq!(body["think"], false);
+        assert_eq!(ollama_chat_body("qwen3:4b", &[], true)["think"], true);
+        assert_eq!(body["options"]["num_ctx"], 8192);
+        assert_eq!(body["stream"], true);
     }
 
     #[test]
