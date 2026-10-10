@@ -519,6 +519,11 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        println!("LINE: {line}\nCWD: {}\nOUT: {:?}\nEXIT: {:?}", cwd.display(), seen.lock().unwrap(), exit.lock().unwrap());
+        println!(
+            "LINE: {line}\nCWD: {}\nOUT: {:?}\nEXIT: {:?}",
+            cwd.display(),
+            seen.lock().unwrap(),
+            exit.lock().unwrap()
+        );
     }
 }
