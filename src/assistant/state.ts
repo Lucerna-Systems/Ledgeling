@@ -7,7 +7,7 @@ export const tasks = ref<Task[]>([])
 export const taskError = ref('')
 export const assignedPet = ref<number | null>(null)
 export const droppedFiles = ref<string[]>([])
-export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} })
+export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} })
 /** The connection a task for this pet actually runs on: its override, else the default. */
 export function effectiveConnection(petId: number | null): Connection {
   const config = connections.value
