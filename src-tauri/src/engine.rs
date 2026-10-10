@@ -217,6 +217,13 @@ impl Engine {
                             }
                         }
                     }
+                    // A folder that was moved or deleted since is forgotten
+                    // rather than failing every action the pet is asked for.
+                    if let Some(folder) =
+                        setting.folder.filter(|f| std::path::Path::new(f).is_dir())
+                    {
+                        self.set_pet_folder(id, Some(folder));
+                    }
                 }
                 Err(_) => missing.push(setting.pack_id.clone()),
             }
@@ -227,6 +234,21 @@ impl Engine {
         missing
     }
 
+    /// Gives a pet its default working folder, or takes it away.
+    pub fn set_pet_folder(&mut self, id: u64, folder: Option<String>) {
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.folder = folder;
+        }
+    }
+
+    /// Every pet that has a working folder, for the bubble to read.
+    pub fn pet_folders(&self) -> Vec<(u64, String)> {
+        self.pets
+            .iter()
+            .filter_map(|p| p.folder.clone().map(|f| (p.id, f)))
+            .collect()
+    }
+
     pub fn remember_pets(&mut self) {
         self.settings.pets = self
             .pets
@@ -235,6 +257,7 @@ impl Engine {
                 pack_id: pet.pack.manifest.id.clone(),
                 x: pet.position.x.is_finite().then_some(pet.position.x),
                 y: pet.position.y.is_finite().then_some(pet.position.y),
+                folder: pet.folder.clone(),
             })
             .collect();
     }

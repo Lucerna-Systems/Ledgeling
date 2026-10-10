@@ -175,7 +175,7 @@ pub fn spawn(options: Spawn, channel: Channel<Output>) -> Result<Session, String
         None => CommandBuilder::new_default_prog(),
         Some(line) => shell_line(line),
     };
-    builder.cwd(plain_path(options.cwd));
+    builder.cwd(options.cwd);
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
     builder.env("TERM_PROGRAM", "Ledgeling");
@@ -259,16 +259,6 @@ pub fn spawn(options: Spawn, channel: Channel<Output>) -> Result<Session, String
     })
 }
 
-/// A folder as cmd.exe accepts it. `canonicalize` gives Windows `\\?\C:\...`,
-/// which cmd.exe rejects as a UNC path before falling back to C:\Windows.
-pub fn plain_path(path: &Path) -> std::path::PathBuf {
-    let text = path.to_string_lossy();
-    match text.strip_prefix(r"\\?\") {
-        Some(rest) if !rest.starts_with(r"UNC\") => rest.into(),
-        _ => path.to_path_buf(),
-    }
-}
-
 /// Run a command line through the user's shell, so pipes, `&&` and their
 /// aliases behave as in their own terminal.
 fn shell_line(line: &str) -> CommandBuilder {
@@ -281,12 +271,8 @@ fn shell_line(line: &str) -> CommandBuilder {
     }
     #[cfg(windows)]
     {
-        // Passing the line as an argument would have its quotes escaped as \",
-        // which cmd.exe does not understand. cmd expands the variable itself.
-        // Quotes around it would stay: /s strips them before the expansion.
         let mut builder = CommandBuilder::new("cmd.exe");
-        builder.args(["/d", "/s", "/c", "%LEDGELING_COMMAND%"]);
-        builder.env("LEDGELING_COMMAND", line);
+        builder.args(["/d", "/s", "/c", line]);
         builder
     }
 }
@@ -420,12 +406,11 @@ impl Session {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    #[cfg(unix)]
     #[test]
     fn a_command_runs_in_a_terminal_and_reports_its_exit() {
         let dir = tempfile::tempdir().unwrap();
@@ -467,63 +452,5 @@ mod tests {
         assert!(seen.lock().unwrap().contains("hello-42"));
         assert_eq!(*exit.lock().unwrap(), Some(Some(0)));
         assert!(!session.alive());
-    }
-
-    /// Runs a quoted command line the way agent terminals do, from a
-    /// canonicalized (`\\?\`) folder, and prints what the terminal showed.
-    #[cfg(windows)]
-    #[test]
-    #[ignore]
-    fn live_quoted_command_line() {
-        let dir = tempfile::tempdir().unwrap();
-        let cwd = dir.path().canonicalize().unwrap();
-        let settings = dir.path().join("a b").join("s.json");
-        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
-        std::fs::write(&settings, "{}").unwrap();
-        let line = std::env::var("LIVE_LINE")
-            .unwrap_or_else(|_| format!("cmd /c echo \"{}\" ok", settings.display()));
-        let seen = Arc::new(Mutex::new(String::new()));
-        let exit = Arc::new(Mutex::new(None));
-        let (s, e) = (seen.clone(), exit.clone());
-        let channel = Channel::new(move |body| {
-            if let tauri::ipc::InvokeResponseBody::Json(text) = body {
-                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-                match value["type"].as_str() {
-                    Some("data") => s.lock().unwrap().push_str(value["data"].as_str().unwrap()),
-                    Some("exit") => *e.lock().unwrap() = Some(value["code"].as_u64()),
-                    _ => {}
-                }
-            }
-            Ok(())
-        });
-        let mut session = spawn(
-            Spawn {
-                cwd: &cwd,
-                command: Some(&line),
-                kind: Kind::Shell,
-                worktree: String::new(),
-                title: "t".into(),
-                cols: 120,
-                rows: 24,
-                env: vec![],
-                events: None,
-            },
-            channel,
-        )
-        .unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        session.write("[1;1R").unwrap();
-        for _ in 0..200 {
-            if exit.lock().unwrap().is_some() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        println!(
-            "LINE: {line}\nCWD: {}\nOUT: {:?}\nEXIT: {:?}",
-            cwd.display(),
-            seen.lock().unwrap(),
-            exit.lock().unwrap()
-        );
     }
 }

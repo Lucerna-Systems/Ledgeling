@@ -200,15 +200,54 @@ fn an_unknown_class_or_surface_lists_the_valid_ones() {
 }
 
 #[test]
-fn missing_required_animations_are_errors() {
+fn a_pack_with_only_idle_loads_and_uses_it_for_everything() {
     let text = MINIMAL.replace(
-        "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
-        "\"flap\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        ",\n    \"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        "",
     );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("move"), "idle");
+    assert_eq!(manifest.resolve_clip("climb"), "idle");
+}
+
+#[test]
+fn a_pack_with_only_move_plays_it_in_place_of_idle() {
+    let text = MINIMAL.replace(
+        "\"idle\": { \"file\": \"sprites/idle.png\", \"frames\": 4, \"fps\": 6 },\n    ",
+        "",
+    );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("idle"), "move");
+    assert_eq!(manifest.resolve_clip("sleep"), "move");
+}
+
+#[test]
+fn a_pack_with_some_other_clip_still_loads() {
+    let text = MINIMAL
+        .replace(
+            "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+            "\"flap\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        )
+        .replace(
+            "\"idle\": { \"file\": \"sprites/idle.png\", \"frames\": 4, \"fps\": 6 },",
+            "",
+        );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    assert_eq!(manifest.unwrap().resolve_clip("idle"), "flap");
+}
+
+#[test]
+fn a_pack_with_no_animations_is_an_error() {
+    let start = MINIMAL.find("\"animations\"").unwrap();
+    let text = format!("{}\"animations\": {{}}\n}}", &MINIMAL[..start]);
     let (_, report) = parse(&text);
     let message = errors(&report).join("\n");
-    assert!(message.contains("animations.move"), "{message}");
-    assert!(message.contains("required"), "{message}");
+    assert!(message.contains("no animations"), "{message}");
 }
 
 #[test]

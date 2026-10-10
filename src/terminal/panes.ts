@@ -114,9 +114,6 @@ export function openAgent(agent: { name: string; command: string }) {
 /** The user's own `claude`, beside the focused terminal. */
 export const openClaude = () => openAgent({ name: 'Claude Code', command: 'claude' })
 
-/** The user's own Antigravity CLI, when installed, beside the focused terminal. */
-export const openAntigravity = () => openAgent({ name: 'Antigravity', command: 'antigravity' })
-
 /** "Shell", then "Shell 2" and so on, so panes can be told apart. */
 export function nextTitle(worktree: string, base: string) {
   const taken = new Set([...terms.values()].filter(t => t.worktree === worktree).map(t => t.title))

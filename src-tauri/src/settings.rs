@@ -18,6 +18,9 @@ pub struct PetSetting {
     /// until the pet has actually stood somewhere.
     pub x: Option<f64>,
     pub y: Option<f64>,
+    /// The folder this pet works in: where its terminal opens and what its
+    /// actions run on. Chosen from its bubble, kept across launches.
+    pub folder: Option<String>,
 }
 /// How the companion UI is coloured. `System` follows the OS appearance,
 /// resolved per-window on the frontend and via `set_theme(None)` natively.
@@ -160,7 +163,7 @@ mod tests {
     use super::*;
     #[test]
     fn a_corrupt_file_recovers_to_defaults_and_is_kept() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ledgeling-settings-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(dir.join(SETTINGS_FILE), "{ not json").unwrap();
         let (settings, note) = load(&dir);
@@ -171,7 +174,8 @@ mod tests {
     }
     #[test]
     fn round_trips_and_clamps_nonsense() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-rt-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-rt-{}", std::process::id()));
         let mut settings = Settings {
             speed_scale: 99.,
             ..Default::default()
@@ -185,7 +189,8 @@ mod tests {
     }
     #[test]
     fn theme_and_accent_round_trip() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-theme-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-theme-{}", std::process::id()));
         let settings = Settings {
             theme: ThemeMode::Dark,
             accent: "#3A7BD5".into(),
@@ -215,7 +220,8 @@ mod tests {
     #[test]
     fn missing_theme_and_accent_read_as_defaults() {
         // A settings.json written before the feature existed has neither key.
-        let dir = std::env::temp_dir().join(format!("perch-settings-mig-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-mig-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(
             dir.join(SETTINGS_FILE),
