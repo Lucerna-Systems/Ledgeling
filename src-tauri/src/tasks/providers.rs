@@ -5,7 +5,7 @@ use std::{
     io::{BufRead, BufReader, Read},
     path::PathBuf,
     sync::mpsc::{self, RecvTimeoutError},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub trait ModelProvider {
@@ -112,10 +112,26 @@ fn cancellable<T: Send + 'static>(
         }
     }
 }
+/// How often the reasoning preview may change, since each change is saved and
+/// sent to the panel.
+const REASONING_EVERY: Duration = Duration::from_millis(800);
+/// The last stretch of the model's reasoning, on one line, for the task card.
+fn reasoning_tail(reasoning: &str) -> String {
+    let flat = reasoning.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = flat.len().saturating_sub(90);
+    let tail = &flat[flat.ceil_char_boundary(start)..];
+    if start > 0 {
+        format!("…{tail}")
+    } else {
+        tail.to_string()
+    }
+}
 /// The text of an Ollama streamed reply (one JSON object per line). Returning
 /// early drops the connection, which is what makes Ollama stop generating.
 fn read_stream(reader: impl Read, cancel: &Cancel) -> Result<String, String> {
     let mut text = String::new();
+    let mut reasoning = String::new();
+    let mut shown = Instant::now() - REASONING_EVERY;
     for line in BufReader::new(reader.take(2_000_001)).lines() {
         cancel.check()?;
         let line = line.map_err(|_| "Provider response interrupted".to_string())?;
@@ -126,6 +142,17 @@ fn read_stream(reader: impl Read, cancel: &Cancel) -> Result<String, String> {
             .map_err(|_| "Provider returned invalid JSON.".to_string())?;
         if let Some(error) = chunk["error"].as_str() {
             return Err(format!("Ollama reported an error: {error}"));
+        }
+        if let Some(thought) = chunk["message"]["thinking"].as_str() {
+            reasoning.push_str(thought);
+            if reasoning.len() > 4_000 {
+                let cut = reasoning.len() - 2_000;
+                reasoning = reasoning[reasoning.ceil_char_boundary(cut)..].to_string();
+            }
+            if shown.elapsed() >= REASONING_EVERY {
+                shown = Instant::now();
+                cancel.reasoning(&reasoning_tail(&reasoning));
+            }
         }
         text.push_str(chunk["message"]["content"].as_str().unwrap_or(""));
         if text.len() > 2_000_000 {
@@ -634,6 +661,18 @@ mod tests {
             role: "user".into(),
             content: "hi".into(),
         }]
+    }
+
+    #[test]
+    fn reasoning_is_previewed_while_the_reply_is_read() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let cancel = Cancel::default();
+        let sink = seen.clone();
+        cancel.on_reasoning(move |text| sink.lock().unwrap().push(text.to_string()));
+        let stream = "{\"message\":{\"thinking\":\"Look at\\nthe files\"},\"done\":false}\n{\"message\":{\"content\":\"{}\"},\"done\":true}\n";
+        assert_eq!(read_stream(stream.as_bytes(), &cancel).unwrap(), "{}");
+        assert_eq!(*seen.lock().unwrap(), vec!["Look at the files".to_string()]);
+        assert!(reasoning_tail(&"word ".repeat(100)).starts_with('…'));
     }
 
     #[test]
