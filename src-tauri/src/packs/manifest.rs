@@ -408,7 +408,14 @@ impl Manifest {
                 }
             }
         }
-        "idle"
+        // Idle and move cover for each other, and a pack with neither still
+        // plays whatever it does have rather than failing to load.
+        for candidate in ["idle", "move"] {
+            if self.animations.contains_key(candidate) {
+                return candidate;
+            }
+        }
+        self.animations.keys().next().map_or("idle", String::as_str)
     }
     pub fn animation(&self, wanted: &str) -> Option<&Animation> {
         self.animations.get(self.resolve_clip(wanted))
@@ -806,7 +813,7 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
             MANIFEST_FILE,
             "animations",
             "The animations block is missing.",
-            "At minimum, provide `idle` and `move` sprite strips.",
+            "Provide at least one sprite strip, e.g. `idle`.",
         ));
         return animations;
     };
@@ -893,13 +900,22 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
             },
         );
     }
-    for required in ["idle", "move"] {
-        if !animations.contains_key(required) {
-            report.push(Diagnostic::error(
+    if animations.is_empty() {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "animations",
+            "The pack has no animations.",
+            "Provide at least one sprite strip, e.g. `idle`; every other clip falls back to it.",
+        ));
+    }
+    // Idle and move are not required: each stands in for the other.
+    for (clip, other) in [("idle", "move"), ("move", "idle")] {
+        if !animations.contains_key(clip) && animations.contains_key(other) {
+            report.push(Diagnostic::info(
                 MANIFEST_FILE,
-                format!("animations.{required}"),
-                format!("The required `{required}` animation is missing."),
-                "Every pack needs `idle` and `move`; all other clips fall back to these.",
+                format!("animations.{clip}"),
+                format!("No `{clip}` animation, so this pet plays `{other}` instead."),
+                format!("Add an `animations.{clip}` clip to give it its own look."),
             ));
         }
     }
