@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FRAME, blankFrame, buildManifest, problems, renameState, starterDraft, strip } from './model'
+import { FRAME, blankFrame, buildManifest, emptyClip, problems, renameState, starterDraft, strip } from './model'
 
 function drawnFrame() {
   const frame = blankFrame()
@@ -10,7 +10,7 @@ function ready() {
   const draft = starterDraft('climber')
   draft.name = 'Pebble the Newt'
   draft.clips.idle!.frames = [drawnFrame(), drawnFrame()]
-  draft.clips.move!.frames = [drawnFrame()]
+  draft.clips.move = { ...emptyClip(), frames: [drawnFrame()] }
   return draft
 }
 
@@ -46,22 +46,27 @@ describe('studio manifest', () => {
 })
 
 describe('studio checks', () => {
-  it('asks for the two required animations and a name', () => {
+  it('asks for a name and at least one drawn animation', () => {
     const draft = starterDraft()
     draft.name = ' '
     expect(problems(draft)).toEqual([
       'Give your pet a name.',
-      'Draw at least one frame of the Idle animation.',
-      'Draw at least one frame of the Move animation.',
+      'Draw at least one frame of any animation, such as Idle.',
     ])
     expect(problems(ready())).toEqual([])
   })
 
-  it('saves a blank Move as a copy of Idle until issue #11 is fixed', () => {
+  it('lets a pet have only an Idle animation', () => {
+    const draft = ready()
+    delete draft.clips.move
+    expect(problems(draft)).toEqual([])
+    expect(Object.keys(buildManifest(draft).animations)).toEqual(['idle'])
+  })
+
+  it('does not write an undrawn Move', () => {
     const draft = ready()
     draft.clips.move!.frames = [blankFrame()]
-    expect(problems(draft)).toEqual([])
-    expect(buildManifest(draft).animations.move).toEqual({ file: 'sprites/move.png', frames: 2, fps: 8 })
+    expect(Object.keys(buildManifest(draft).animations)).toEqual(['idle'])
   })
 
   it('catches a condition without a number and a step to a missing behaviour', () => {

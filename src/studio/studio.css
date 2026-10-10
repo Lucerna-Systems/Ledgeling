@@ -42,27 +42,41 @@
 .clip-text strong { font-size: 13px; font-weight: 600; }
 .clip-text small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clip-text small.needed { color: var(--danger); font-weight: 600; }
-.canvas-area { padding: 16px; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.canvas-area { gap: 8px; padding: 14px; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .canvas-head, .frame-strip { flex-shrink: 0; }
-.canvas-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.canvas-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
 .canvas-head h2 { font-size: 16px !important; margin: 0 !important; }
 .canvas-head p { margin: 2px 0 0 !important; font-size: 12.5px; color: var(--muted); }
 .danger-link { color: var(--danger); }
 .clip-start { flex: 1; align-content: center; display: grid; justify-items: center; text-align: center; gap: 14px; padding: 60px 20px; border: 1.5px dashed var(--line-strong); border-radius: 16px; color: var(--muted); }
 .clip-start p { max-width: 42ch; margin: 0 !important; }
 .clip-start-actions { display: flex; gap: 8px; }
-.canvas-row { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; align-items: stretch; }
-.tool-rail { display: grid; align-content: start; gap: 4px; padding: 4px; background: var(--soft); border-radius: 12px; overflow-y: auto; }
-.app-shell .rail-button { width: 34px; min-height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--muted); }
+.toolbar { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 3px; background: var(--soft); border-radius: 10px; }
+.app-shell .rail-button { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); }
 .app-shell .rail-button:not(:disabled):hover { background: var(--surface); color: var(--ink); }
 .app-shell .rail-button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
-.rail-gap { height: 6px; }
-/* The canvas is the largest square the stage can hold, in either direction. */
-.canvas-stage { flex: 1 1 auto; min-width: 0; min-height: 0; container-type: size; display: grid; place-items: center; }
-.pixel-canvas { width: min(100cqw, 100cqh); height: min(100cqw, 100cqh); border-radius: 10px; box-shadow: 0 0 0 1px var(--line); touch-action: none; image-rendering: pixelated; cursor: crosshair; }
+.rail-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--line-strong); }
+.zoom-group { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.app-shell .zoom-readout { min-height: 26px; min-width: 46px; padding: 0 6px; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tool-options { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 30px; padding: 2px 4px; font-size: 12px; color: var(--muted); }
+.tool-options .option { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.tool-options .option input[type="range"] { width: 72px; margin: 0; }
+.tool-options .option span { font-variant-numeric: tabular-nums; }
+.tool-options .actions { margin-left: auto; gap: 2px 4px; }
+.tool-options .actions .text-link { font-size: 12px; margin-left: 4px; }
+.tool-options .segmented { gap: 2px; padding: 2px; background: var(--soft); border-radius: 999px; }
+.app-shell .tool-options .chip { min-height: 22px; padding: 0 9px; border: 0; border-radius: 999px; font-size: 12px; background: transparent; color: var(--muted); }
+.app-shell .tool-options .chip[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.current-colour.second { width: 22px; height: 22px; border-radius: 6px; }
+/* The stage clips the canvas; scrolling or pinching zooms it, space-drag pans. */
+.canvas-stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; border-radius: 10px; background: var(--stage); }
+.canvas-stage.panning .pixel-canvas { cursor: grabbing; }
+.pixel-canvas { position: absolute; border-radius: 4px; touch-action: none; image-rendering: pixelated; cursor: crosshair; }
 .pixel-canvas.tool-picker { cursor: copy; }
 .pixel-canvas.tool-fill { cursor: cell; }
-.frame-strip { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); overflow-x: auto; }
+.pixel-canvas.tool-picker { cursor: copy; }
+.pixel-canvas.tool-fill { cursor: cell; }
+.frame-strip { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); overflow-x: auto; }
 .app-shell .frame-thumb { position: relative; flex-shrink: 0; width: 52px; height: 52px; min-height: 0; padding: 0; border: 1.5px solid var(--line); border-radius: 10px; background: var(--stage); overflow: hidden; }
 .app-shell .frame-thumb[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
 .frame-thumb img { width: 100%; height: 100%; image-rendering: pixelated; }
@@ -73,7 +87,7 @@
 .side-panel > * { min-width: 0; }
 .panel-block h3 { font-size: 11px !important; font-weight: 650 !important; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin: 0 0 8px !important; }
 .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
-.app-shell .paint { aspect-ratio: 1; width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 6px; box-shadow: inset 0 0 0 1px #0000001a; }
+.app-shell .paint { aspect-ratio: 1; width: 100%; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 6px; box-shadow: inset 0 0 0 1px #0000001a; }
 .app-shell .paint[aria-checked="true"] { outline: 2px solid var(--ink); outline-offset: 1px; }
 .app-shell .paint.small { width: 18px; border-radius: 5px; }
 .colour-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
@@ -148,7 +162,7 @@
   .content.fit-page:has(> .studio) { overflow-y: auto; }
   .studio > .sprite-editor { flex: none; }
   .sprite-editor { grid-template-columns: 1fr; grid-template-rows: none; }
-  .canvas-stage { height: min(calc(100vw - 110px), 460px); }
+  .canvas-stage { flex: none; height: min(calc(100vw - 110px), 460px); }
   .clip-list { max-height: 220px; }
   .studio-head { flex-direction: column; }
 }

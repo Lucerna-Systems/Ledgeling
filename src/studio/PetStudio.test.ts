@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import PetStudio from './PetStudio.vue'
 import { draft } from './state'
-import { FRAME, blankFrame, starterDraft } from './model'
+import { FRAME, blankFrame, emptyClip, starterDraft } from './model'
 
 const api = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: api.invoke, isTauri: () => true }))
@@ -20,9 +20,9 @@ beforeEach(() => {
   draft.value = starterDraft()
 })
 
-it('will not save until the required animations are drawn', async () => {
+it('will not save until something is drawn', async () => {
   const wrapper = mount(PetStudio)
-  expect(wrapper.text()).toContain('Draw at least one frame of the Idle animation')
+  expect(wrapper.text()).toContain('Draw at least one frame of any animation')
   const save = wrapper.findAll('button').find(b => b.text() === 'Save')!
   expect(save.attributes('disabled')).toBeDefined()
   wrapper.unmount()
@@ -33,7 +33,7 @@ it('saves the design as a pack and can bring it straight out', async () => {
   frame.set([255, 0, 0, 255], (20 * FRAME + 20) * 4)
   draft.value.name = 'Ember'
   draft.value.clips.idle!.frames = [frame]
-  draft.value.clips.move!.frames = [new Uint8ClampedArray(frame)]
+  draft.value.clips.move = { ...emptyClip(), frames: [new Uint8ClampedArray(frame)] }
   const wrapper = mount(PetStudio)
   await wrapper.findAll('button').find(b => b.text().includes('Save & bring out'))!.trigger('click')
   await vi.waitFor(() => expect(api.invoke.mock.calls.map(c => c[0])).toContain('spawn_pet'))
@@ -74,13 +74,45 @@ it('keeps the preview still until Play is pressed', async () => {
   frames.mockRestore()
 })
 
-it('clears the "draw Idle first" note as soon as Idle is drawn', async () => {
+it('clears the "draw something" note as soon as anything is drawn', async () => {
   const wrapper = mount(PetStudio)
-  expect(wrapper.text()).toContain('Idle animation')
+  expect(wrapper.text()).toContain('Draw at least one frame of any animation')
   const canvas = wrapper.get('.pixel-canvas')
   canvas.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 480 }) as DOMRect
   canvas.element.setPointerCapture = () => {}
   await canvas.trigger('pointerdown', { button: 0, clientX: 240, clientY: 240, pointerId: 1 })
-  expect(wrapper.text()).not.toContain('Draw at least one frame of the Idle animation')
+  expect(wrapper.text()).not.toContain('Draw at least one frame of any animation')
+  wrapper.unmount()
+})
+
+it('selects with the magic wand, deletes the selection and undoes it', async () => {
+  const wrapper = mount(PetStudio, { attachTo: document.body })
+  const canvas = wrapper.get('.pixel-canvas')
+  canvas.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 480 }) as DOMRect
+  canvas.element.setPointerCapture = () => {}
+  const at = { button: 0, clientX: 240, clientY: 240, pointerId: 1 }
+  await canvas.trigger('pointerdown', at)
+  await canvas.trigger('pointerup', at)
+  const drawnPixels = () => draft.value.clips.idle!.frames[0]!.some((v, i) => i % 4 === 3 && v > 0)
+  expect(drawnPixels()).toBe(true)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
+  await canvas.trigger('pointerdown', at)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }))
+  expect(drawnPixels()).toBe(false)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }))
+  expect(drawnPixels()).toBe(true)
+  wrapper.unmount()
+})
+
+it('zooms the canvas with the scroll wheel and fits again on request', async () => {
+  const wrapper = mount(PetStudio, { attachTo: document.body })
+  const readout = () => wrapper.get('.zoom-readout').text()
+  await wrapper.vm.$nextTick()
+  expect(readout()).toBe('100%')
+  wrapper.get('.canvas-stage').element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: 100, clientY: 100, cancelable: true }))
+  await wrapper.vm.$nextTick()
+  expect(parseInt(readout())).toBeGreaterThan(100)
+  await wrapper.get('.zoom-readout').trigger('click')
+  expect(readout()).toBe('100%')
   wrapper.unmount()
 })

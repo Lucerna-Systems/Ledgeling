@@ -16,10 +16,10 @@ export const movements: { value: Movement; label: string; blurb: string }[] = [
 ]
 
 export interface ClipInfo { name: string; label: string; blurb: string; required?: boolean; fallback?: string; for?: Movement[]; group: 'basics' | 'moves' | 'moods' | 'assistant' }
-/** The animations a pet can have. Only idle and move are required; the rest fall back. */
+/** The animations a pet can have. None are required: idle and move stand in for each other, and the rest fall back down their chain. */
 export const clips: ClipInfo[] = [
-  { name: 'idle', label: 'Idle', blurb: 'Standing still, just being there.', required: true, group: 'basics' },
-  { name: 'move', label: 'Move', blurb: 'Getting from place to place.', required: true, group: 'basics' },
+  { name: 'idle', label: 'Idle', blurb: 'Standing still, just being there.', fallback: 'move', group: 'basics' },
+  { name: 'move', label: 'Move', blurb: 'Getting from place to place.', fallback: 'idle', group: 'basics' },
   { name: 'climb', label: 'Climb', blurb: 'Going up or down the side of a window.', fallback: 'move', for: ['climber'], group: 'moves' },
   { name: 'jump', label: 'Jump', blurb: 'Leaping across a gap.', fallback: 'move', for: ['climber', 'hopper'], group: 'moves' },
   { name: 'fall', label: 'Fall', blurb: 'Dropping when a window vanishes.', fallback: 'move', for: ['climber', 'walker', 'hopper'], group: 'moves' },
@@ -116,7 +116,7 @@ export function starterDraft(movement: Movement = 'walker'): Draft {
     author: '',
     description: '',
     movement,
-    clips: { idle: emptyClip(), move: emptyClip() },
+    clips: { idle: emptyClip() },
     initial: 'rest',
     states: [
       state('rest', 'idle', '', [5, 15], [
@@ -165,12 +165,9 @@ export function conditionText(when: Condition[]) {
   return when.map(c => `${c.signal} ${c.op} ${c.value.trim()}`).join(' && ')
 }
 
-/** The clips a save writes. Temporary (issue #11): a blank Move reuses Idle,
- *  because copying Idle into Move does not show on the macOS canvas yet. */
+/** The clips a save writes: exactly the ones that have been drawn. */
 function savedClips(draft: Draft): Record<string, ClipDraft> {
-  const clips = { ...draft.clips }
-  if (!clipDrawn(clips.move) && clipDrawn(clips.idle)) clips.move = clips.idle!
-  return clips
+  return { ...draft.clips }
 }
 
 /** Problems worth fixing before saving, in plain words. The backend validator still has the final say. */
@@ -178,7 +175,7 @@ export function problems(draft: Draft): string[] {
   const out: string[] = []
   if (!draft.name.trim()) out.push('Give your pet a name.')
   const clips = savedClips(draft)
-  for (const required of ['idle', 'move']) if (!clipDrawn(clips[required])) out.push(`Draw at least one frame of the ${clipInfo(required)!.label} animation.`)
+  if (!Object.values(clips).some(clipDrawn)) out.push('Draw at least one frame of any animation, such as Idle.')
   const names = new Set(draft.states.map(s => s.name))
   if (names.size !== draft.states.length) out.push('Two behaviours share a name. Give each its own.')
   if (!names.has(draft.initial)) out.push('Pick which behaviour your pet starts with.')
