@@ -23,8 +23,8 @@ other or with your checkout of `main`.
 
 ```sh
 git fetch origin
-git worktree add ../lupetty-<topic> -b <topic> origin/main
-cd ../lupetty-<topic>
+git worktree add ../ledgeling-<topic> -b <topic> origin/main
+cd ../ledgeling-<topic>
 npm ci && (cd sidecar && npm ci)
 ```
 
@@ -41,7 +41,7 @@ gh pr create --base main
 Clean up after the merge (GitHub deletes the remote branch automatically):
 
 ```sh
-git worktree remove ../lupetty-<topic>
+git worktree remove ../ledgeling-<topic>
 git branch -D <topic>
 ```
 

@@ -1,16 +1,28 @@
 //! Explicit opt-in smoke tests. They send only a synthetic readiness request.
-//! API tests use credentials saved through Perch, never print or copy keys.
+//! API tests use credentials saved through Ledgeling, never print or copy keys.
 use ledgeling::tasks::{
     providers::{HttpModel, ModelProvider},
     runtimes,
     types::{Connection, Message, ProviderKind},
     Cancel,
 };
+
+fn get_test_var(name: &str) -> Result<String, std::env::VarError> {
+    let alt = if let Some(stripped) = name.strip_prefix("LEDGELING_") {
+        format!("PERCH_{stripped}")
+    } else if let Some(stripped) = name.strip_prefix("PERCH_") {
+        format!("LEDGELING_{stripped}")
+    } else {
+        name.to_string()
+    };
+    std::env::var(name).or_else(|_| std::env::var(&alt))
+}
+
 fn model(kind: ProviderKind, variable: &str) {
     let config = Connection {
         kind,
-        model: std::env::var(variable).expect(variable),
-        endpoint: std::env::var("PERCH_TEST_ENDPOINT").unwrap_or_default(),
+        model: get_test_var(variable).expect(variable),
+        endpoint: get_test_var("LEDGELING_TEST_ENDPOINT").unwrap_or_default(),
         ..Default::default()
     };
     assert!(
@@ -20,20 +32,23 @@ fn model(kind: ProviderKind, variable: &str) {
             .structured
     );
 }
+
 #[test]
-#[ignore = "Requires saved OpenAI API key and PERCH_TEST_OPENAI_MODEL; incurs usage"]
+#[ignore = "Requires saved OpenAI API key and LEDGELING_TEST_OPENAI_MODEL (or PERCH_TEST_OPENAI_MODEL); incurs usage"]
 fn openai() {
-    model(ProviderKind::Openai, "PERCH_TEST_OPENAI_MODEL")
+    model(ProviderKind::Openai, "LEDGELING_TEST_OPENAI_MODEL")
 }
+
 #[test]
-#[ignore = "Requires saved Anthropic API key and PERCH_TEST_ANTHROPIC_MODEL; incurs usage"]
+#[ignore = "Requires saved Anthropic API key and LEDGELING_TEST_ANTHROPIC_MODEL (or PERCH_TEST_ANTHROPIC_MODEL); incurs usage"]
 fn anthropic() {
-    model(ProviderKind::Anthropic, "PERCH_TEST_ANTHROPIC_MODEL")
+    model(ProviderKind::Anthropic, "LEDGELING_TEST_ANTHROPIC_MODEL")
 }
+
 #[test]
-#[ignore = "Requires PERCH_TEST_ENDPOINT and PERCH_TEST_COMPATIBLE_MODEL"]
+#[ignore = "Requires LEDGELING_TEST_ENDPOINT and LEDGELING_TEST_COMPATIBLE_MODEL (or PERCH_TEST_*)"]
 fn compatible() {
-    model(ProviderKind::Compatible, "PERCH_TEST_COMPATIBLE_MODEL")
+    model(ProviderKind::Compatible, "LEDGELING_TEST_COMPATIBLE_MODEL")
 }
 /// The on-device path end to end: starts `fm serve`, runs the structured
 /// readiness completion, and stops the server. Nothing leaves the machine, but

@@ -83,7 +83,19 @@ it('collapses the sidebar to an icon rail and remembers it', async () => {
   const wrapper = mount(Companion)
   await wrapper.get('[aria-label="Collapse sidebar"]').trigger('click')
   expect(wrapper.get('.sidebar-shell').classes()).toContain('collapsed')
-  expect(JSON.parse(store.get('perch:sidebar')!)).toMatchObject({ collapsed: true })
+  expect(JSON.parse(store.get('ledgeling:sidebar')!)).toMatchObject({ collapsed: true })
   wrapper.unmount()
   expect(mount(Companion).get('.sidebar-shell').classes()).toContain('collapsed')
+})
+
+it('restores sidebar state from legacy perch:sidebar key if ledgeling:sidebar is unset', () => {
+  const store = new Map<string, string>([
+    ['perch:sidebar', JSON.stringify({ width: 300, collapsed: true })],
+  ])
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value),
+  } })
+  const wrapper = mount(Companion)
+  expect(wrapper.get('.sidebar-shell').classes()).toContain('collapsed')
+  wrapper.unmount()
 })

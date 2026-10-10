@@ -1094,11 +1094,11 @@ fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::erro
     // macOS tints a template image to match the menu bar, like Apple's own
     // icons; elsewhere a black silhouette would vanish on a dark taskbar.
     #[cfg(target_os = "macos")]
-    let tray = TrayIconBuilder::with_id("perch")
+    let tray = TrayIconBuilder::with_id("ledgeling")
         .icon(tauri::include_image!("icons/tray-template.png"))
         .icon_as_template(true);
     #[cfg(not(target_os = "macos"))]
-    let tray = TrayIconBuilder::with_id("perch").icon(tauri::include_image!("icons/icon.png"));
+    let tray = TrayIconBuilder::with_id("ledgeling").icon(tauri::include_image!("icons/icon.png"));
     tray.tooltip("Ledgeling · a little company")
         .menu(&tray_menu(app.handle(), developer)?)
         .build(app)?;
@@ -1108,7 +1108,7 @@ fn setup_tray(app: &tauri::App, developer: bool) -> Result<(), Box<dyn std::erro
 /// Coding mode appears in the menus only while Developer tools are on.
 fn set_menus(app: &tauri::AppHandle, developer: bool) -> tauri::Result<()> {
     set_app_menu(app, developer)?;
-    if let Some(tray) = app.tray_by_id("perch") {
+    if let Some(tray) = app.tray_by_id("ledgeling") {
         tray.set_menu(Some(tray_menu(app, developer)?))?;
     }
     Ok(())
@@ -1250,7 +1250,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
     let mut last_watch = Instant::now();
     let mut last_save = Instant::now();
     let mut watch_signature = String::new();
-    let diagnostics = std::env::var_os("PERCH_DIAGNOSTICS").is_some();
+    let diagnostics = std::env::var_os("LEDGELING_DIAGNOSTICS")
+        .or_else(|| std::env::var_os("PERCH_DIAGNOSTICS"))
+        .is_some();
     let mut last_diagnostic = Instant::now();
     loop {
         let now = Instant::now();

@@ -1,10 +1,12 @@
-# Perch — Plan & MVP Status
+# Ledgeling — Plan & MVP Status
 
 One file, replacing the original seven planning documents. Each section keeps the
 original document's intent and records **what was actually built to get the MVP
 running on macOS**. The honest, always-current account of what has and has not
 been verified lives in [`docs/verification.md`](../docs/verification.md) — this
-file summarizes; that one is the record.
+file summarizes; that one is the record. For the operational release roadmap and
+active work packages (WP-0 through WP-11), see
+[`01-RELEASE-PLAN.md`](01-RELEASE-PLAN.md).
 
 ---
 
@@ -180,8 +182,10 @@ parts code can do:
 | M4-1 settings/persistence, M4-2 tray/lifecycle/autostart | ✅ Done |
 | M4-3 installer & signing · M4-4 soak · M4-5 authoring-guide test · M4-6 release | ❌ Not done |
 
-77 tests cover it (61 unit, 7 privacy, 9 timeline integration), clippy and fmt
-clean on every change; `docs/verification.md` is the item-by-item account.
+149 Rust tests pass (132 unit, 10 integration timeline, 7 privacy; plus 11
+ignored credential- or environment-gated tests) and 62 UI vitest tests pass,
+clippy and fmt clean on every change; `docs/verification.md` is the item-by-item
+account.
 
 **Linux support was also pulled forward** (2026-09-24, at the user's
 direction), although "macOS/Linux parity" sits on the deferred list below. It
@@ -191,10 +195,9 @@ engine behaviour. Linux packaging and release remain out of scope.
 **One deferred item was pulled forward early:** the **AI layer** (now the task
 service, [`docs/assistant.md`](../docs/assistant.md)) was built before M4
 shipped, at the user's direction. It is opt-in, independent of pet animation
-and awareness, and its automated suites pass (90 Rust tests + 3 UI tests, plus
-7 ignored credential-gated connection tests that have never been run); its
-desktop behaviour — the pet bubble, Spaces, Finder handoff — has not been
-hand-verified. See `docs/verification.md`.
+and awareness, and its automated suites pass; its desktop behaviour — the pet
+bubble, Spaces, Finder handoff — has not been hand-verified. See
+`docs/verification.md`.
 
 **Coding mode was also pulled forward** (2026-09-27, at the user's direction).
 It is an opt-in developer workspace behind Settings → Developer tools: one
@@ -209,7 +212,9 @@ explicitly not supported; that document says why.
 
 ## 6. What's left before release
 
-In the order the plan itself suggests:
+Active execution is tracked as discrete work packages (WP-0 to WP-11) in
+[`01-RELEASE-PLAN.md`](01-RELEASE-PLAN.md). In the order the original plan itself
+suggests:
 
 1. **Stability soak (M4-4)** — `scripts/soak.py` exists, never run. Eight
    hours: memory drift, sleep/wake, lock/unlock, monitor changes.
