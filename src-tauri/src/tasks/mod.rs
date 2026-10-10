@@ -25,9 +25,21 @@ use std::{
 use store::Store;
 use types::*;
 
+type ReasoningSink = Arc<dyn Fn(&str) + Send + Sync>;
 #[derive(Clone, Default)]
-pub struct Cancel(Arc<AtomicBool>);
+pub struct Cancel(Arc<AtomicBool>, Arc<Mutex<Option<ReasoningSink>>>);
 impl Cancel {
+    /// Where a local model's reasoning text goes while it thinks. Only set when
+    /// the user turned thinking on; otherwise reasoning is never read.
+    pub fn on_reasoning(&self, sink: impl Fn(&str) + Send + Sync + 'static) {
+        *self.1.lock().unwrap() = Some(Arc::new(sink));
+    }
+    pub fn reasoning(&self, text: &str) {
+        let sink = self.1.lock().unwrap().clone();
+        if let Some(sink) = sink {
+            sink(text);
+        }
+    }
     pub fn cancel(&self) {
         self.0.store(true, Ordering::SeqCst);
     }
@@ -448,6 +460,16 @@ impl Context {
         let scope = Scope::new(&task.request.roots, &task.request.attachments)?;
         if !task.request.preset.is_empty() {
             return self.preset(&task, &scope);
+        }
+        if task.connection.thinking {
+            let ctx = Context {
+                inner: self.inner.clone(),
+                id: self.id,
+                cancel: self.cancel.clone(),
+            };
+            self.cancel.on_reasoning(move |text| {
+                let _ = ctx.progress(&format!("Thinking: {text}"));
+            });
         }
         let model = HttpModel(task.connection.clone());
         if model.single_turn() {
