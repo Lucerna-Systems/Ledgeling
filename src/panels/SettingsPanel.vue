@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Activity, Check, ChevronRight, Code2, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
-import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
+import { busy, call, native } from '../state'
+import { useSettings, useWorldSnapshot } from '../composables'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
+
+const { settings, updateSettings } = useSettings()
+const { pets, snapshot, triggerAction } = useWorldSnapshot()
 
 const emit = defineEmits<{ go: [page: 'desktop' | 'awareness' | 'lab'] }>()
 
@@ -25,13 +29,13 @@ const pace = computed(() => {
 })
 
 function save(patch: Partial<Settings>) {
-  if (settings.value) void saveSettings({ ...settings.value, ...patch })
+  if (settings.value) void updateSettings({ ...settings.value, ...patch })
 }
 /** Turning Developer tools on opens coding mode straight away, so there is no second step to find. */
 async function toggleDeveloper() {
   if (!settings.value) return
   const on = !settings.value.developerMode
-  await saveSettings({ ...settings.value, developerMode: on })
+  await updateSettings({ ...settings.value, developerMode: on })
   if (on && settings.value?.developerMode) void call('code_open', { petId: null }, false)
 }
 function toggleAwareness() {
@@ -130,7 +134,7 @@ const neverSeen = [
     </div>
     <div class="setting-row">
       <div><h3>Fresh scenery</h3><p>Send everyone off to find a new spot.</p></div>
-      <button :disabled="!snapshot || busy || !pets.length" @click="action('relocate')"><Shuffle :size="15" /> Move somewhere new</button>
+      <button :disabled="!snapshot || busy || !pets.length" @click="triggerAction('relocate')"><Shuffle :size="15" /> Move somewhere new</button>
     </div>
     <div v-if="screens.length > 1" class="setting-row">
       <div><h3>Screen</h3><p>Pets live on one screen at a time.</p></div>
