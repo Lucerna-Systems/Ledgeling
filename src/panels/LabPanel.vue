@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { FlaskConical, FolderOpen, Plus, Zap, Eye, RefreshCw } from '@lucide/vue'
-import { call, packs, pets, refreshPacks, settings, snapshot, saveSettings, validate } from '../state'
+import { call, refreshPacks } from '../state'
+import { useWorldSnapshot, useSettings, usePackCatalog } from '../composables'
 import CollectionToolbar from '../components/CollectionToolbar.vue'
 import DiagnosticList from './DiagnosticList.vue'
 import type { Report } from '../types'
+
+const { snapshot, pets } = useWorldSnapshot()
+const { settings, mutateSettings } = useSettings()
+const { packs, validatePath } = usePackCatalog()
 
 const scenarioQuery = ref('')
 const visibleScenarios = computed(() => scenarios.filter(name => name.replace(/_/g, ' ').includes(scenarioQuery.value.trim().toLowerCase())))
@@ -31,12 +36,11 @@ onUnmounted(() => { void call('set_lab', { active: false }) })
 
 async function check(path: string) {
   checking.value = path
-  report.value = await validate(path)
+  report.value = await validatePath(path)
 }
 async function fire(name: string) { await call('fire_event', { name }) }
 function toggleDebug() {
-  if (!settings.value) return
-  void saveSettings({ ...settings.value, debug: !settings.value.debug })
+  void mutateSettings(next => { next.debug = !next.debug })
 }
 </script>
 

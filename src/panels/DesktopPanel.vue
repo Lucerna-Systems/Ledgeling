@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Check, Monitor } from '@lucide/vue'
-import { action, busy, saveSettings, settings, snapshot } from '../state'
+import { useWorldSnapshot, useSettings } from '../composables'
 import type { ScreenView } from '../types'
+
+const { snapshot, busy, triggerAction } = useWorldSnapshot()
+const { settings, updateSettings } = useSettings()
 
 const view = computed(() => {
   const bounds = snapshot.value?.bounds
@@ -27,7 +30,7 @@ function label(screen: ScreenView, index: number) {
 }
 function pick(event: Event) {
   const name = (event.target as HTMLSelectElement).value
-  if (settings.value && name) void saveSettings({ ...settings.value, petScreen: name })
+  if (settings.value && name) void updateSettings({ ...settings.value, petScreen: name })
 }
 </script>
 
@@ -70,7 +73,7 @@ function pick(event: Event) {
 
   <div class="desktop-details">
     <div><h3>Draw it on the desktop</h3><p>Show the same surfaces, jump edges and paths over your real windows.</p></div>
-    <button class="toggle" :class="{ enabled: snapshot?.settings.debug }" role="switch" :aria-checked="!!snapshot?.settings.debug" aria-label="Debug overlay" @click="action('debug')"><span /></button>
+    <button class="toggle" :class="{ enabled: snapshot?.settings.debug }" role="switch" :aria-checked="!!snapshot?.settings.debug" aria-label="Debug overlay" @click="triggerAction('debug')"><span /></button>
   </div>
   <div class="diagnostic-note">
     <Check :size="16" />

@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Activity, Clock, Coffee, Sparkles, Plus } from '@lucide/vue'
-import { minutes, saveSettings, settings, snapshot } from '../state'
+import { minutes } from '../state'
+import { useWorldSnapshot, useSettings } from '../composables'
 import type { AppCategory } from '../types'
 
 const categories: AppCategory[] = ['code', 'browser', 'comms', 'media', 'creative', 'game', 'other']
 const draftName = ref('')
 const draftCategory = ref<AppCategory>('code')
+
+const { snapshot } = useWorldSnapshot()
+const { settings, mutateSettings } = useSettings()
+
 const awareness = computed(() => snapshot.value?.awareness ?? null)
 
 /** Every change writes straight through: there is no Save button to forget. */
 function update(mutate: (next: NonNullable<typeof settings.value>) => void) {
-  if (!settings.value) return
-  const next = JSON.parse(JSON.stringify(settings.value))
-  mutate(next)
-  void saveSettings(next)
+  void mutateSettings(mutate)
 }
 
 const tiers = computed(() => settings.value?.awareness.nudge)

@@ -12,11 +12,20 @@ export function useSettings() {
     await saveSettings(next)
   }
 
+  async function mutateSettings(mutate: (draft: Settings) => void) {
+    if (!settings.value) return
+    const next = JSON.parse(JSON.stringify(settings.value)) as Settings
+    mutate(next)
+    await saveSettings(next)
+  }
+
   return {
     settings: currentSettings,
     isDeveloperMode,
     isHidden,
     isPaused,
     updateSettings,
+    mutateSettings,
   }
 }
+
