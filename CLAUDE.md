@@ -33,7 +33,23 @@ on other screens are clipped away before the graph is built.
 | [verification.md](docs/verification.md) | What has actually been run; keep it honest |
 | [development.md](docs/development.md) | Branches, worktrees, review and releases |
 
+### Subsystem Documentation (`CLAUDE.md` Map)
+To inspect or modify specific subsystems without reading the entire repository, refer to each module's dedicated guidance:
+- **World & Surfaces**: [`src-tauri/src/world/CLAUDE.md`](src-tauri/src/world/CLAUDE.md)
+- **Pet Runtime & Locomotion**: [`src-tauri/src/pet/CLAUDE.md`](src-tauri/src/pet/CLAUDE.md)
+- **Tauri App Wiring & Loops**: [`src-tauri/src/app/CLAUDE.md`](src-tauri/src/app/CLAUDE.md)
+- **Coding Mode Workspace**: [`src-tauri/src/coding/CLAUDE.md`](src-tauri/src/coding/CLAUDE.md)
+- **Assistant & Tasks**: [`src-tauri/src/tasks/CLAUDE.md`](src-tauri/src/tasks/CLAUDE.md)
+- **Terminal & Agents**: [`src-tauri/src/terminal/CLAUDE.md`](src-tauri/src/terminal/CLAUDE.md)
+- **Pack Manifests & Validation**: [`src-tauri/src/packs/CLAUDE.md`](src-tauri/src/packs/CLAUDE.md)
+- **Awareness & Nudges**: [`src-tauri/src/awareness/CLAUDE.md`](src-tauri/src/awareness/CLAUDE.md)
+- **Frontend Composables**: [`src/composables/CLAUDE.md`](src/composables/CLAUDE.md)
+- **Frontend Panels**: [`src/panels/CLAUDE.md`](src/panels/CLAUDE.md)
+
 ## Architecture in one page
+
+**Preferred Design: Modular & Decoupled Architecture.**
+Avoid giant controller hubs. Each system is isolated into a focused module with its own single responsibility, clear contracts, and lifecycle (`SubsystemService`). Logic is kept headless so that any subsystem can be unit-tested or extracted independently without running or mocking Tauri.
 
 **Rust owns all truth.** Pet position, state, and the world model live in the Rust backend. The webview is a dumb renderer that draws a sprite frame at a position it was told. Behavior stays deterministic and testable without a GUI. Dragging a pet sends pointer events *to* Rust, which moves the window — the frontend never repositions itself.
 
