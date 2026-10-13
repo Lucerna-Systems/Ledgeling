@@ -4,20 +4,22 @@ import { listen } from '@tauri-apps/api/event'
 import AssistantPanel from './assistant/AssistantPanel.vue'
 import HistoryPanel from './assistant/HistoryPanel.vue'
 import ProvidersPanel from './assistant/ProvidersPanel.vue'
-import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
-import ConversationList from './assistant/ConversationList.vue'
-import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
-import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
+import { useWorldSnapshot, useSettings, useAssistant } from './composables'
+import { action, call, error, native, notes, start } from './state'
+import { syncAppIcon } from './appIcon'
+import { ArrowLeft, Monitor, ShieldCheck, X } from '@lucide/vue'
 import PacksPanel from './panels/PacksPanel.vue'
 import SettingsPanel from './panels/SettingsPanel.vue'
 import LabPanel from './panels/LabPanel.vue'
 import AwarenessPanel from './panels/AwarenessPanel.vue'
 import DesktopPanel from './panels/DesktopPanel.vue'
 import PetStudio from './studio/PetStudio.vue'
-import { syncAppIcon } from './appIcon'
 import CompanionSidebar from './components/CompanionSidebar.vue'
+import type { Task } from './assistant/types'
 import type { Page } from './types'
+
+const { snapshot, pets, busy } = useWorldSnapshot()
+const { settings } = useSettings()
 
 /** Pages reached from inside another section, so the sidebar stays short. */
 const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', lab: 'settings', studio: 'pets' }
@@ -37,6 +39,16 @@ watch(page, value => { if (value === 'assistant') assistantVisited.value = true 
 const content = ref<HTMLElement | null>(null)
 watch(page, async () => { await nextTick(); if (content.value) content.value.scrollTop = 0 })
 
+const {
+  conversations,
+  activeConversation,
+  waitingTasksCount: waiting,
+  startTasks,
+  setAssignedPet,
+  setDroppedFiles,
+  openConversation,
+} = useAssistant()
+
 let stop = () => {}
 let stopIcon = () => {}
 let stopAssistant = () => {}
@@ -44,8 +56,8 @@ const assistantOff: (() => void)[] = []
 let assistantDisposed = false
 async function initAssistant() {
   for (const [name, handler] of [
-    ['assistant:open', (value: unknown) => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' }],
-    ['assistant:drop', (value: unknown) => { droppedFiles.value = value as string[]; page.value = 'assistant' }],
+    ['assistant:open', (value: unknown) => { activeConversation.value = null; setAssignedPet(value as number | null); page.value = 'assistant' }],
+    ['assistant:drop', (value: unknown) => { setDroppedFiles(value as string[]); page.value = 'assistant' }],
     ['providers:open', () => { page.value = 'providers' }],
   ] as const) {
     const off = await listen(name, event => handler(event.payload))
@@ -56,9 +68,8 @@ async function initAssistant() {
   if (assistantDisposed) stop(); else stopAssistant = stop
 }
 
-const waiting = computed(() => tasks.value.filter(task => task.status === 'waiting').length)
 function followup(task: Task) {
-  activeConversation.value = conversationOf(task.id)
+  openConversation(task.id)
   page.value = 'assistant'
 }
 
