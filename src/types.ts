@@ -181,3 +181,5 @@ export interface Snapshot {
   /** False in builds made without coding mode. */
   codingAvailable: boolean
 }
+
+export type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
