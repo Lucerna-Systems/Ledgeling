@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, Brush, Check, Download, FolderOpen, MoreHorizontal, Package, PawPrint, Search, Trash2, X } from '@lucide/vue'
-import { call, packs, pets, refreshPacks, snapshot } from '../state'
+import { call } from '../state'
+import { usePackCatalog, useWorldSnapshot } from '../composables'
 import type { PackSummary } from '../types'
 import DiagnosticList from './DiagnosticList.vue'
 import FilterPill from '../components/FilterPill.vue'
 import FilterTabs from '../components/FilterTabs.vue'
+
+const { packs, loadPacks, uninstallPack } = usePackCatalog()
+const { pets, snapshot } = useWorldSnapshot()
 
 const emit = defineEmits<{ go: [page: 'studio'] }>()
 
@@ -55,7 +59,7 @@ const filteredPacks = computed(() => narrowed.value.filter(({ summary: pack }) =
 const filtering = computed(() => !!query.value || status.value !== 'all' || movement.value !== 'any' || author.value !== 'any' || source.value !== 'any' || tag.value !== 'any')
 function clearFilters() { query.value = ''; status.value = 'all'; movement.value = 'any'; author.value = 'any'; source.value = 'any'; tag.value = 'any' }
 
-onMounted(refreshPacks)
+onMounted(loadPacks)
 
 /** Only the counts that are not zero, so a pack with nothing but notes does not
  *  advertise "0 errors". */
@@ -71,8 +75,8 @@ async function despawn(id: string) {
   if (pet) await call('despawn_pet', { petId: pet.id })
 }
 async function uninstall(id: string) {
-  await call('uninstall_pack', { id })
-  await refreshPacks()
+  await uninstallPack(id)
+  await loadPacks()
 }
 async function exportPack(id: string) {
   const path = await call<string>('export_pack', { id })
