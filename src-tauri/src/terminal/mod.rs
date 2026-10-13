@@ -35,8 +35,11 @@ impl Registry {
         id
     }
 
+}
+
+impl crate::service::SubsystemService for Registry {
     /// Stops every terminal and everything it started.
-    pub fn shutdown(&mut self) {
+    fn shutdown(&mut self) {
         for (_, mut session) in self.sessions.drain() {
             session.kill();
         }
@@ -58,6 +61,7 @@ impl DerefMut for Registry {
 
 impl Drop for Registry {
     fn drop(&mut self) {
+        use crate::service::SubsystemService;
         self.shutdown();
     }
 }
@@ -83,6 +87,16 @@ pub struct Terminal {
     pub layouts: HashMap<String, serde_json::Value>,
     /// Whether the loop that lets pets show their agents' state is running.
     pub watching: bool,
+}
+
+impl crate::service::SubsystemService for Terminal {
+    fn shutdown(&mut self) {
+        self.sessions.shutdown();
+        self.folders.clear();
+        self.layouts.clear();
+        self.context = None;
+        self.watching = false;
+    }
 }
 
 pub type SharedTerminal = Arc<Mutex<Terminal>>;

@@ -56,9 +56,11 @@ impl CodingService {
     pub fn next_pty_id(&mut self) -> u32 {
         self.ptys.next_id()
     }
+}
 
+impl crate::service::SubsystemService for CodingService {
     /// Stops every terminal and run process and every watcher.
-    pub fn shutdown(&mut self) {
+    fn shutdown(&mut self) {
         for (_, mut session) in self.ptys.drain() {
             session.kill();
         }
@@ -69,6 +71,7 @@ impl CodingService {
 
 impl Drop for CodingService {
     fn drop(&mut self) {
+        use crate::service::SubsystemService;
         self.shutdown();
     }
 }

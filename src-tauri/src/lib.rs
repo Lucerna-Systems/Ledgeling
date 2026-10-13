@@ -18,4 +18,5 @@ pub mod terminal;
 pub mod windows_mgr;
 pub mod world;
 
+pub mod service;
 pub mod tasks;

@@ -329,6 +329,17 @@ impl TaskService {
             .map_err(|_| "Task worker unavailable".into())
     }
 }
+
+impl crate::service::SubsystemService for TaskService {
+    fn shutdown(&mut self) {
+        // Cancel all active controls and drain the queue
+        let active_ids: Vec<i64> = self.inner.controls.lock().unwrap().keys().cloned().collect();
+        for id in active_ids {
+            let _ = self.cancel(id);
+        }
+        self.inner.queue.lock().unwrap().clear();
+    }
+}
 #[derive(Clone)]
 pub struct Context {
     inner: Arc<Inner>,
