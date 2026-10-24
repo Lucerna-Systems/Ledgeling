@@ -176,7 +176,7 @@ hour >= 22 || hour < 6
 ```
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
-`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `pet_distance`
+`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `cursor_speed` (pixels per second), `pet_distance`
 (pixels to the nearest other pet; infinite when there is none),
 `affection` (0 to 1, grows when the pet is petted and clicked, cools a little
 during long absences), `days_together`, `is_dragging`.

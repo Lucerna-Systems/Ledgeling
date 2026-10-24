@@ -157,7 +157,8 @@
     { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
     { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
     { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
-    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 }
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 },
+    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
   ],
   "personality": {
     "activity": 0.7,
