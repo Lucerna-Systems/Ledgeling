@@ -255,8 +255,10 @@ fn every_online_scope_starts_off_and_no_other_code_builds_a_request() {
     let consent =
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/net/consent.rs"))
             .unwrap();
+    // Compare words, not bytes: Windows checks files out with CRLF endings.
+    let words = consent.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        consent.contains("#[default]\n    Off"),
+        words.contains("#[default] Off"),
         "the default mode must be Off"
     );
 }
