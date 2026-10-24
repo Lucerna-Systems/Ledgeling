@@ -21,12 +21,11 @@ const HistoryPanel = lazy(() => import('./assistant/HistoryPanel.vue'))
 const ProvidersPanel = lazy(() => import('./assistant/ProvidersPanel.vue'))
 const PacksPanel = lazy(() => import('./panels/PacksPanel.vue'))
 const SettingsPanel = lazy(() => import('./panels/SettingsPanel.vue'))
-const LabPanel = lazy(() => import('./panels/LabPanel.vue'))
 const AwarenessPanel = lazy(() => import('./panels/AwarenessPanel.vue'))
 const DesktopPanel = lazy(() => import('./panels/DesktopPanel.vue'))
 const PetStudio = lazy(() => import('./studio/PetStudio.vue'))
 
-type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
+type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'studio'
 const nav = [
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
   { page: 'providers', label: 'AI providers', icon: Bot },
@@ -35,7 +34,7 @@ const nav = [
   { page: 'settings', label: 'Settings', icon: Settings },
 ] as const
 /** Pages reached from inside another section, so the sidebar stays short. */
-const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', lab: 'settings', studio: 'pets' }
+const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', studio: 'pets' }
 const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
 
 const page = ref<Page>('assistant')
@@ -74,7 +73,7 @@ async function initAssistant() {
   if (assistantDisposed) stop(); else stopAssistant = stop
 }
 
-const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'lab', 'studio']
+const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'studio']
 /** Put back what the user was doing before the window was destroyed, then replay events that arrived while it loaded. */
 async function restoreAndWatch() {
   const ready = await companionReady()
@@ -189,7 +188,6 @@ onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true;
       <SettingsPanel v-else-if="page === 'settings'" @go="go" />
       <DesktopPanel v-else-if="page === 'desktop'" />
       <AwarenessPanel v-else-if="page === 'awareness'" />
-      <LabPanel v-else-if="page === 'lab'" />
       <PetStudio v-else-if="page === 'studio'" @go="go" />
     </main>
   </div>

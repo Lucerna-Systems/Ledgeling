@@ -327,7 +327,7 @@ display servers.
   pet avatars, content-sized control cards, expandable pack tools, and aligned
   forms across companion pages.
 - Added combined search/filter controls for companions, packs, and task history,
-  plus scenario search in Pet Lab. History initially renders ten entries;
+  plus scenario search in the Studio Test tab. History initially renders ten entries;
   additional entries are revealed explicitly.
 - Task replies render sanitized Markdown, with long responses expanded inline.
   Tests verify formatting, link handling, and removal of active HTML, remote

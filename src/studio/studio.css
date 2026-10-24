@@ -168,3 +168,4 @@
 }
 .ai-form { display: flex; gap: 8px; }
 .ai-form input { flex: 1 1 auto; min-width: 0; }
+.studio-test { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 14px; }

@@ -158,8 +158,8 @@ on the one designated pet screen, on the edges of your open windows.
 | Engine and screen diagnostics on stderr | Start with `LEDGELING_DIAGNOSTICS=1` (or `PERCH_DIAGNOSTICS=1`) (macOS/Linux: `LEDGELING_DIAGNOSTICS=1 npm run tauri dev`; PowerShell: `$env:LEDGELING_DIAGNOSTICS=1; npm run tauri dev`) |
 | Rust panic location | `RUST_BACKTRACE=1` |
 | Webview console and network | In a `tauri dev` build, right-click the **dashboard** window and choose Inspect. The pet overlay is click-through, so inspect the dashboard, not the pets |
-| See the surface graph, paths and state labels | Dashboard → Pet Lab → debug overlay |
-| Pack validation messages | Dashboard → Packs / Pet Lab; the same diagnostics come from `src-tauri/src/packs/diagnostics.rs` |
+| See the surface graph, paths and state labels | Pets → Make your own pet → Test → debug overlay |
+| Pack validation messages | Pets → Make your own pet → Test; the same diagnostics come from `src-tauri/src/packs/diagnostics.rs` |
 | Settings, installed packs, assistant data | Tauri's `app_config_dir()` for identifier `technology.lucerna-systems.ledgeling`: macOS `~/Library/Application Support/technology.lucerna-systems.ledgeling/`, Windows `%APPDATA%\technology.lucerna-systems.ledgeling\`. Subfolders `packs/` and `assistant/`. Delete this folder to simulate a first run (back it up first) |
 
 `migrate.rs` moves data from an older folder name on first launch; if you rename
