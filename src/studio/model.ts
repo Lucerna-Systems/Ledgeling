@@ -116,6 +116,8 @@ export interface Draft {
 
 let keys = 0
 export const nextKey = () => ++keys
+/** After restoring a saved draft, keep new keys from colliding with its own. */
+export const reserveKeys = (min: number) => { if (keys < min) keys = min }
 export const blankFrame = () => new Uint8ClampedArray(FRAME * FRAME * 4)
 export const emptyClip = (): ClipDraft => ({ frames: [blankFrame()], fps: 8, loop: true })
 export const drawn = (frame: Uint8ClampedArray) => frame.some((value, i) => i % 4 === 3 && value > 0)

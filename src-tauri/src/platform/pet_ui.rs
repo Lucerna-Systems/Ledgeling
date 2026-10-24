@@ -402,8 +402,8 @@ fn bind(app: &tauri::AppHandle, pet: u64, raw: &str) -> Result<(), String> {
             state.dirty = true;
         }
     }
-    let _ = app.emit_to(
-        "main",
+    crate::companion::emit_if_open(
+        app,
         "pet:folder",
         serde_json::json!({"petId":pet,"folder":path}),
     );
@@ -476,7 +476,7 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
             connection.model = model.clone();
             config.per_pet.insert(pet, connection);
             service.set_config(&config)?;
-            let _ = app.emit_to("main", "connections:changed", ());
+            crate::companion::emit_if_open(app, "connections:changed", ());
             send(
                 app,
                 serde_json::json!({"petId": pet, "model": model, "message": "Model saved for this companion. The next task uses it."}),
@@ -493,11 +493,8 @@ fn handle_event(app: &tauri::AppHandle, v: serde_json::Value) -> Result<(), Stri
         "settings" => {
             let handle = app.clone();
             app.run_on_main_thread(move || {
-                if let Some(main) = handle.get_webview_window("main") {
-                    let _ = main.unminimize();
-                    let _ = main.show();
-                    let _ = main.set_focus();
-                    let _ = handle.emit_to("main", "providers:open", ());
+                if crate::companion::reveal(&handle).is_ok() {
+                    crate::companion::send(&handle, "providers:open", ());
                 }
             })
             .map_err(|e| e.to_string())?;

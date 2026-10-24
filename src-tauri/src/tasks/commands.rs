@@ -6,7 +6,7 @@ use super::{
     Cancel, TaskService,
 };
 use serde_json::Value;
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
 fn main_only(window: &WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
         Ok(())
@@ -282,11 +282,8 @@ pub fn open_web_url(url: &str) -> Result<(), String> {
 }
 #[tauri::command]
 pub async fn open_assistant(app: tauri::AppHandle, pet_id: Option<u64>) -> Result<(), String> {
-    let main = app
-        .get_webview_window("main")
-        .ok_or("Companion window missing")?;
-    main.show().map_err(|e| e.to_string())?;
-    main.set_focus().map_err(|e| e.to_string())?;
-    app.emit_to("main", "assistant:open", pet_id)
-        .map_err(|e| e.to_string())
+    crate::app::on_main(&app, |handle| crate::companion::reveal(handle).map(|_| ()))
+        .ok_or("Companion window did not open")??;
+    crate::companion::send(&app, "assistant:open", pet_id);
+    Ok(())
 }

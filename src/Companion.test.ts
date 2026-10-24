@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
 import { mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import Companion from './Companion.vue'
@@ -38,12 +39,23 @@ it('keeps Settings selected on an advanced page and returns to it', async () => 
   const wrapper = mount(Companion)
   const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
   await nav('Settings').trigger('click')
+  await vi.waitFor(() => expect(wrapper.find('.link-row').exists()).toBe(true))
   await wrapper.findAll('.link-row').find(row => row.text().includes('Desktop map'))!.trigger('click')
-  expect(wrapper.text()).toContain('Desktop view')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('Desktop view'))
   expect(nav('Settings').attributes('aria-current')).toBe('page')
   await wrapper.get('.back-link').trigger('click')
-  expect(wrapper.find('.link-row').exists()).toBe(true)
+  await vi.waitFor(() => expect(wrapper.find('.link-row').exists()).toBe(true))
   wrapper.unmount()
+})
+
+it('keeps every page except the default Assistant, and the pet and bubble roots, behind dynamic imports', () => {
+  const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8')
+  const companion = read('./Companion.vue')
+  for (const page of ['HistoryPanel', 'ProvidersPanel', 'PacksPanel', 'SettingsPanel', 'LabPanel', 'AwarenessPanel', 'DesktopPanel', 'PetStudio'])
+    expect(companion).not.toMatch(new RegExp(`^import ${page} from`, 'm'))
+  expect(companion).toMatch(/import\('\.\/studio\/PetStudio\.vue'\)/)
+  const app = read('./App.vue')
+  for (const root of ['PetWindow', 'PetBubble', 'Companion']) expect(app).not.toMatch(new RegExp(`^import ${root} from`, 'm'))
 })
 
 it('opens on the Assistant and offers pause and hide in the sidebar while pets are out', () => {
@@ -65,8 +77,9 @@ it('opens the Pet Studio from Pets and comes back to Pets', async () => {
   const wrapper = mount(Companion)
   const nav = (name: string) => wrapper.findAll('nav button').find(button => button.text() === name)!
   await nav('Pets').trigger('click')
+  await vi.waitFor(() => expect(wrapper.find('.make-pet').exists()).toBe(true))
   await wrapper.get('.make-pet').trigger('click')
-  expect(wrapper.find('.studio').exists()).toBe(true)
+  await vi.waitFor(() => expect(wrapper.find('.studio').exists()).toBe(true))
   expect(nav('Pets').attributes('aria-current')).toBe('page')
   expect(wrapper.get('.back-link').text()).toBe('Pets')
   await wrapper.get('.back-link').trigger('click')
