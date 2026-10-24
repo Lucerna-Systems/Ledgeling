@@ -51,6 +51,8 @@ pub struct Engine {
     last_suspend_check: f64,
     rng: Rng,
     pending_welcome: bool,
+    /// Set when the engine changed something that must reach `settings.json`.
+    settings_changed: bool,
     today: NaiveDate,
 }
 
@@ -81,6 +83,7 @@ impl Engine {
             last_suspend_check: f64::NEG_INFINITY,
             rng: Rng::new(0x5EED_1234),
             pending_welcome: false,
+            settings_changed: false,
             today: NaiveDate::default(),
         }
     }
@@ -281,9 +284,17 @@ impl Engine {
         self.pending_welcome
     }
 
+    /// Whether the engine changed settings since this was last asked. The app
+    /// saves when it is true, so a first run is remembered even if the app is
+    /// killed before a clean quit.
+    pub fn take_settings_changed(&mut self) -> bool {
+        std::mem::take(&mut self.settings_changed)
+    }
+
     fn welcome(&mut self) {
         self.pending_welcome = false;
         self.settings.welcomed = true;
+        self.settings_changed = true;
         let preferred = "com.perch.squirrel-red";
         let pack_id = if self.packs.contains_key(preferred) {
             Some(preferred.to_string())
