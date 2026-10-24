@@ -715,7 +715,7 @@ mod studio_saves {
 
     #[test]
     fn strange_names_and_short_pixel_buffers_are_refused_before_writing() {
-        let root = root("refuse");
+        let root = root("strange");
         let mut short = image("idle", 2);
         short.pixels.truncate(10);
         assert!(save(

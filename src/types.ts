@@ -206,7 +206,7 @@ export type InstallErrorCode =
   | 'unreadable_archive' | 'archive_limit' | 'not_allowed' | 'no_manifest'
   | 'invalid_pack' | 'already_installed' | 'not_installed' | 'not_newer'
   | 'bundled' | 'hash_mismatch' | 'io'
-  | 'offline' | 'refused' | 'failed' | 'too_large' | 'cancelled' | 'http_status'
+  | 'offline' | 'unavailable' | 'refused' | 'failed' | 'too_large' | 'cancelled' | 'http_status'
 
 export interface InstallError {
   code: InstallErrorCode
@@ -222,6 +222,8 @@ export interface NetScopeStatus {
   label: string
   description: string
   hosts: string[]
+  /** This build knows a server for it. When false, hide it: it cannot be switched on. */
+  available: boolean
   mode: NetMode
   /** Cannot be granted for one session; only until switched off. */
   alwaysRemembered: boolean

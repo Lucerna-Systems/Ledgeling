@@ -61,6 +61,9 @@ jobs:
 
   build:
     needs: [plan, verify]
+    # The GitHub Environment named for the channel ("pre-alpha" or "alpha")
+    # holds that build's server addresses; see docs/development.md.
+    environment: ${{ needs.plan.outputs.channel }}
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +109,10 @@ jobs:
       - name: Build app
         env:
           VERSION: ${{ needs.plan.outputs.version }}
+          # Baked into the binary: the only servers online features may reach.
+          # Unset means the feature is unavailable in this build.
+          LEDGELING_MARKETPLACE_HOSTS: ${{ vars.LEDGELING_MARKETPLACE_HOSTS }}
+          LEDGELING_ANALYTICS_HOSTS: ${{ vars.LEDGELING_ANALYTICS_HOSTS }}
         run: |
           # --config replaces TAURI_CONFIG for the build, so fold it in.
           base="${TAURI_CONFIG:-}"; [ -n "$base" ] || base='{}'
