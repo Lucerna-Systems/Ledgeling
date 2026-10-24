@@ -8,6 +8,7 @@ use crate::{
     packs::{manifest::Event, Action, LocomotionClass, Manifest, Pack, Signals},
     world::{EdgeKind, Orientation, Point, Rect, Surface, SurfaceGraph, SurfaceKey},
 };
+use chrono::NaiveDate;
 use fsm::{Machine, Rng};
 use locomotion::{air_offset, sprite_rotation};
 use pathfind::{Perch, Plan};
@@ -19,6 +20,23 @@ const GRAVITY: f64 = 1400.;
 const TERMINAL_VELOCITY: f64 = 2200.;
 /// How close the cursor must be for `cursor_nearby`, in logical pixels.
 const CURSOR_NEARBY: f64 = 120.;
+/// Fastest a pet can be thrown, per axis, in logical pixels per second.
+const MAX_THROW: f64 = 2400.;
+/// Release speed (logical px/s) from which a let-go counts as a throw.
+const THROW_SPEED: f64 = 700.;
+/// Landing speed (logical px/s) from which a thrown pet lands hard.
+const HARD_LANDING: f64 = 900.;
+/// How close another pet must come for `pet_nearby`, in logical pixels.
+const PET_NEARBY: f64 = 140.;
+/// The other pet must get this far away before `pet_nearby` can fire again.
+const PET_REARM: f64 = 200.;
+/// Horizontal air drag per 1/60 s, so a throw arcs rather than glides.
+const AIR_DRAG: f64 = 0.985;
+/// Cursor moves smaller than this (logical px) are jitter, not petting.
+const PET_MIN_MOVE: f64 = 3.;
+const PET_REVERSALS: usize = 3;
+const PET_WINDOW: f64 = 1.5;
+const PET_COOLDOWN: f64 = 2.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -75,13 +93,25 @@ enum Arc_ {
         elapsed: f64,
         duration: f64,
     },
+    /// Horizontal and vertical speed in physical pixels per second.
     Fall {
-        velocity: f64,
+        vx: f64,
+        vy: f64,
     },
+}
+
+/// Another pet, as seen by the one looking: where it is and what it stands on.
+#[derive(Clone, Copy, Debug)]
+pub struct Peer {
+    pub id: u64,
+    pub position: Point,
+    pub perch: Option<Perch>,
 }
 
 /// What the world looks like to one pet on one tick.
 pub struct WorldView<'a> {
+    /// Every pet, this one included; each ignores its own id.
+    pub peers: &'a [Peer],
     pub surfaces: &'a [Surface],
     pub graph: &'a SurfaceGraph,
     pub bounds: Rect,
@@ -94,6 +124,38 @@ pub struct WorldView<'a> {
     /// Window the user is working in. Only set while a nudge is escalating, so
     /// the pet drifts somewhere visible instead of somewhere random.
     pub attention: Option<u64>,
+}
+
+/// What a pet remembers about the user: a name, how long they have known each
+/// other and how fond it has become. Dates come from the engine, never a clock.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bond {
+    pub name: Option<String>,
+    pub met: NaiveDate,
+    pub last_seen: NaiveDate,
+    pub days: u32,
+    pub affection: f64,
+}
+impl Bond {
+    pub fn new(today: NaiveDate) -> Self {
+        Self {
+            name: None,
+            met: today,
+            last_seen: today,
+            days: 1,
+            affection: 0.2,
+        }
+    }
+}
+
+/// Rubbing the pointer back and forth over a pet: reversals of horizontal
+/// direction inside its hit box, counted over a short window.
+#[derive(Default)]
+struct Petting {
+    last_x: Option<f64>,
+    direction: f64,
+    reversals: Vec<f64>,
+    quiet_until: f64,
 }
 
 pub struct Pet {
@@ -114,6 +176,14 @@ pub struct Pet {
     arc: Arc_,
     action_done: bool,
     was_near_cursor: bool,
+    was_near_pet: bool,
+    pub bond: Bond,
+    /// Cursor velocity while held, logical px/s, smoothed.
+    held_velocity: Point,
+    /// The current fall began with the user letting go, so a hard landing is
+    /// theirs to cause; a window closing under the pet is not.
+    thrown_fall: bool,
+    petting: Petting,
     clip_started: f64,
     /// The bubble is open on this pet.
     listening: bool,
@@ -122,6 +192,8 @@ pub struct Pet {
     pending: Vec<Event>,
     /// Sound the pack asked for on the last state change, if any.
     pub sound_request: Option<String>,
+    /// The folder this pet works in, if the user gave it one.
+    pub folder: Option<String>,
 }
 
 impl Pet {
@@ -143,14 +215,20 @@ impl Pet {
             mood: 0.7,
             clock: 0.,
             rng,
-            arc: Arc_::Fall { velocity: 0. },
+            arc: Arc_::Fall { vx: 0., vy: 0. },
             action_done: false,
             was_near_cursor: false,
+            was_near_pet: false,
+            bond: Bond::new(NaiveDate::default()),
+            held_velocity: Point::new(0., 0.),
+            thrown_fall: false,
+            petting: Petting::default(),
             clip_started: 0.,
             listening: false,
             working: None,
             pending: Vec::new(),
             sound_request: None,
+            folder: None,
         }
     }
 
@@ -203,11 +281,61 @@ impl Pet {
         self.perch = None;
     }
 
+    /// Let go. Speed at release becomes the throw; the pet reports `Thrown`
+    /// when it was flung and its pack reacts to that, else plain `Released`.
     pub fn release(&mut self) {
         if self.motion == Motion::Held {
+            let clamp = |v: f64| v.clamp(-MAX_THROW, MAX_THROW);
+            let (vx, vy) = (clamp(self.held_velocity.x), clamp(self.held_velocity.y));
+            let speed = vx.hypot(vy);
             self.motion = Motion::Falling;
-            self.arc = Arc_::Fall { velocity: 0. };
+            self.arc = Arc_::Fall { vx, vy };
+            self.thrown_fall = true;
+            self.held_velocity = Point::new(0., 0.);
             self.mood = (self.mood + 0.05).min(1.);
+            let reacts_to_throw = self
+                .manifest()
+                .reactions
+                .iter()
+                .any(|r| r.on == Event::Thrown);
+            self.pending
+                .push(if speed > THROW_SPEED && reacts_to_throw {
+                    Event::Thrown
+                } else {
+                    Event::Released
+                });
+        }
+    }
+
+    /// Arrives from above rather than appearing on a perch: the first-run
+    /// welcome uses it so the new pet visibly lands and greets.
+    pub fn drop_in(&mut self) {
+        self.motion = Motion::Falling;
+        self.arc = Arc_::Fall { vx: 0., vy: 0. };
+        self.perch = None;
+        self.home = None;
+        self.plan = None;
+        self.pending.push(Event::Startup);
+    }
+
+    /// The name the user gave it, else the pack's.
+    pub fn display_name(&self) -> &str {
+        self.bond
+            .name
+            .as_deref()
+            .unwrap_or(&self.pack.manifest.name)
+    }
+
+    fn gain(&mut self, amount: f64) {
+        self.bond.affection = (self.bond.affection + amount).clamp(0., 1.);
+    }
+
+    /// A later calendar day than the last it was seen: one more day together.
+    pub fn roll_day(&mut self, today: NaiveDate) {
+        if today > self.bond.last_seen {
+            self.bond.days += 1;
+            self.bond.last_seen = today;
+            self.pending.push(Event::NewDay);
         }
     }
 
@@ -273,7 +401,7 @@ impl Pet {
             self.arc = Arc_::None;
         } else {
             self.motion = Motion::Falling;
-            self.arc = Arc_::Fall { velocity: 0. };
+            self.arc = Arc_::Fall { vx: 0., vy: 0. };
         }
     }
 
@@ -286,6 +414,7 @@ impl Pet {
     pub fn click(&mut self) {
         self.pending.push(Event::Clicked);
         self.mood = (self.mood + 0.03).min(1.);
+        self.gain(0.005);
     }
 
     /// Swap in a reloaded pack without losing where the pet is standing.
@@ -326,6 +455,16 @@ impl Pet {
         self.detect_events(&signals, view, events);
         if self.motion == Motion::Held {
             if let Some(cursor) = view.cursor {
+                if dt > 0. {
+                    let instant = Point::new(
+                        (cursor.x - self.position.x) / dt / view.scale,
+                        (cursor.y - self.position.y) / dt / view.scale,
+                    );
+                    self.held_velocity = Point::new(
+                        0.5 * self.held_velocity.x + 0.5 * instant.x,
+                        0.5 * self.held_velocity.y + 0.5 * instant.y,
+                    );
+                }
                 self.position = cursor;
             }
             self.clamp(view);
@@ -349,6 +488,12 @@ impl Pet {
                 .map(|c| c.distance(self.position) / view.scale)
                 .unwrap_or(f64::INFINITY),
             is_dragging: self.motion == Motion::Held,
+            pet_distance: self
+                .nearest_peer(view)
+                .map(|peer| peer.position.distance(self.position) / view.scale)
+                .unwrap_or(f64::INFINITY),
+            affection: self.bond.affection,
+            days_together: self.bond.days as f64,
             ..base
         }
     }
@@ -389,10 +534,61 @@ impl Pet {
             events.push(Event::CursorNearby);
         }
         self.was_near_cursor = near;
+        if events.contains(&Event::UserReturned) {
+            self.gain(0.01);
+        }
+        if signals.pet_distance < PET_NEARBY && !self.was_near_pet {
+            events.push(Event::PetNearby);
+            self.was_near_pet = true;
+        } else if signals.pet_distance > PET_REARM {
+            self.was_near_pet = false;
+        }
         if self.energy < 0.15 {
             events.push(Event::LowEnergy);
         }
-        let _ = view;
+        self.detect_petting(view, events);
+    }
+
+    /// Three direction reversals of the pointer inside the sprite within 1.5 s.
+    fn detect_petting(&mut self, view: &WorldView<'_>, events: &mut Vec<Event>) {
+        let hit = view.cursor.filter(|cursor| {
+            let sprite = &self.manifest().sprite;
+            let half = self.half_width(view.scale);
+            let height = sprite.height * sprite.scale * view.scale;
+            self.motion != Motion::Held
+                && (cursor.x - self.position.x).abs() <= half
+                && cursor.y <= self.position.y
+                && cursor.y >= self.position.y - height
+        });
+        let Some(cursor) = hit else {
+            self.petting.last_x = None;
+            self.petting.direction = 0.;
+            self.petting.reversals.clear();
+            return;
+        };
+        let Some(last) = self.petting.last_x else {
+            self.petting.last_x = Some(cursor.x);
+            return;
+        };
+        let moved = cursor.x - last;
+        if moved.abs() < PET_MIN_MOVE * view.scale {
+            return;
+        }
+        let direction = moved.signum();
+        if self.petting.direction != 0. && direction != self.petting.direction {
+            self.petting.reversals.push(self.clock);
+        }
+        self.petting.direction = direction;
+        self.petting.last_x = Some(cursor.x);
+        let now = self.clock;
+        self.petting.reversals.retain(|t| now - t <= PET_WINDOW);
+        if self.petting.reversals.len() >= PET_REVERSALS && now >= self.petting.quiet_until {
+            self.petting.reversals.clear();
+            self.petting.quiet_until = now + PET_COOLDOWN;
+            self.mood = (self.mood + 0.08).min(1.);
+            self.gain(0.02);
+            events.push(Event::Petted);
+        }
     }
 
     /// Hold `(surface, t)` as windows move, and notice when the perch is gone.
@@ -404,7 +600,17 @@ impl Pet {
             Some(index) => {
                 let surface = &view.surfaces[index];
                 let half = self.half_width(view.scale);
-                if !surface.fits(perch.t, half) {
+                // A pet walking a route legitimately stands at the very end of
+                // a surface: that is where it takes off for the next window, or
+                // where it lands from one. Requiring clearance there would call
+                // the surface lost the moment it got to the launch point and
+                // freeze it at the edge for good.
+                let fits = if self.motion == Motion::Walking && self.plan.is_some() {
+                    surface.contains_t(perch.t)
+                } else {
+                    surface.fits(perch.t, half)
+                };
+                if !fits {
                     // The perch shrank under the pet: find somewhere that fits.
                     events.push(Event::SurfaceLost);
                     self.lose_surface(view);
@@ -434,7 +640,7 @@ impl Pet {
             }
         } else {
             self.motion = Motion::Falling;
-            self.arc = Arc_::Fall { velocity: 0. };
+            self.arc = Arc_::Fall { vx: 0., vy: 0. };
             self.rotation = 0.;
         }
     }
@@ -485,6 +691,7 @@ impl Pet {
                 .and_then(|c| self.farthest_perch(view, c))
                 .or_else(|| self.random_perch(view)),
             Action::PatrolCurrentSurface => self.patrol_target(view),
+            Action::MoveTowardPet => self.peer_perch(view),
             Action::ReturnToHomeSurface => self.home.or_else(|| self.random_perch(view)),
         };
         match target {
@@ -664,7 +871,7 @@ impl Pet {
                 }
                 None => {
                     self.motion = Motion::Falling;
-                    self.arc = Arc_::Fall { velocity: 0. };
+                    self.arc = Arc_::Fall { vx: 0., vy: 0. };
                     self.plan = None;
                 }
             }
@@ -732,40 +939,58 @@ impl Pet {
     }
 
     fn step_fall(&mut self, dt: f64, view: &WorldView<'_>) {
-        let Arc_::Fall { mut velocity } = self.arc else {
-            self.arc = Arc_::Fall { velocity: 0. };
+        let Arc_::Fall { mut vx, mut vy } = self.arc else {
+            self.arc = Arc_::Fall { vx: 0., vy: 0. };
             return;
         };
         let gravity = GRAVITY * self.manifest().locomotion.gravity.max(0.35) * view.scale;
-        velocity = (velocity + gravity * dt).min(TERMINAL_VELOCITY * view.scale);
+        vy = (vy + gravity * dt).min(TERMINAL_VELOCITY * view.scale);
+        vx *= AIR_DRAG.powf(dt * 60.);
         let from = self.position;
-        let to = Point::new(from.x, from.y + velocity * dt);
+        let mut to = Point::new(from.x + vx * dt, from.y + vy * dt);
+        // A fling bounces off the sides of the world instead of leaving it.
+        let margin = self.half_width(view.scale);
+        let (left, right) = (
+            view.bounds.x + margin,
+            (view.bounds.right() - margin).max(view.bounds.x + margin),
+        );
+        if to.x < left || to.x > right {
+            to.x = to.x.clamp(left, right);
+            vx = -vx * 0.5;
+        }
         self.rotation = 0.;
         match self.landing_between(view, from, to) {
             Some((perch, point)) => {
                 self.position = point;
                 self.perch = Some(perch);
-                self.arc = Arc_::None;
-                self.settle();
-                self.action_done = true;
+                self.land(vy, view);
             }
             None => {
                 self.position = to;
-                self.arc = Arc_::Fall { velocity };
+                self.arc = Arc_::Fall { vx, vy };
                 // Nothing below at all: the floor of the desktop always exists,
                 // but if the world is empty, stop rather than fall forever.
                 if to.y >= view.bounds.bottom() {
                     self.position.y = view.bounds.bottom();
-                    self.arc = Arc_::None;
-                    self.settle();
-                    self.action_done = true;
+                    self.land(vy, view);
                 }
             }
         }
     }
 
+    fn land(&mut self, vy: f64, view: &WorldView<'_>) {
+        if self.thrown_fall && vy > HARD_LANDING * view.scale {
+            self.pending.push(Event::LandedHard);
+        }
+        self.thrown_fall = false;
+        self.arc = Arc_::None;
+        self.settle();
+        self.action_done = true;
+    }
+
     /// The first surface crossed by a downward move, so a falling pet lands on
-    /// what is under it rather than on whatever is nearest.
+    /// what is under it rather than on whatever is nearest. The move may be
+    /// diagonal: the surface is hit where the segment crosses its height.
     fn landing_between(
         &self,
         view: &WorldView<'_>,
@@ -781,14 +1006,20 @@ impl Pet {
             if y < from.y - 0.5 || y > to.y + 0.5 {
                 continue;
             }
+            let across = if to.y > from.y {
+                ((y - from.y) / (to.y - from.y)).clamp(0., 1.)
+            } else {
+                0.
+            };
+            let x = from.x + (to.x - from.x) * across;
             let (left, right) = (
                 surface.start.x.min(surface.end.x),
                 surface.start.x.max(surface.end.x),
             );
-            if from.x < left || from.x > right {
+            if x < left || x > right {
                 continue;
             }
-            let point = Point::new(from.x, y);
+            let point = Point::new(x, y);
             if best.as_ref().is_none_or(|(best_y, _, _)| y < *best_y) {
                 best = Some((
                     y,
@@ -860,6 +1091,47 @@ impl Pet {
         let t = surface.t_of(surface.point(self.rng.range(surface.t_start(), surface.t_end())));
         self.perch_on(surface, t, view.scale)
             .or_else(|| self.perch_on(surface, surface.midpoint_t(), view.scale))
+    }
+
+    fn nearest_peer(&self, view: &WorldView<'_>) -> Option<Peer> {
+        view.peers
+            .iter()
+            .filter(|peer| peer.id != self.id)
+            .min_by(|a, b| {
+                a.position
+                    .distance(self.position)
+                    .total_cmp(&b.position.distance(self.position))
+            })
+            .copied()
+    }
+
+    /// Somewhere to stand beside the nearest other pet: its own perch when this
+    /// pet may use it, else the closest allowed one, a sprite's width short of
+    /// it on the side this pet comes from.
+    fn peer_perch(&self, view: &WorldView<'_>) -> Option<Perch> {
+        let peer = self.nearest_peer(view)?;
+        let beside = |perch: Perch| -> Option<Perch> {
+            let index = pathfind::locate(view.surfaces, perch)?;
+            let surface = &view.surfaces[index];
+            let gap = self.half_width(view.scale) * 2.2 / surface.span_length().max(1.);
+            let from_left = self.position.x < peer.position.x;
+            let t = if from_left {
+                perch.t - gap
+            } else {
+                perch.t + gap
+            };
+            let t = t.clamp(surface.t_start(), surface.t_end());
+            self.perch_on(surface, t, view.scale)
+                .or_else(|| self.perch_on(surface, perch.t, view.scale))
+        };
+        peer.perch
+            .filter(|perch| {
+                pathfind::locate(view.surfaces, *perch).is_some_and(|i| {
+                    pathfind::allowed(self.manifest(), &view.surfaces[i], view.scale)
+                })
+            })
+            .and_then(beside)
+            .or_else(|| self.nearest_perch(view, peer.position))
     }
 
     fn nearest_perch(&self, view: &WorldView<'_>, to: Point) -> Option<Perch> {

@@ -1,13 +1,13 @@
 import { markRaw, reactive, watch } from 'vue'
-import { Channel, invoke } from '@tauri-apps/api/core'
+import { Channel } from '@tauri-apps/api/core'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { palette, terminalTheme, trackPalette } from './theme'
 import { splitShortcut } from './shortcuts'
-import { codeState, problem } from './state'
-import type { PtyOutput, SessionKind } from './types'
+import { backend, type SpawnOptions } from './backend'
+import type { PtyOutput, SessionKind, SessionView } from './types'
 
 /** One terminal per backend session. The xterm instance and its element
  *  outlive any view showing them, so switching tabs never loses scrollback. */
@@ -40,7 +40,7 @@ function create(): { term: Terminal; fit: FitAddon; element: HTMLDivElement } {
   })
   const fit = new FitAddon()
   term.loadAddon(fit)
-  term.loadAddon(new WebLinksAddon((_, url) => { void invoke('code_open_url', { url }).catch(() => {}) }))
+  term.loadAddon(new WebLinksAddon((_, url) => { backend().openUrl(url) }))
   // Split keys belong to the grid, not the program in the terminal.
   term.attachCustomKeyEventHandler(event => !splitShortcut(event))
   const element = document.createElement('div')
@@ -65,26 +65,20 @@ function connect(entry: Term): Channel<PtyOutput> {
 }
 
 function wire(entry: Term) {
-  entry.term.onData(data => { void invoke('code_pty', { id: entry.id, action: 'write', data, cols: 0, rows: 0 }).catch(() => {}) })
-  entry.term.onResize(({ cols, rows }) => { void invoke('code_pty', { id: entry.id, action: 'resize', data: '', cols, rows }).catch(() => {}) })
+  entry.term.onData(data => { void backend().io(entry.id, 'write', data, 0, 0).catch(() => {}) })
+  entry.term.onResize(({ cols, rows }) => { void backend().io(entry.id, 'resize', '', cols, rows).catch(() => {}) })
 }
 
-export interface SpawnOptions { worktree: string; kind: SessionKind; command?: string | null; title: string; runIndex?: number; tool?: string }
-
-/** Start a program in a new terminal. Run commands and installers have their own backend entry points. */
+/** Start a program in a new terminal. */
 export async function spawn(options: SpawnOptions): Promise<Term | null> {
   const { term, fit, element } = create()
   const entry = reactive<Term>({ id: 0, kind: options.kind, worktree: options.worktree, title: options.title, alive: true, exitCode: null, term, fit, element, opened: false }) as Term
   const channel = connect(entry)
   const size = { cols: term.cols || 100, rows: term.rows || 30 }
   try {
-    entry.id = options.tool
-      ? await invoke<number>('code_install', { tool: options.tool, ...size, channel })
-      : options.runIndex !== undefined
-        ? await invoke<number>('code_run_start', { worktree: options.worktree, index: options.runIndex, ...size, channel })
-        : await invoke<number>('code_pty_spawn', { worktree: options.worktree, kind: options.kind, command: options.command ?? null, title: options.title, ...size, channel })
+    entry.id = await backend().spawn(options, size, channel)
   } catch (e) {
-    problem.value = String(e)
+    backend().fail(String(e))
     term.dispose()
     return null
   }
@@ -93,15 +87,16 @@ export async function spawn(options: SpawnOptions): Promise<Term | null> {
   return entry
 }
 
-/** Sessions still running in Rust from before the window was last closed. */
-export async function adopt() {
-  for (const session of codeState.value.sessions) {
-    if (terms.has(session.id) || !session.alive) continue
+/** Sessions still running in Rust from before the window was last closed.
+ *  `only` limits it to the ones this view shows. */
+export async function adopt(only: (session: SessionView) => boolean = () => true) {
+  for (const session of backend().sessions()) {
+    if (terms.has(session.id) || !session.alive || !only(session)) continue
     const { term, fit, element } = create()
     const entry = reactive<Term>({ id: session.id, kind: session.kind, worktree: session.worktree, title: session.title, alive: true, exitCode: null, term, fit, element, opened: false }) as Term
     terms.set(session.id, entry)
     wire(entry)
-    try { await invoke('code_pty_attach', { id: session.id, channel: connect(entry) }) } catch { terms.delete(session.id) }
+    try { await backend().attach(session.id, connect(entry)) } catch { terms.delete(session.id) }
   }
 }
 
@@ -109,9 +104,18 @@ export async function close(id: number) {
   const entry = terms.get(id)
   terms.delete(id)
   entry?.term.dispose()
-  await invoke('code_pty', { id, action: 'kill', data: '', cols: 0, rows: 0 }).catch(() => {})
+  await backend().io(id, 'kill', '', 0, 0).catch(() => {})
 }
 
 export function write(id: number, data: string) {
-  return invoke('code_pty', { id, action: 'write', data, cols: 0, rows: 0 })
+  return backend().io(id, 'write', data, 0, 0)
+}
+
+/** Give a terminal's tab a new name. Kept in Rust too, so it survives the view closing. */
+export function rename(id: number, title: string) {
+  const entry = terms.get(id)
+  const clean = title.replace(/\s+/g, ' ').trim().slice(0, 40)
+  if (!entry || !clean || clean === entry.title) return
+  entry.title = clean
+  void backend().io(id, 'rename', clean, 0, 0).catch(() => {})
 }

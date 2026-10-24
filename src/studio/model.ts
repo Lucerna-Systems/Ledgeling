@@ -16,10 +16,10 @@ export const movements: { value: Movement; label: string; blurb: string }[] = [
 ]
 
 export interface ClipInfo { name: string; label: string; blurb: string; required?: boolean; fallback?: string; for?: Movement[]; group: 'basics' | 'moves' | 'moods' | 'assistant' }
-/** The animations a pet can have. Only idle and move are required; the rest fall back. */
+/** The animations a pet can have. None are required: idle and move stand in for each other, and the rest fall back down their chain. */
 export const clips: ClipInfo[] = [
-  { name: 'idle', label: 'Idle', blurb: 'Standing still, just being there.', required: true, group: 'basics' },
-  { name: 'move', label: 'Move', blurb: 'Getting from place to place.', required: true, group: 'basics' },
+  { name: 'idle', label: 'Idle', blurb: 'Standing still, just being there.', fallback: 'move', group: 'basics' },
+  { name: 'move', label: 'Move', blurb: 'Getting from place to place.', fallback: 'idle', group: 'basics' },
   { name: 'climb', label: 'Climb', blurb: 'Going up or down the side of a window.', fallback: 'move', for: ['climber'], group: 'moves' },
   { name: 'jump', label: 'Jump', blurb: 'Leaping across a gap.', fallback: 'move', for: ['climber', 'hopper'], group: 'moves' },
   { name: 'fall', label: 'Fall', blurb: 'Dropping when a window vanishes.', fallback: 'move', for: ['climber', 'walker', 'hopper'], group: 'moves' },
@@ -31,6 +31,9 @@ export const clips: ClipInfo[] = [
   { name: 'greet', label: 'Greet', blurb: 'Saying hello when you come back.', fallback: 'happy', group: 'moods' },
   { name: 'preen', label: 'Preen', blurb: 'Tidying itself up.', fallback: 'idle', group: 'moods' },
   { name: 'grabbed', label: 'Grabbed', blurb: 'Being carried by the pointer.', fallback: 'idle', group: 'moods' },
+  { name: 'stretch', label: 'Stretch', blurb: 'A long stretch, after a nap or when you come back.', fallback: 'idle', group: 'moods' },
+  { name: 'dizzy', label: 'Dizzy', blurb: 'Seeing stars after being thrown or landing hard.', fallback: 'alert', group: 'moods' },
+  { name: 'petted', label: 'Petted', blurb: 'Enjoying being stroked with the pointer.', fallback: 'happy', group: 'moods' },
   { name: 'busy', label: 'Busy', blurb: 'Working on a task for you.', fallback: 'preen', group: 'assistant' },
   { name: 'attention', label: 'Needs you', blurb: 'Waiting for your answer on a task.', fallback: 'alert', group: 'assistant' },
 ]
@@ -45,12 +48,18 @@ export const actions = [
   { value: 'move_toward_cursor', label: 'come to the pointer' },
   { value: 'flee_from_cursor', label: 'run from the pointer' },
   { value: 'return_to_home_surface', label: 'go back home' },
+  { value: 'move_toward_pet', label: 'visit the nearest other pet' },
 ] as const
 
 export const events = [
   { value: 'clicked', label: 'you click it' },
   { value: 'grabbed', label: 'you pick it up' },
   { value: 'released', label: 'you let it go' },
+  { value: 'thrown', label: 'you throw it' },
+  { value: 'landed_hard', label: 'it lands hard after a throw' },
+  { value: 'petted', label: 'you rub the pointer over it' },
+  { value: 'pet_nearby', label: 'another pet comes close' },
+  { value: 'new_day', label: 'a new day together begins' },
   { value: 'cursor_nearby', label: 'the pointer comes close' },
   { value: 'user_idle_long', label: 'you step away for a while' },
   { value: 'user_returned', label: 'you come back' },
@@ -72,6 +81,9 @@ export const signals: { value: string; label: string; kind: SignalKind; unit?: s
   { value: 'mood', label: 'its mood', kind: 'number', unit: '0–1', example: '0.5' },
   { value: 'hour', label: 'the hour of day', kind: 'number', unit: '0–23', example: '22' },
   { value: 'cursor_distance', label: 'distance to the pointer', kind: 'number', unit: 'px', example: '120' },
+  { value: 'pet_distance', label: 'distance to the nearest other pet', kind: 'number', unit: 'px', example: '140' },
+  { value: 'affection', label: 'how fond the pet is of you (0 to 1)', kind: 'number', example: '0.5' },
+  { value: 'days_together', label: 'days you have had this pet', kind: 'number', unit: 'days', example: '7' },
   { value: 'surface_count', label: 'places it can stand', kind: 'number', example: '3' },
   { value: 'app_category', label: 'the kind of app in front', kind: 'category', example: 'code' },
   { value: 'is_dragging', label: 'you are dragging it', kind: 'bool', example: 'true' },
@@ -90,6 +102,8 @@ export interface StateDraft { key: number; name: string; clip: string; action: s
 export interface ReactionDraft { key: number; on: string; goto: string; cooldown: number | null }
 export interface ClipDraft { frames: Uint8ClampedArray[]; fps: number; loop: boolean }
 export interface Draft {
+  /** Set when editing a pack that already exists, so saving replaces it. */
+  id?: string
   name: string
   author: string
   description: string
@@ -102,6 +116,8 @@ export interface Draft {
 
 let keys = 0
 export const nextKey = () => ++keys
+/** After restoring a saved draft, keep new keys from colliding with its own. */
+export const reserveKeys = (min: number) => { if (keys < min) keys = min }
 export const blankFrame = () => new Uint8ClampedArray(FRAME * FRAME * 4)
 export const emptyClip = (): ClipDraft => ({ frames: [blankFrame()], fps: 8, loop: true })
 export const drawn = (frame: Uint8ClampedArray) => frame.some((value, i) => i % 4 === 3 && value > 0)
@@ -116,7 +132,7 @@ export function starterDraft(movement: Movement = 'walker'): Draft {
     author: '',
     description: '',
     movement,
-    clips: { idle: emptyClip(), move: emptyClip() },
+    clips: { idle: emptyClip() },
     initial: 'rest',
     states: [
       state('rest', 'idle', '', [5, 15], [
@@ -162,15 +178,12 @@ const locomotion: Record<Movement, Record<string, unknown>> = {
 }
 
 export function conditionText(when: Condition[]) {
-  return when.map(c => `${c.signal} ${c.op} ${c.value.trim()}`).join(' && ')
+  return when.map(c => [c.signal, c.op, c.value.trim()].filter(Boolean).join(' ')).join(' && ')
 }
 
-/** The clips a save writes. Temporary (issue #11): a blank Move reuses Idle,
- *  because copying Idle into Move does not show on the macOS canvas yet. */
+/** The clips a save writes: exactly the ones that have been drawn. */
 function savedClips(draft: Draft): Record<string, ClipDraft> {
-  const clips = { ...draft.clips }
-  if (!clipDrawn(clips.move) && clipDrawn(clips.idle)) clips.move = clips.idle!
-  return clips
+  return { ...draft.clips }
 }
 
 /** Problems worth fixing before saving, in plain words. The backend validator still has the final say. */
@@ -178,7 +191,7 @@ export function problems(draft: Draft): string[] {
   const out: string[] = []
   if (!draft.name.trim()) out.push('Give your pet a name.')
   const clips = savedClips(draft)
-  for (const required of ['idle', 'move']) if (!clipDrawn(clips[required])) out.push(`Draw at least one frame of the ${clipInfo(required)!.label} animation.`)
+  if (!Object.values(clips).some(clipDrawn)) out.push('Draw at least one frame of any animation, such as Idle.')
   const names = new Set(draft.states.map(s => s.name))
   if (names.size !== draft.states.length) out.push('Two behaviours share a name. Give each its own.')
   if (!names.has(draft.initial)) out.push('Pick which behaviour your pet starts with.')
@@ -214,7 +227,7 @@ export function buildManifest(draft: Draft) {
   }
   return {
     format: 1,
-    id: `com.studio.${slug(draft.name)}`,
+    id: draft.id ?? `com.studio.${slug(draft.name)}`,
     name: draft.name.trim(),
     author: draft.author.trim() || 'Me',
     version: '1.0.0',
@@ -250,5 +263,74 @@ export function payload(draft: Draft, preview: { width: number; height: number; 
     manifest: JSON.stringify(buildManifest(draft), null, 2),
     strips,
     preview: { name: 'preview', width: preview.width, height: preview.height, pixels: Array.from(preview.pixels) },
+  }
+}
+
+/** What `studio_open_pack` returns: the manifest text and every strip as RGBA. */
+export interface OpenedPack { manifest: string; strips: { name: string; width: number; height: number; pixels: number[] }[] }
+
+const conditionPattern = /^\s*([a-z_]+)\s*(>=|<=|==|!=|>|<)\s*(\S+)\s*$/
+
+/** A `when` the editor can show row by row; anything else is kept whole, so a hand-written condition survives a round trip. */
+function parseWhen(when: unknown): Condition[] {
+  if (typeof when !== 'string' || !when.trim()) return []
+  if (when.includes('||')) return [{ signal: when.trim(), op: '', value: '' }]
+  const parts = when.split('&&').map(part => conditionPattern.exec(part))
+  if (parts.some(match => !match)) return [{ signal: when.trim(), op: '', value: '' }]
+  return parts.map(match => ({ signal: match![1]!, op: match![2]!, value: match![3]! }))
+}
+
+/**
+ * The inverse of `buildManifest` and `payload`: a design from an installed pack.
+ * `copy` makes a new pet out of it ("Copy of …", a fresh id); without it, saving
+ * replaces the pack that was opened. Packs with no behavior block start from the
+ * starter behavior; details the editor has no field for (reaction priorities,
+ * extra metadata) fall back to the format's defaults.
+ */
+export function draftFromPack(opened: OpenedPack, options: { copy?: boolean } = {}): Draft {
+  const manifest = JSON.parse(opened.manifest) as Record<string, any>
+  const movement = (manifest.locomotion?.class ?? 'walker') as Movement
+  const clipsOut: Record<string, ClipDraft> = {}
+  for (const image of opened.strips) {
+    const info = manifest.animations?.[image.name] ?? {}
+    const count = Math.max(1, Math.min(MAX_FRAMES, Math.round(image.width / FRAME)))
+    const frames: Uint8ClampedArray[] = []
+    for (let index = 0; index < count; index++) {
+      const frame = blankFrame()
+      for (let y = 0; y < FRAME; y++) {
+        const from = (y * image.width + index * FRAME) * 4
+        frame.set(image.pixels.slice(from, from + FRAME * 4), y * FRAME * 4)
+      }
+      frames.push(frame)
+    }
+    clipsOut[image.name] = { frames, fps: Number(info.fps) || 8, loop: info.loop !== false }
+  }
+  const base = starterDraft(movement)
+  const behavior = manifest.behavior
+  const hasBehavior = behavior && typeof behavior === 'object' && behavior.states && Object.keys(behavior.states).length > 0
+  const states: StateDraft[] = hasBehavior
+    ? Object.entries<Record<string, any>>(behavior.states).map(([name, state]) => ({
+        key: nextKey(),
+        name,
+        clip: state.clip ?? 'idle',
+        action: state.action ?? '',
+        duration: Array.isArray(state.duration) ? [Number(state.duration[0]), Number(state.duration[1])] : null,
+        transitions: (state.transitions ?? []).map((t: Record<string, any>) => ({ to: t.to, weight: Number(t.weight) || 1, when: parseWhen(t.when) })),
+      }))
+    : base.states
+  const reactions: ReactionDraft[] = hasBehavior
+    ? (manifest.reactions ?? []).map((r: Record<string, any>) => ({ key: nextKey(), on: r.on, goto: r.goto, cooldown: r.cooldown ? Number(r.cooldown) : null }))
+    : base.reactions
+  const name = String(manifest.name ?? 'My Pet')
+  return {
+    ...(options.copy ? {} : { id: String(manifest.id) }),
+    name: options.copy ? `Copy of ${name}` : name,
+    author: String(manifest.author ?? ''),
+    description: String(manifest.description ?? ''),
+    movement,
+    clips: clipsOut,
+    initial: hasBehavior ? String(behavior.initial) : base.initial,
+    states,
+    reactions,
   }
 }

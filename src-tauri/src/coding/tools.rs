@@ -62,24 +62,13 @@ const KNOWN: &[Known] = &[
 /// Where a program lives on the login shell's PATH, which is the one the
 /// Terminal tab uses.
 pub fn find(program: &str) -> Option<PathBuf> {
-    let path = super::pty::login_path().or_else(|| std::env::var("PATH").ok())?;
-    let extensions: &[&str] = if cfg!(windows) {
-        &[".exe", ".cmd", ".bat", ""]
-    } else {
-        &[""]
-    };
-    std::env::split_paths(&path).find_map(|dir| {
-        extensions.iter().find_map(|ext| {
-            let candidate = dir.join(format!("{program}{ext}"));
-            candidate.is_file().then_some(candidate)
-        })
-    })
+    crate::terminal::pty::find_program(program)
 }
 
 fn version(program: &PathBuf) -> Option<String> {
     let mut command = Command::new(program);
     command.arg("--version");
-    if let Some(path) = super::pty::login_path() {
+    if let Some(path) = crate::terminal::pty::login_path() {
         command.env("PATH", path);
     }
     #[cfg(windows)]

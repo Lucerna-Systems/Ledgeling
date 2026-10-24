@@ -5,7 +5,7 @@ import CssWorker from 'monaco-editor/language/css/css.worker?worker'
 import HtmlWorker from 'monaco-editor/language/html/html.worker?worker'
 import TsWorker from 'monaco-editor/language/typescript/ts.worker?worker'
 import { watch } from 'vue'
-import { palette, trackPalette, type Palette } from './theme'
+import { palette, trackPalette, type Palette } from '../terminal/theme'
 
 // Only this module pulls Monaco in, and only the Editor and Changes tabs import it.
 self.MonacoEnvironment = {

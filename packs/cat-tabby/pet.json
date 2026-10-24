@@ -1,0 +1,143 @@
+{
+  "format": 1,
+  "id": "com.perch.cat-tabby",
+  "name": "Miso the Cat",
+  "author": "Ledgeling",
+  "version": "1.0.0",
+  "description": "A tabby who naps a lot, strolls window tops, hops small gaps, grooms, stretches after a nap and watches your pointer.",
+  "license": "CC-BY-4.0",
+  "tags": ["mammal", "hopper", "sleepy"],
+  "sprite": {
+    "width": 48,
+    "height": 48,
+    "anchor": { "x": 0.5, "y": 1.0 },
+    "default_facing": "right",
+    "surface_orientation": "align"
+  },
+  "locomotion": {
+    "class": "hopper",
+    "surfaces": ["window_top", "monitor_bottom", "taskbar_top"],
+    "speed": { "surface": 80, "climb": 0, "air": 0 },
+    "jump": { "enabled": true, "max_gap": 140, "arc_height": 60 },
+    "gravity": 1.0,
+    "min_surface_length": 60
+  },
+  "animations": {
+    "idle": { "file": "sprites/idle.png", "frames": 4, "fps": 5 },
+    "move": { "file": "sprites/move.png", "frames": 6, "fps": 12 },
+    "jump": { "file": "sprites/jump.png", "frames": 4, "fps": 12, "loop": false },
+    "fall": { "file": "sprites/fall.png", "frames": 2, "fps": 8 },
+    "land": { "file": "sprites/land.png", "frames": 3, "fps": 16, "loop": false },
+    "sleep": { "file": "sprites/sleep.png", "frames": 2, "fps": 2 },
+    "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
+    "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
+    "preen": { "file": "sprites/preen.png", "frames": 4, "fps": 6 },
+    "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 },
+    "stretch": { "file": "sprites/stretch.png", "frames": 4, "fps": 4, "loop": false }
+  },
+  "behavior": {
+    "initial": "loaf",
+    "idle_wander_chance": 0.3,
+    "states": {
+      "loaf": {
+        "clip": "idle",
+        "duration": [6, 16],
+        "transitions": [
+          { "to": "stroll", "weight": 2 },
+          { "to": "explore", "weight": 2 },
+          { "to": "groom", "weight": 3 },
+          { "to": "nap", "weight": 4, "when": "idle_seconds > 180" },
+          { "to": "nap", "weight": 6, "when": "energy < 0.3" },
+          { "to": "nap", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
+          { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
+          { "to": "watch", "weight": 3, "when": "affection > 0.5 && cursor_distance < 500" },
+          { "to": "watch", "weight": 1, "when": "cursor_distance < 300" }
+        ]
+      },
+      "stroll": {
+        "clip": "move",
+        "action": "patrol_current_surface",
+        "duration": [3, 7],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "explore": {
+        "clip": "move",
+        "action": "move_to_random_surface",
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "visit": {
+        "clip": "move",
+        "action": "move_toward_pet",
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "nap": {
+        "clip": "sleep",
+        "duration": [40, 150],
+        "transitions": [{ "to": "stretch", "weight": 1 }]
+      },
+      "groom": {
+        "clip": "preen",
+        "duration": [3, 7],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "stretch": {
+        "clip": "stretch",
+        "duration": [2, 4],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "watch": {
+        "clip": "move",
+        "action": "move_toward_cursor",
+        "duration": [3, 6],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "greet": {
+        "clip": "happy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "startled": {
+        "clip": "alert",
+        "duration": [1, 2],
+        "action": "move_to_nearest_surface",
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "held": {
+        "clip": "alert",
+        "duration": [0.5, 0.5],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "dizzy": {
+        "clip": "dizzy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      },
+      "enjoy": {
+        "clip": "petted",
+        "duration": [2, 4],
+        "transitions": [{ "to": "loaf", "weight": 1 }]
+      }
+    }
+  },
+  "reactions": [
+    { "on": "surface_lost", "goto": "startled", "priority": 100 },
+    { "on": "surface_moved_fast", "goto": "startled", "priority": 100, "cooldown": 4 },
+    { "on": "grabbed", "goto": "held", "priority": 90 },
+    { "on": "clicked", "goto": "greet", "priority": 90, "cooldown": 3 },
+    { "on": "user_idle_long", "goto": "nap", "priority": 30 },
+    { "on": "user_returned", "goto": "stretch", "priority": 60, "cooldown": 60 },
+    { "on": "thrown", "goto": "dizzy", "priority": 90 },
+    { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+    { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
+    { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 }
+  ],
+  "personality": {
+    "activity": 0.3,
+    "boldness": 0.5,
+    "sociability": 0.5,
+    "sleepiness": 0.85,
+    "curiosity": 0.5
+  }
+}
