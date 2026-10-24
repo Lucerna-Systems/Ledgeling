@@ -1203,7 +1203,7 @@ fn a_pet_shakes_off_after_landing_from_a_fall() {
     let world = World::new(&[win(1, 100., 700., 800., 100.)]);
     let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
     pet.motion = Motion::Falling;
-    pet.arc = Arc_::Fall { velocity: 0. };
+    pet.arc = Arc_::Fall { vx: 0., vy: 0. };
     assert!(
         sees(&mut pet, &world, Event::Landed, 5.),
         "landing is an event"
