@@ -105,6 +105,24 @@ def budgie_alert(d, i):
         d.line((18, 2, 18, 4), fill=BUD['ink'])
 
 
+def budgie_fluff(d, i):
+    # Rare idle: puffs up, shakes, settles. The shake is a sideways jitter.
+    puff = (0, 1, 2, 2, 1)[i]
+    shake = (0, -1, 1, -1, 0)[i]
+    cell = Image.new('RGBA', (CELL, CELL))
+    budgie_body(ImageDraw.Draw(cell), bob=0, head=-puff // 2, eye_open=i in (0, 4))
+    big = cell.resize((CELL + puff * 2, CELL + puff), Image.NEAREST)
+    d._image.paste(big, (shake - puff, -puff), big)
+
+
+def budgie_dance(d, i):
+    # Rare idle: a little head-bobbing hop.
+    budgie_body(d, bob=(0, -2, 0, -2, 0, -1)[i], head=(0, 2, 0, 2, 0, 1)[i])
+    if i in (1, 3):
+        d.point((21, 4), fill='#e58b7a')
+        d.point((22, 6), fill='#e58b7a')
+
+
 # ------------------------------------------------------------- squirrel
 SQ = dict(ink='#3a2118', body='#c1622d', light='#e2884a', belly='#f0d4b0',
           tail='#a8501f', eye='#20140f')
@@ -171,6 +189,23 @@ def squirrel_alert(d, i):
 
 def squirrel_happy(d, i):
     squirrel_body(d, legs=(0, -2, -3, -2, 0, 0)[i], tail=(1, 2, 3, 2, 1, 1)[i])
+
+
+def squirrel_nibble(d, i):
+    # Rare idle: sits up with a nut, nibbling.
+    squirrel_body(d, tail=(0, 1, 1, 0)[i])
+    d.rectangle((21, 12 + (i % 2), 23, 14 + (i % 2)), fill='#8a5a2b')
+    d.point((22, 12 + (i % 2)), fill='#c9954f')
+
+
+def squirrel_flip(d, i):
+    # Rare idle: a backflip. The body is drawn once and rotated through a full turn.
+    cell = Image.new('RGBA', (CELL, CELL))
+    squirrel_body(ImageDraw.Draw(cell), legs=-1, tail=1)
+    lift = (0, -3, -6, -6, -3, 0)[i]
+    angle = (0, 60, 150, 210, 300, 360)[i] % 360
+    turned = cell.rotate(angle, resample=Image.NEAREST, center=(12, 13))
+    d._image.paste(turned, (0, lift), turned)
 
 
 # ---------------------------------------------------------------- gecko
@@ -376,11 +411,13 @@ CLIPS = {
     'budgie-classic': dict(idle=(4, budgie_idle), move=(6, budgie_move), land=(3, budgie_land),
                            takeoff=(3, budgie_takeoff), preen=(4, budgie_preen), sleep=(2, budgie_sleep),
                            happy=(6, budgie_happy), alert=(3, budgie_alert),
-                           dizzy=(4, budgie_dizzy), petted=(4, budgie_petted)),
+                           dizzy=(4, budgie_dizzy), petted=(4, budgie_petted),
+                           fluff=(5, budgie_fluff), dance=(6, budgie_dance)),
     'squirrel-red': dict(idle=(4, squirrel_idle), move=(6, squirrel_move), climb=(6, squirrel_climb),
                          jump=(4, squirrel_jump), fall=(2, squirrel_fall), land=(3, squirrel_land),
                          sleep=(2, squirrel_sleep), alert=(3, squirrel_alert), happy=(6, squirrel_happy),
-                         dizzy=(4, squirrel_dizzy), petted=(4, squirrel_petted)),
+                         dizzy=(4, squirrel_dizzy), petted=(4, squirrel_petted),
+                         nibble=(4, squirrel_nibble), flip=(6, squirrel_flip)),
     'cat-tabby': dict(idle=(4, cat_idle), move=(6, cat_move), jump=(4, cat_jump), fall=(2, cat_fall),
                       land=(3, cat_land), sleep=(2, cat_sleep), alert=(3, cat_alert), happy=(6, cat_happy),
                       preen=(4, cat_preen), dizzy=(4, cat_dizzy), petted=(4, cat_petted), stretch=(4, cat_stretch)),
