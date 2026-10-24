@@ -2,6 +2,7 @@
 //! dimensions (to check them against the manifest), a per-frame alpha mask (so
 //! clicks pass through empty pixels), and the bytes to hand the renderer.
 use super::diagnostics::{Diagnostic, Report};
+use super::limits::{MAX_ENTRY_BYTES, MAX_PNG_HEIGHT, MAX_PNG_WIDTH};
 use std::path::Path;
 
 /// One decoded animation strip.
@@ -45,6 +46,18 @@ impl Mask {
 const OPACITY_THRESHOLD: u8 = 24;
 
 pub fn load(path: &Path, relative: &str, frames: u32, report: &mut Report) -> Option<Strip> {
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_ENTRY_BYTES) {
+        report.push(Diagnostic::error(
+            relative,
+            "",
+            "The sprite file is too large.",
+            format!(
+                "Keep each sprite strip under {} MiB.",
+                MAX_ENTRY_BYTES >> 20
+            ),
+        ));
+        return None;
+    }
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -70,6 +83,18 @@ pub fn load(path: &Path, relative: &str, frames: u32, report: &mut Report) -> Op
             return None;
         }
     };
+    // The header is trusted for nothing but its size: refuse before allocating
+    // a buffer for a decompression bomb.
+    let header = reader.info();
+    if header.width > MAX_PNG_WIDTH || header.height > MAX_PNG_HEIGHT {
+        report.push(Diagnostic::error(
+            relative,
+            "",
+            format!("The image is {}×{} px.", header.width, header.height),
+            format!("Sprite strips may be at most {MAX_PNG_WIDTH}×{MAX_PNG_HEIGHT} px."),
+        ));
+        return None;
+    }
     let mut buffer = vec![0; reader.output_buffer_size()];
     let info = match reader.next_frame(&mut buffer) {
         Ok(info) => info,

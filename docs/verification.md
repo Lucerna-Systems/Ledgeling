@@ -493,6 +493,29 @@ the bubble, nor at all on Windows or Linux.**
   there, and the pop-out window. Agent events on Windows are untested (the hook
   runs the app's own binary, so it should work, but it has not been run).
 
+## Pack hardening for a gallery (2026-10-24)
+
+Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
+
+- **Run:** `cargo test` in `src-tauri` (274 lib tests plus the integration
+  suites, all passing, 15 of them new in `packs::tests::hardening`), `cargo fmt
+  --check`. They cover: archive entry-count, per-file and total-size limits with
+  oversized data, traversal and stray entries, symlink entries, a PNG over the
+  size limit refused from its header, behaviour and text bounds, semver ordering,
+  update and downgrade, a refused install leaving the installed pack intact,
+  byte-identical exports with the same SHA-256 after modification times change,
+  each publish rule failing on its own, the four bundled pets passing the publish
+  check, a snapshot of the event, signal, action and class names, and the JSON
+  schema carrying the same limits as the code.
+- **Not run:** `cargo clippy --all-targets -D warnings` is red on four
+  pre-existing lints outside `packs` (`platform/handoff.rs`, `settings.rs`,
+  `tasks/mod.rs` twice); none are in the pack code. The new commands
+  `update_pack` and `validate_pack_for_publish` have no UI yet, so they have
+  only been exercised through the Rust tests. A mid-copy I/O failure during
+  install was not simulated; only the validation-failure and refused-update paths
+  are tested. The schema is checked against the limits constants but no JSON
+  Schema validator runs over the bundled packs.
+
 ## Pet sprint (2026-10-24)
 
 Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`

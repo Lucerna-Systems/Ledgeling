@@ -475,6 +475,22 @@ async fn install_pack(path: String, state: State<'_, Shared>) -> Result<PackSumm
     Ok(summary)
 }
 
+/// Replace an installed pack with a strictly newer version of the same id.
+#[tauri::command]
+async fn update_pack(path: String, state: State<'_, Shared>) -> Result<PackSummary, String> {
+    let dir = locked(&state)?.packs_dir.clone();
+    let summary = loader::install_with(Path::new(&path), &dir, loader::InstallMode::Update)?;
+    let mut app = locked(&state)?;
+    app.engine.reload_packs(&dir);
+    Ok(summary)
+}
+
+/// The stricter check a pack must pass before it is published to a gallery.
+#[tauri::command]
+async fn validate_pack_for_publish(path: String) -> Result<Report, String> {
+    Ok(loader::validate_for_publish(Path::new(&path)))
+}
+
 #[tauri::command]
 async fn uninstall_pack(id: String, state: State<'_, Shared>) -> Result<(), String> {
     let mut app = locked(&state)?;
@@ -815,6 +831,8 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             list_packs,
             validate_pack,
             install_pack,
+            update_pack,
+            validate_pack_for_publish,
             uninstall_pack,
             new_pack,
             save_studio_pack,

@@ -902,3 +902,521 @@ fn pet_nearby_and_move_toward_pet_parse_and_every_bundled_pet_uses_them() {
         );
     }
 }
+
+/// Hostile and gallery-bound input: archive limits, the file allow-list,
+/// atomic installs and updates, canonical export, and the publish rules.
+mod hardening {
+    use super::super::{
+        builtin, limits,
+        loader::{self, InstallMode},
+        manifest::{self, Event, Version},
+        sprites, Report, Signal,
+    };
+    use super::{errors, parse, repo_pack, MINIMAL};
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+
+    fn scratch(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("perch-hard-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn copy_tree(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap().flatten() {
+            let target = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+
+    /// A bundled pack copied somewhere it can be edited.
+    fn editable(name: &str, root: &Path) -> PathBuf {
+        let target = root.join(name);
+        copy_tree(&repo_pack(name), &target);
+        target
+    }
+
+    fn zip_of(path: &Path, files: &[(&str, &[u8])]) {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        let options: zip::write::FileOptions<()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in files {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    fn install_error(files: &[(&str, &[u8])], tag: &str) -> String {
+        let root = scratch(tag);
+        let archive = root.join("x.petpack");
+        zip_of(&archive, files);
+        let error = loader::install(&archive, &root).unwrap_err();
+        let _ = std::fs::remove_dir_all(&root);
+        error
+    }
+
+    fn gecko_manifest() -> Vec<u8> {
+        std::fs::read(repo_pack("gecko-glass").join("pet.json")).unwrap()
+    }
+
+    #[test]
+    fn an_archive_with_too_many_entries_is_refused_with_the_limit() {
+        let names: Vec<String> = (0..=limits::MAX_ARCHIVE_ENTRIES)
+            .map(|i| format!("sprites/s{i}.png"))
+            .collect();
+        let mut files: Vec<(&str, &[u8])> = vec![("pet.json", b"{}")];
+        files.extend(names.iter().map(|n| (n.as_str(), &b"x"[..])));
+        let error = install_error(&files, "entries");
+        assert!(error.contains("entries"), "{error}");
+        assert!(
+            error.contains(&limits::MAX_ARCHIVE_ENTRIES.to_string()),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_zip_bomb_is_stopped_by_the_per_file_and_total_limits() {
+        let big = vec![0_u8; (limits::MAX_ENTRY_BYTES + 1) as usize];
+        let error = install_error(&[("pet.json", b"{}"), ("sprites/a.png", &big)], "bomb-one");
+        assert!(error.contains("MiB"), "{error}");
+        // Each file is under the cap; together they are over the total.
+        let chunk = vec![0_u8; (limits::MAX_ENTRY_BYTES - 1) as usize];
+        let error = install_error(
+            &[
+                ("pet.json", b"{}"),
+                ("sprites/a.png", &chunk),
+                ("sprites/b.png", &chunk),
+                ("sprites/c.png", &chunk),
+                ("sprites/d.png", &chunk),
+                ("sprites/e.png", &chunk),
+            ],
+            "bomb-total",
+        );
+        assert!(error.contains("expands to more than"), "{error}");
+    }
+
+    #[test]
+    fn archive_entries_that_escape_or_do_not_belong_are_refused_by_name() {
+        let error = install_error(&[("pet.json", b"{}"), ("../evil.txt", b"x")], "escape");
+        assert!(error.contains("outside the pack folder"), "{error}");
+        let error = install_error(&[("pet.json", b"{}"), ("run.sh", b"x")], "stray");
+        assert!(error.contains("`run.sh` is not allowed"), "{error}");
+        let error = install_error(&[("pet.json", b"{}"), ("sprites/Idle.PNG", b"x")], "case");
+        assert!(error.contains("not allowed"), "{error}");
+        let error = install_error(&[("readme.md", b"x")], "no-manifest");
+        assert!(error.contains("no pet.json"), "{error}");
+    }
+
+    #[test]
+    fn archive_symlinks_are_refused() {
+        let root = scratch("symlink");
+        let archive = root.join("x.petpack");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        let plain: zip::write::FileOptions<()> = zip::write::FileOptions::default();
+        zip.start_file("pet.json", plain).unwrap();
+        zip.write_all(b"{}").unwrap();
+        zip.add_symlink("sprites/idle.png", "/etc/passwd", plain)
+            .unwrap();
+        zip.finish().unwrap();
+        let error = loader::install(&archive, &root).unwrap_err();
+        assert!(error.contains("symbolic link"), "{error}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_wrapping_folder_and_os_litter_in_an_archive_are_tolerated() {
+        let root = scratch("wrapped");
+        let archive = root.join("x.petpack");
+        let gecko = repo_pack("gecko-glass");
+        let manifest = gecko_manifest();
+        let sprite_names: Vec<String> = std::fs::read_dir(gecko.join("sprites"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        let sprite_bytes: Vec<Vec<u8>> = sprite_names
+            .iter()
+            .map(|n| std::fs::read(gecko.join("sprites").join(n)).unwrap())
+            .collect();
+        let paths: Vec<String> = sprite_names
+            .iter()
+            .map(|n| format!("glass/sprites/{n}"))
+            .collect();
+        let mut files: Vec<(&str, &[u8])> = vec![
+            ("glass/pet.json", &manifest),
+            ("__MACOSX/glass/._pet.json", b"x"),
+            ("glass/.DS_Store", b"x"),
+        ];
+        files.extend(
+            paths
+                .iter()
+                .zip(&sprite_bytes)
+                .map(|(p, b)| (p.as_str(), b.as_slice())),
+        );
+        zip_of(&archive, &files);
+        let installed = loader::install(&archive, &root).expect("wrapped archive installs");
+        assert_eq!(installed.id, "com.perch.gecko-glass");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_huge_png_is_refused_from_its_header_before_it_is_decoded() {
+        let root = scratch("png");
+        let path = root.join("wide.png");
+        let (width, height) = (limits::MAX_PNG_WIDTH + 1, 4);
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().unwrap();
+            writer
+                .write_image_data(&vec![0; (width * height * 4) as usize])
+                .unwrap();
+        }
+        std::fs::write(&path, bytes).unwrap();
+        let mut report = Report::default();
+        assert!(sprites::load(&path, "sprites/wide.png", 1, &mut report).is_none());
+        let found = errors(&report).join("\n");
+        assert!(found.contains("at most"), "{found}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn behaviour_bounds_name_the_path_and_the_limit() {
+        let transitions: Vec<String> = (0..=limits::MAX_TRANSITIONS_PER_STATE)
+            .map(|_| r#"{ "to": "rest" }"#.to_string())
+            .collect();
+        let text = MINIMAL.replace(
+            r#""animations": {"#,
+            &format!(
+                r#""behavior": {{ "initial": "rest", "states": {{ "rest": {{ "transitions": [{}] }} }} }},
+  "animations": {{"#,
+                transitions.join(",")
+            ),
+        );
+        let (_, report) = parse(&text);
+        let found = errors(&report).join("\n");
+        assert!(
+            found.contains("behavior.states.rest.transitions"),
+            "{found}"
+        );
+        let tags = (0..=limits::MAX_TAGS)
+            .map(|i| format!("\"t{i}\""))
+            .collect::<Vec<_>>();
+        let text = MINIMAL.replace(
+            r#""animations": {"#,
+            &format!(r#""tags": [{}], "animations": {{"#, tags.join(",")),
+        );
+        let (_, report) = parse(&text);
+        assert!(errors(&report).join("\n").contains("tags"), "tags");
+        let text = MINIMAL.replace("\"frames\": 4", "\"frames\": 65");
+        let (_, report) = parse(&text);
+        assert!(
+            errors(&report)
+                .join("\n")
+                .contains("animations.idle.frames"),
+            "frames"
+        );
+        let text = MINIMAL.replace("\"fps\": 6", "\"fps\": 61");
+        let (_, report) = parse(&text);
+        assert!(
+            errors(&report).join("\n").contains("animations.idle.fps"),
+            "fps"
+        );
+    }
+
+    #[test]
+    fn versions_order_numerically_and_reject_anything_else() {
+        assert!(Version::parse("1.10.0") > Version::parse("1.9.9"));
+        assert_eq!(Version::parse("1.0"), None);
+        assert_eq!(Version::parse("1.0.0.0"), None);
+        assert_eq!(Version::parse("1.0.x"), None);
+    }
+
+    #[test]
+    fn an_update_replaces_a_lower_version_and_nothing_else() {
+        let root = scratch("update");
+        let packs = root.join("packs");
+        std::fs::create_dir_all(&packs).unwrap();
+        let work = editable("gecko-glass", &root);
+        loader::install(&work, &packs).expect("first install");
+
+        let error = loader::install_with(&work, &packs, InstallMode::Update).unwrap_err();
+        assert!(
+            error.contains("higher"),
+            "same version is not an update: {error}"
+        );
+        let error = loader::install(&work, &packs).unwrap_err();
+        assert!(error.contains("already installed"), "{error}");
+
+        let manifest = std::fs::read_to_string(work.join("pet.json")).unwrap();
+        std::fs::write(
+            work.join("pet.json"),
+            manifest.replace("\"version\": \"1.0.0\"", "\"version\": \"1.1.0\""),
+        )
+        .unwrap();
+        let updated = loader::install_with(&work, &packs, InstallMode::Update).expect("update");
+        assert_eq!(updated.version, "1.1.0");
+        assert_eq!(
+            loader::scan(&packs).len(),
+            1,
+            "updated in place, not duplicated"
+        );
+
+        std::fs::write(
+            work.join("pet.json"),
+            manifest.replace("\"version\": \"1.0.0\"", "\"version\": \"0.9.0\""),
+        )
+        .unwrap();
+        let error = loader::install_with(&work, &packs, InstallMode::Update).unwrap_err();
+        assert!(error.contains("higher"), "{error}");
+        let still = loader::scan(&packs);
+        assert_eq!(
+            still[0].summary.version, "1.1.0",
+            "a refused update leaves the pack alone"
+        );
+        assert!(still[0].summary.loadable);
+        let leftovers: Vec<_> = std::fs::read_dir(&packs)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with(".incoming") || n.starts_with(".old"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+
+        let error = loader::install_with(
+            &repo_pack("cat-tabby"),
+            &root.join("empty"),
+            InstallMode::Update,
+        )
+        .unwrap_err();
+        assert!(error.contains("nothing to update"), "{error}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_failed_install_never_damages_what_was_installed() {
+        let root = scratch("atomic");
+        let packs = root.join("packs");
+        std::fs::create_dir_all(&packs).unwrap();
+        loader::install(&repo_pack("gecko-glass"), &packs).unwrap();
+        // A pack that fails validation never reaches the swap.
+        let broken = editable("cat-tabby", &root);
+        std::fs::write(broken.join("pet.json"), "{ not json").unwrap();
+        assert!(loader::install(&broken, &packs).is_err());
+        let listing = loader::scan(&packs);
+        assert_eq!(listing.len(), 1);
+        assert!(listing[0].summary.loadable);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn export_is_canonical_so_the_same_pack_always_hashes_the_same() {
+        let root = scratch("canonical");
+        let work = editable("gecko-glass", &root);
+        std::fs::write(work.join("notes.txt"), "stray").unwrap();
+        let first = loader::export(&work, &root.join("a.petpack")).unwrap();
+        // Same content, different modification times.
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+        for relative in ["pet.json", "preview.png"] {
+            std::fs::File::options()
+                .write(true)
+                .open(work.join(relative))
+                .unwrap()
+                .set_modified(later)
+                .unwrap();
+        }
+        let second = loader::export(&work, &root.join("b.petpack")).unwrap();
+        assert_eq!(first.sha256, second.sha256);
+        assert_eq!(
+            std::fs::read(root.join("a.petpack")).unwrap(),
+            std::fs::read(root.join("b.petpack")).unwrap()
+        );
+        assert_eq!(
+            loader::hash_petpack(&root.join("a.petpack")).unwrap(),
+            first.sha256
+        );
+        assert_eq!(first.sha256.len(), 64);
+
+        let mut zip =
+            zip::ZipArchive::new(std::fs::File::open(root.join("a.petpack")).unwrap()).unwrap();
+        let names: Vec<String> = zip.file_names().map(String::from).collect();
+        assert!(!names.iter().any(|n| n == "notes.txt"), "{names:?}");
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "entries are sorted");
+        assert!(names.iter().all(|n| loader::is_allowed_path(n)));
+        let entry = zip.by_index(0).unwrap();
+        assert_eq!(entry.last_modified().unwrap().year(), 1980);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_bundled_pack_passes_the_publish_rules() {
+        for name in ["budgie-classic", "cat-tabby", "gecko-glass", "squirrel-red"] {
+            let report = loader::validate_for_publish(&repo_pack(name));
+            assert!(errors(&report).is_empty(), "{name}: {:?}", errors(&report));
+        }
+    }
+
+    #[test]
+    fn each_publish_rule_fails_with_its_own_message() {
+        let root = scratch("publish");
+        let check = |tag: &str, edit: &dyn Fn(&Path)| -> String {
+            let work = editable("gecko-glass", &root.join(tag));
+            edit(&work);
+            errors(&loader::validate_for_publish(&work)).join("\n")
+        };
+        let rewrite = |from: &'static str, to: &'static str| {
+            move |dir: &Path| {
+                let text = std::fs::read_to_string(dir.join("pet.json")).unwrap();
+                assert!(text.contains(from), "fixture lacks {from}");
+                std::fs::write(dir.join("pet.json"), text.replace(from, to)).unwrap();
+            }
+        };
+        assert!(check("licence", &rewrite("\"CC-BY-4.0\"", "\"Beerware\"")).contains("licence"));
+        assert!(check("version", &rewrite("\"1.0.0\"", "\"1.0\"")).contains("version"));
+        assert!(check("id", &rewrite("com.perch.gecko-glass", "Gecko")).contains("reverse-DNS"));
+        assert!(check("size", &rewrite("\"width\": 48", "\"width\": 32")).contains("sprite.width"));
+        assert!(check("no-preview", &|d| std::fs::remove_file(
+            d.join("preview.png")
+        )
+        .unwrap())
+        .contains("preview.png"));
+        assert!(check("no-licence-file", &|d| std::fs::remove_file(
+            d.join("LICENSE.txt")
+        )
+        .unwrap())
+        .contains("LICENSE.txt"));
+        assert!(
+            check("stray", &|d| std::fs::write(d.join("run.sh"), "x").unwrap()).contains("run.sh")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn published_names_are_append_only() {
+        // Renaming or removing any of these breaks packs already in the wild.
+        // Adding a name is safe: add it here in the same change.
+        let events = [
+            "surface_lost",
+            "surface_moved_fast",
+            "grabbed",
+            "released",
+            "clicked",
+            "cursor_nearby",
+            "cursor_fast",
+            "user_idle_long",
+            "user_returned",
+            "long_session",
+            "break_taken",
+            "app_category_changed",
+            "hour_changed",
+            "startup",
+            "low_energy",
+            "thrown",
+            "landed_hard",
+            "petted",
+            "pet_nearby",
+            "new_day",
+            "landed",
+            "edge_reached",
+        ];
+        for name in events {
+            assert!(
+                Event::parse(name).is_some(),
+                "event `{name}` was removed or renamed"
+            );
+        }
+        assert_eq!(
+            Event::ALL.len(),
+            events.len(),
+            "new event: add it to this list"
+        );
+        let signals = [
+            "idle_seconds",
+            "session_minutes",
+            "app_category",
+            "hour",
+            "energy",
+            "mood",
+            "surface_count",
+            "cursor_distance",
+            "cursor_speed",
+            "is_dragging",
+            "pet_distance",
+            "affection",
+            "days_together",
+        ];
+        let live: Vec<&str> = Signal::ALL.iter().map(|s| s.as_str()).collect();
+        for name in signals {
+            assert!(
+                live.contains(&name),
+                "signal `{name}` was removed or renamed"
+            );
+        }
+        assert_eq!(live.len(), signals.len(), "new signal: add it to this list");
+        let actions = [
+            "move_to_random_surface",
+            "move_to_nearest_surface",
+            "move_toward_cursor",
+            "flee_from_cursor",
+            "patrol_current_surface",
+            "return_to_home_surface",
+            "move_toward_pet",
+        ];
+        let live: Vec<&str> = manifest::Action::ALL.iter().map(|a| a.as_str()).collect();
+        for name in actions {
+            assert!(
+                live.contains(&name),
+                "action `{name}` was removed or renamed"
+            );
+        }
+        assert_eq!(live.len(), actions.len(), "new action: add it to this list");
+        let classes: Vec<&str> = manifest::LocomotionClass::ALL
+            .iter()
+            .map(|c| c.as_str())
+            .collect();
+        for name in ["flier", "climber", "walker", "hopper"] {
+            assert!(
+                classes.contains(&name),
+                "class `{name}` was removed or renamed"
+            );
+        }
+    }
+
+    #[test]
+    fn the_json_schema_carries_the_same_limits_as_the_code() {
+        let schema: serde_json::Value = serde_json::from_str(builtin::SCHEMA).unwrap();
+        let p = &schema["properties"];
+        assert_eq!(p["tags"]["maxItems"], limits::MAX_TAGS);
+        assert_eq!(p["description"]["maxLength"], limits::MAX_DESCRIPTION_CHARS);
+        assert_eq!(p["animations"]["maxProperties"], limits::MAX_ANIMATIONS);
+        assert_eq!(
+            p["animations"]["additionalProperties"]["properties"]["frames"]["maximum"],
+            limits::MAX_FRAMES
+        );
+        assert_eq!(
+            p["animations"]["additionalProperties"]["properties"]["fps"]["maximum"],
+            limits::MAX_FPS
+        );
+        assert_eq!(
+            p["behavior"]["properties"]["states"]["maxProperties"],
+            limits::MAX_STATES
+        );
+        assert_eq!(p["reactions"]["maxItems"], limits::MAX_REACTIONS);
+        assert_eq!(
+            p["behavior"]["properties"]["states"]["additionalProperties"]["properties"]
+                ["transitions"]["maxItems"],
+            limits::MAX_TRANSITIONS_PER_STATE
+        );
+    }
+}
