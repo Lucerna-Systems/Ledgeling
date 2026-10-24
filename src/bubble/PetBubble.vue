@@ -423,6 +423,7 @@ onUnmounted(() => {
           <button v-if="!task.done" type="button" class="secondary" :disabled="task.status === 'cancelling'" @click="control('cancel')">Cancel task</button>
         </div>
       </template>
+      </template>
     </section>
     </div>
     </div>
