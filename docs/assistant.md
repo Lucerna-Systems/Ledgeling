@@ -24,8 +24,8 @@ application's main window.
 Drag a pet into an open folder or onto a folder icon to give that pet a working
 folder: in Finder on macOS, and in Explorer or onto the desktop on Windows. The
 path comes from the drop itself, not from inspecting the window it landed in.
-The drop briefly leaves a uniquely named hidden `.perch-handoff-*` file in the
-folder, and the folder it landed in is the one bound. It is removed one second
+The drop briefly leaves a uniquely named hidden `.ledgeling-handoff-*` file in the
+folder (earlier versions used `.perch-handoff-*`, which Ledgeling continues to clean up if found), and the folder it landed in is the one bound. It is removed one second
 after completion. No existing file is overwritten.
 
 - **macOS:** the drag is a native file promise, and Finder reports where it

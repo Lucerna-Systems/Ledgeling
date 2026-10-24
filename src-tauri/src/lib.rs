@@ -8,12 +8,14 @@ pub mod autostart;
 pub mod awareness;
 #[cfg(feature = "coding")]
 pub mod coding;
+pub mod companion;
 pub mod engine;
 pub mod migrate;
 pub mod packs;
 pub mod pet;
 pub mod platform;
 pub mod settings;
+pub mod terminal;
 pub mod windows_mgr;
 pub mod world;
 

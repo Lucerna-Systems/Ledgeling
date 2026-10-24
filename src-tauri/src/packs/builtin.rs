@@ -32,6 +32,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/budgie-classic/sprites/happy.png"),
             ),
             (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/petted.png"),
+            ),
+            (
                 "sprites/idle.png",
                 include_bytes!("../../../packs/budgie-classic/sprites/idle.png"),
             ),
@@ -89,6 +97,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/squirrel-red/sprites/happy.png"),
             ),
             (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/petted.png"),
+            ),
+            (
                 "sprites/idle.png",
                 include_bytes!("../../../packs/squirrel-red/sprites/idle.png"),
             ),
@@ -126,12 +142,85 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/gecko-glass/preview.png"),
             ),
             (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/gecko-glass/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/gecko-glass/sprites/petted.png"),
+            ),
+            (
                 "sprites/idle.png",
                 include_bytes!("../../../packs/gecko-glass/sprites/idle.png"),
             ),
             (
                 "sprites/move.png",
                 include_bytes!("../../../packs/gecko-glass/sprites/move.png"),
+            ),
+        ],
+    },
+    BuiltinPack {
+        folder: "cat-tabby",
+        files: &[
+            (
+                "pet.json",
+                include_bytes!("../../../packs/cat-tabby/pet.json"),
+            ),
+            (
+                "LICENSE.txt",
+                include_bytes!("../../../packs/cat-tabby/LICENSE.txt"),
+            ),
+            (
+                "preview.png",
+                include_bytes!("../../../packs/cat-tabby/preview.png"),
+            ),
+            (
+                "sprites/alert.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/alert.png"),
+            ),
+            (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/fall.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/fall.png"),
+            ),
+            (
+                "sprites/happy.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/happy.png"),
+            ),
+            (
+                "sprites/idle.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/idle.png"),
+            ),
+            (
+                "sprites/jump.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/jump.png"),
+            ),
+            (
+                "sprites/land.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/land.png"),
+            ),
+            (
+                "sprites/move.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/move.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/petted.png"),
+            ),
+            (
+                "sprites/preen.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/preen.png"),
+            ),
+            (
+                "sprites/sleep.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/sleep.png"),
+            ),
+            (
+                "sprites/stretch.png",
+                include_bytes!("../../../packs/cat-tabby/sprites/stretch.png"),
             ),
         ],
     },

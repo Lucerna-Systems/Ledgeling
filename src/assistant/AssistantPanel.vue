@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowUp, FolderPlus, Globe, Paperclip, Pencil, Plus, Search, Sparkles, X } from '@lucide/vue'
 import { pets } from '../state'
-import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, effectiveConnection, livePet, providerReady, taskCall } from './state'
+import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, promptDraft, effectiveConnection, livePet, providerReady, taskCall } from './state'
 import { presets, providerLabels, type Task, type TaskRequest } from './types'
 import ChatTurn from './ChatTurn.vue'
 import PetFace from './PetFace.vue'
@@ -11,7 +11,7 @@ import './assistant.css'
 
 const emit = defineEmits<{ providers: [] }>()
 
-const prompt = ref('')
+const prompt = promptDraft
 const roots = ref<string[]>([])
 const attachments = ref<string[]>([])
 const preset = ref('')

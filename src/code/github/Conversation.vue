@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, CircleAlert, Eye, LoaderCircle, Send } from '@lucide/vue'
-import { mac } from '../shortcuts'
+import { mac } from '../../terminal/shortcuts'
 import Avatar from './Avatar.vue'
 import GhMarkdown from './GhMarkdown.vue'
 import { ago } from './format'

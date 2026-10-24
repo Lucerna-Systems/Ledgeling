@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { terms } from '../terminals'
+import { terms } from './terminals'
 
 /** Shows one live terminal. The terminal itself belongs to `terminals.ts`;
  *  this only borrows its element while visible, so whichever view became
@@ -18,6 +18,9 @@ function fit() {
 function mount() {
   const entry = terms.get(props.id)
   if (!entry || !host.value) return
+  // One view shows one terminal at a time. Switching its `id` must take the
+  // previous terminal's element out, or it stays underneath the new one.
+  for (const child of [...host.value.children]) if (child !== entry.element) child.remove()
   if (entry.element.parentElement !== host.value) host.value.appendChild(entry.element)
   if (!entry.opened) { entry.term.open(entry.element); entry.opened = true }
   requestAnimationFrame(() => { fit(); if (props.active && props.focus) entry.term.focus() })

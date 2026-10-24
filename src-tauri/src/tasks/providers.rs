@@ -726,11 +726,14 @@ mod tests {
         .is_err());
     }
     #[test]
-    #[ignore = "Requires locally running Ollama and PERCH_TEST_MODEL"]
+    #[ignore = "Requires locally running Ollama and LEDGELING_TEST_MODEL (or PERCH_TEST_MODEL)"]
     fn live_ollama() {
+        let model = std::env::var("LEDGELING_TEST_MODEL")
+            .or_else(|_| std::env::var("PERCH_TEST_MODEL"))
+            .expect("LEDGELING_TEST_MODEL or PERCH_TEST_MODEL");
         let p = HttpModel(Connection {
             kind: ProviderKind::Ollama,
-            model: std::env::var("PERCH_TEST_MODEL").expect("PERCH_TEST_MODEL"),
+            model,
             ..Default::default()
         });
         assert!(p.capabilities(&Cancel::default()).unwrap().structured);

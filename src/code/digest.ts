@@ -1,6 +1,6 @@
 import { codeState, status } from './state'
 import { live } from './live'
-import { terms } from './terminals'
+import { terms } from '../terminal/terminals'
 import type { Note } from './types'
 
 export interface DigestTerminal { title: string; state: string; tail: string[] }

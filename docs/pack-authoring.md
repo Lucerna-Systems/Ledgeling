@@ -58,14 +58,16 @@ idle.png →  [frame 1][frame 2][frame 3][frame 4]
 Save over `sprites/idle.png` and `sprites/move.png`. The pet on screen changes as
 soon as you save — no restart, nothing to press.
 
-**Only `idle` and `move` are required.** Every other animation is optional, and if
-it is missing Ledgeling uses one you did draw:
+**No single animation is required — one is enough.** `idle` and `move` stand in
+for each other, and if any other is missing Ledgeling uses one you did draw:
 
 ```
 climb → move → idle        land  → idle        sleep → idle
 jump  → move → idle        happy → idle        alert → idle
 fall  → move → idle        takeoff → move → idle
 busy  → preen → idle       attention → alert → happy → idle
+dizzy → alert → idle       petted → happy → idle
+stretch → idle
 ```
 
 So a two-picture pack is a complete pet. Adding more art only ever makes it better.
@@ -153,7 +155,9 @@ When you want more, describe what it does as a list of states:
 - `weight` is how likely a transition is compared to the others in the same list.
 - `action` is one of the movements Ledgeling already knows how to do:
   `move_to_random_surface`, `move_to_nearest_surface`, `move_toward_cursor`,
-  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`.
+  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`,
+  `move_toward_pet` (walk or hop to stand beside the nearest other pet; it does
+  nothing when the pet is alone or cannot reach it).
 - `when` is an optional condition. If it is false, that transition cannot happen.
 
 Conditions are deliberately tiny — a signal, a comparison, a value, joined with
@@ -167,7 +171,10 @@ hour >= 22 || hour < 6
 ```
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
-`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `is_dragging`.
+`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `pet_distance`
+(pixels to the nearest other pet; infinite when there is none),
+`affection` (0 to 1, grows when the pet is petted and clicked, cools a little
+during long absences), `days_together`, `is_dragging`.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:
@@ -182,6 +189,37 @@ Anything else is an error that tells you so, with the alternatives listed.
 
 `cooldown` is seconds, and it is how you keep a pet from becoming annoying. Use it
 generously on anything to do with nudging.
+
+**Picking up, throwing and petting.** Three events come from the pointer:
+
+- `thrown` — the user let go of the pet while moving the pointer fast, so it flies.
+  A pack with no `thrown` reaction gets plain `released` instead, as it always did.
+- `landed_hard` — a thrown pet came down fast. Pair it with a `dizzy` clip.
+- `petted` — the pointer was rubbed back and forth over the pet. Pair it with a
+  `petted` clip (eyes closed, a heart) and a short state:
+
+```json
+"states": {
+  "dizzy": { "clip": "dizzy", "duration": [2, 3], "transitions": [{ "to": "perch" }] },
+  "enjoy": { "clip": "petted", "duration": [2, 4], "transitions": [{ "to": "perch" }] }
+},
+"reactions": [
+  { "on": "thrown", "goto": "dizzy", "priority": 90 },
+  { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+  { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
+]
+```
+
+`pet_nearby` fires once when another pet comes within about 140 px, and again
+only after they have parted by more than 200 px; use a long `cooldown` so a
+greeting stays special.
+
+`new_day` fires once when the user's first day with the pet rolls over to the
+next calendar day it is on screen; a `greet` reaction with a long `cooldown`
+makes a good morning hello.
+
+Packs without a `behavior` block get these states and reactions for free; both
+clips are optional and fall back to `alert`/`happy`, then `idle`.
 
 ---
 

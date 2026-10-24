@@ -12,7 +12,6 @@ pub mod github;
 pub mod launch;
 pub mod notes;
 pub mod ports;
-pub mod pty;
 pub mod run;
 pub mod store;
 pub mod tools;
@@ -25,13 +24,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+pub use crate::terminal::pty;
 pub use store::Store;
 
 /// Everything coding mode holds while it is on. Lives behind its own lock,
 /// never the engine's, so terminal output can stream without touching pets.
 pub struct CodingService {
     pub store: Store,
-    pub ptys: HashMap<u32, pty::Session>,
+    pub ptys: crate::terminal::Registry,
     pub watchers: HashMap<PathBuf, watch::Watcher>,
     /// Each worktree's terminal split layout, as the window last drew it.
     /// Terminals end with the app, so the layouts are never written to disk.
@@ -39,26 +39,22 @@ pub struct CodingService {
     pub notes: notes::Notes,
     /// Each worktree's GitHub repository, found once by `gh repo view`.
     pub github: HashMap<PathBuf, github::Repo>,
-    next_pty: u32,
 }
 
 impl CodingService {
     pub fn new(config_dir: &Path) -> Self {
         Self {
             store: Store::load(&config_dir.join("coding")),
-            ptys: HashMap::new(),
+            ptys: Default::default(),
             watchers: HashMap::new(),
             layouts: HashMap::new(),
             notes: notes::Notes::default(),
             github: HashMap::new(),
-            next_pty: 1,
         }
     }
 
     pub fn next_pty_id(&mut self) -> u32 {
-        let id = self.next_pty;
-        self.next_pty += 1;
-        id
+        self.ptys.next_id()
     }
 
     /// Stops every terminal and run process and every watcher.

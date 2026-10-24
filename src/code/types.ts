@@ -5,8 +5,8 @@ export type MainView = 'terminal' | 'editor' | 'changes' | 'github'
 export interface Worktree { path: string; branch: string | null; head: string; main: boolean; locked: boolean; prunable: boolean }
 export interface WorktreeView extends Worktree { name: string; petId: number | null }
 export interface ProjectView { path: string; name: string; worktrees: WorktreeView[]; problem: string | null }
-export type SessionKind = 'shell' | 'agent' | 'run'
-export interface SessionView { id: number; kind: SessionKind; worktree: string; title: string; pid: number | null; alive: boolean; attention: 'busy' | 'needs_user' | null }
+import type { SessionView } from '../terminal/types'
+export type { AgentStatus, PtyOutput, SessionKind, SessionView } from '../terminal/types'
 export interface CodeState { projects: ProjectView[]; selected: string | null; pinned: boolean; focus: boolean; sessions: SessionView[]; notes: number }
 export type Tone = 'info' | 'ask' | 'good' | 'bad'
 export interface Note { id: number; at: number; worktree: string; text: string; tone: Tone }
@@ -17,8 +17,6 @@ export interface Changes { paths: string[]; git: boolean }
 
 export interface Entry { name: string; path: string; dir: boolean; ignored: boolean }
 export interface FileText { text: string; modified: number; binary: boolean; tooLarge: boolean }
-
-export type PtyOutput = { type: 'data'; data: string } | { type: 'exit'; code: number | null }
 
 export interface RunConfig { name: string; command: string; cwd: string; port: number | null; url: string | null; env: Record<string, string> }
 export interface Diagnostic { tier: string; file: string; path: string; problem: string; expected: string }

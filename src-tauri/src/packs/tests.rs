@@ -200,15 +200,54 @@ fn an_unknown_class_or_surface_lists_the_valid_ones() {
 }
 
 #[test]
-fn missing_required_animations_are_errors() {
+fn a_pack_with_only_idle_loads_and_uses_it_for_everything() {
     let text = MINIMAL.replace(
-        "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
-        "\"flap\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        ",\n    \"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        "",
     );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("move"), "idle");
+    assert_eq!(manifest.resolve_clip("climb"), "idle");
+}
+
+#[test]
+fn a_pack_with_only_move_plays_it_in_place_of_idle() {
+    let text = MINIMAL.replace(
+        "\"idle\": { \"file\": \"sprites/idle.png\", \"frames\": 4, \"fps\": 6 },\n    ",
+        "",
+    );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    let manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("idle"), "move");
+    assert_eq!(manifest.resolve_clip("sleep"), "move");
+}
+
+#[test]
+fn a_pack_with_some_other_clip_still_loads() {
+    let text = MINIMAL
+        .replace(
+            "\"move\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+            "\"flap\": { \"file\": \"sprites/move.png\", \"frames\": 6, \"fps\": 14 }",
+        )
+        .replace(
+            "\"idle\": { \"file\": \"sprites/idle.png\", \"frames\": 4, \"fps\": 6 },",
+            "",
+        );
+    let (manifest, report) = parse(&text);
+    assert!(!report.has_errors(), "{}", report.text());
+    assert_eq!(manifest.unwrap().resolve_clip("idle"), "flap");
+}
+
+#[test]
+fn a_pack_with_no_animations_is_an_error() {
+    let start = MINIMAL.find("\"animations\"").unwrap();
+    let text = format!("{}\"animations\": {{}}\n}}", &MINIMAL[..start]);
     let (_, report) = parse(&text);
     let message = errors(&report).join("\n");
-    assert!(message.contains("animations.move"), "{message}");
-    assert!(message.contains("required"), "{message}");
+    assert!(message.contains("no animations"), "{message}");
 }
 
 #[test]
@@ -333,7 +372,7 @@ fn omitting_behavior_yields_a_sensible_default_per_class() {
 
 #[test]
 fn the_bundled_packs_load_without_errors() {
-    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
         let pack = loader::load(&repo_pack(name), true)
             .unwrap_or_else(|report| panic!("{name} should load:\n{}", report.text()));
         assert!(!pack.strips.is_empty());
@@ -365,7 +404,10 @@ fn a_third_species_needs_no_code_only_two_strips_and_a_manifest() {
     // The gecko is the format's acceptance test: vertical edges only, no jump,
     // rotated flat to the glass, and nothing the engine had to learn.
     let gecko = loader::load(&repo_pack("gecko-glass"), true).unwrap();
-    assert_eq!(gecko.manifest.animations.len(), 2);
+    // Two required strips; dizzy and petted are optional extras.
+    assert!(gecko.manifest.animations.contains_key("idle"));
+    assert!(gecko.manifest.animations.contains_key("move"));
+    assert_eq!(gecko.manifest.animations.len(), 4);
     assert_eq!(
         gecko.manifest.locomotion.surfaces,
         vec![SurfaceKind::WindowLeft, SurfaceKind::WindowRight]
@@ -446,7 +488,7 @@ fn exported_packs_round_trip_through_the_petpack_archive() {
 
 mod studio_saves {
     use super::super::studio::{save, StudioImage};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn image(name: &str, frames: u32) -> StudioImage {
         let (width, height) = (32 * frames, 32);
@@ -501,6 +543,75 @@ mod studio_saves {
         assert!(summary.loadable);
         assert!(root.join("com.studio.pebble/sprites/idle.png").exists());
         assert!(!root.join(".studio-staging").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_saved_design_opens_again_with_its_pixels() {
+        use super::super::studio::open;
+        let root = root("open");
+        // A 48 px pack written the way Studio writes it.
+        let (width, height) = (48u32 * 2, 48u32);
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        pixels[((20 * width + 60) * 4) as usize..][..4].copy_from_slice(&[9, 8, 7, 255]);
+        let strip = StudioImage {
+            name: "idle".into(),
+            width,
+            height,
+            pixels: pixels.clone(),
+        };
+        let move_strip = StudioImage {
+            name: "move".into(),
+            width: 48,
+            height,
+            pixels: vec![255; 48 * 48 * 4],
+        };
+        let text = manifest("com.studio.pebble", "Pebble").replace(
+            "\"width\": 32, \"height\": 32",
+            "\"width\": 48, \"height\": 48",
+        );
+        save(&root, &text, &[strip, move_strip], &image("preview", 1)).unwrap();
+        let opened = open(&root.join("com.studio.pebble")).unwrap();
+        assert!(opened.manifest.contains("com.studio.pebble"));
+        let idle = opened.strips.iter().find(|s| s.name == "idle").unwrap();
+        assert_eq!((idle.width, idle.height), (96, 48));
+        assert_eq!(idle.pixels, pixels);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn opening_a_pet_that_is_not_48_pixels_is_refused_in_plain_words() {
+        use super::super::studio::open;
+        let root = root("refuse");
+        save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap();
+        let error = open(&root.join("com.studio.pebble")).unwrap_err();
+        assert!(
+            error.contains("48×48") && error.contains("32×32"),
+            "{error}"
+        );
+        assert!(error.contains("Edit its files directly"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_bundled_pet_opens_in_studio_with_all_its_strips() {
+        use super::super::{builtin, studio::open};
+        let root = root("builtin");
+        builtin::restore(&root, &[]).unwrap();
+        for listing in super::super::loader::scan(&root) {
+            let opened = open(Path::new(&listing.summary.directory)).unwrap();
+            assert_eq!(opened.strips.len(), listing.summary.animations.len());
+            for strip in &opened.strips {
+                assert_eq!(strip.height, 48);
+                assert_eq!(strip.width % 48, 0);
+            }
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -570,5 +681,173 @@ mod studio_saves {
         .is_err());
         assert!(!root.join(".studio-staging").exists());
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+// ------------------------------------------------------------ throw and petting
+
+#[test]
+fn thrown_landed_hard_and_petted_parse_as_reaction_events() {
+    for event in ["thrown", "landed_hard", "petted"] {
+        let text = MINIMAL.replace(
+            "\"animations\"",
+            &format!(
+                r#""behavior": {{
+    "initial": "perch",
+    "states": {{ "perch": {{ "transitions": [] }}, "wobble": {{ "transitions": [] }} }}
+  }},
+  "reactions": [{{ "on": "{event}", "goto": "wobble" }}],
+  "animations""#
+            ),
+        );
+        let (manifest, report) = parse(&text);
+        assert!(!report.has_errors(), "{event}: {}", report.text());
+        assert_eq!(manifest.unwrap().reactions[0].on.as_str(), event);
+    }
+}
+
+#[test]
+fn dizzy_and_petted_fall_back_to_what_the_pack_has() {
+    let (manifest, _) = parse(MINIMAL);
+    let mut manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("dizzy"), "idle");
+    assert_eq!(manifest.resolve_clip("petted"), "idle");
+    let clip = manifest.animations["idle"].clone();
+    manifest.animations.insert("alert".into(), clip.clone());
+    assert_eq!(manifest.resolve_clip("dizzy"), "alert");
+    manifest.animations.insert("happy".into(), clip);
+    assert_eq!(manifest.resolve_clip("petted"), "happy");
+}
+
+#[test]
+fn a_pack_with_no_behavior_still_reacts_to_throws_and_petting() {
+    let (manifest, _) = parse(MINIMAL);
+    let manifest = manifest.unwrap();
+    let defaults = manifest::default_reactions(&manifest.behavior);
+    for event in ["thrown", "landed_hard", "petted"] {
+        assert!(
+            defaults.iter().any(|r| r.on.as_str() == event),
+            "default reactions include {event}"
+        );
+    }
+}
+
+#[test]
+fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
+        let pack = loader::load(&repo_pack(name), true).unwrap();
+        for event in ["thrown", "landed_hard", "petted"] {
+            assert!(
+                pack.manifest
+                    .reactions
+                    .iter()
+                    .any(|r| r.on.as_str() == event),
+                "{name} reacts to {event}"
+            );
+        }
+        assert!(pack.strips.contains_key("dizzy"), "{name} draws dizzy");
+        assert!(pack.strips.contains_key("petted"), "{name} draws petted");
+        assert!(
+            pack.report
+                .diagnostics
+                .iter()
+                .all(|d| d.tier != Tier::Error && d.tier != Tier::Warning),
+            "{name}: {}",
+            pack.report.text()
+        );
+    }
+}
+
+// ----------------------------------------------------------------------- the cat
+
+#[test]
+fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warnings() {
+    assert_eq!(super::builtin::BUILTIN.len(), 4);
+    let root = std::env::temp_dir().join(format!("perch-builtin-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let written = super::builtin::restore(&root, &[]).unwrap();
+    assert!(written.contains(&"cat-tabby".to_string()), "{written:?}");
+    assert!(root.join("cat-tabby/pet.json").is_file());
+    let listings = loader::scan(&root);
+    assert_eq!(listings.len(), 4);
+    for listing in listings {
+        assert!(listing.summary.loadable, "{}", listing.summary.name);
+        assert_eq!(listing.summary.errors, 0, "{}", listing.report.text());
+        assert_eq!(listing.summary.warnings, 0, "{}", listing.report.text());
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_cat_is_a_hopper_that_stays_on_floors_and_hops_140() {
+    let cat = loader::load(&repo_pack("cat-tabby"), true).unwrap();
+    assert_eq!(cat.manifest.name, "Miso the Cat");
+    assert_eq!(cat.manifest.locomotion.class, LocomotionClass::Hopper);
+    assert_eq!(cat.manifest.locomotion.jump.max_gap, 140.);
+    assert_eq!(cat.manifest.locomotion.jump.arc_height, 60.);
+    for kind in cat.manifest.locomotion.surfaces.iter() {
+        assert_eq!(kind.normal().y, -1., "{kind:?} is somewhere to stand");
+    }
+    // `stretch` is optional: a pack without it plays idle.
+    assert_eq!(cat.manifest.resolve_clip("stretch"), "stretch");
+    let (bare, _) = parse(MINIMAL);
+    assert_eq!(bare.unwrap().resolve_clip("stretch"), "idle");
+}
+
+// ------------------------------------------------------------------- pet distance
+
+#[test]
+fn pet_distance_is_a_condition_and_is_false_when_the_pet_is_alone() {
+    use super::expr::{Condition, Signals};
+    let near = Condition::parse("pet_distance < 120").unwrap();
+    let alone = Signals::default();
+    assert!(alone.pet_distance.is_infinite());
+    assert!(!near.evaluate(&alone));
+    assert!(near.evaluate(&Signals {
+        pet_distance: 100.,
+        ..alone
+    }));
+    let compound = Condition::parse("pet_distance < 120 && energy < 0.4").unwrap();
+    assert!(compound.evaluate(&Signals {
+        pet_distance: 100.,
+        energy: 0.2,
+        ..alone
+    }));
+    assert!(!compound.evaluate(&Signals {
+        pet_distance: 100.,
+        energy: 0.9,
+        ..alone
+    }));
+}
+
+#[test]
+fn an_unknown_signal_still_lists_the_valid_ones_including_pet_distance() {
+    let error = super::expr::Condition::parse("friend_distance < 3").unwrap_err();
+    assert!(
+        error.contains("Unknown signal `friend_distance`"),
+        "{error}"
+    );
+    assert!(error.contains("pet_distance"), "{error}");
+}
+
+#[test]
+fn pet_nearby_and_move_toward_pet_parse_and_every_bundled_pet_uses_them() {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
+        let pack = loader::load(&repo_pack(name), true).unwrap();
+        assert!(
+            pack.manifest
+                .reactions
+                .iter()
+                .any(|r| r.on.as_str() == "pet_nearby" && r.cooldown >= 120.),
+            "{name} greets a neighbour, rarely"
+        );
+        assert!(
+            pack.manifest
+                .behavior
+                .states
+                .values()
+                .any(|s| s.action == Some(manifest::Action::MoveTowardPet)),
+            "{name} can visit another pet"
+        );
     }
 }

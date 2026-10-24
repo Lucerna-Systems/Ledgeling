@@ -10,7 +10,7 @@ pub const DEFAULT_ACCENT: &str = "#5b5bd6";
 /// longer matches a preset, so it is treated as "never chosen" and replaced.
 const RETIRED_DEFAULT_ACCENT: &str = "#31725b";
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct PetSetting {
     pub pack_id: String,
@@ -18,6 +18,49 @@ pub struct PetSetting {
     /// until the pet has actually stood somewhere.
     pub x: Option<f64>,
     pub y: Option<f64>,
+    /// The folder this pet works in: where its terminal opens and what its
+    /// actions run on. Chosen from its bubble, kept across launches.
+    pub folder: Option<String>,
+    /// The name the user gave this pet; the pack's name when absent.
+    pub name: Option<String>,
+    /// ISO dates (`YYYY-MM-DD`): when they met and when it was last on screen.
+    pub met: Option<String>,
+    pub last_seen: Option<String>,
+    /// Days they have spent together.
+    pub days: u32,
+    /// How fond of the user it is, 0 to 1.
+    pub affection: f64,
+}
+impl Default for PetSetting {
+    fn default() -> Self {
+        Self {
+            pack_id: String::new(),
+            x: None,
+            y: None,
+            folder: None,
+            name: None,
+            met: None,
+            last_seen: None,
+            days: 1,
+            affection: 0.2,
+        }
+    }
+}
+
+/// The longest name a pet can be given.
+pub const MAX_PET_NAME: usize = 24;
+
+/// A trimmed, length-limited name, or `None` when nothing is left of it.
+pub fn clean_name(name: &str) -> Option<String> {
+    let trimmed: String = name.trim().chars().take(MAX_PET_NAME).collect();
+    let trimmed = trimmed.trim().to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
+}
+
+fn clean_date(date: &Option<String>) -> Option<String> {
+    date.as_deref()
+        .filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
+        .map(str::to_string)
 }
 /// How the companion UI is coloured. `System` follows the OS appearance,
 /// resolved per-window on the frontend and via `set_theme(None)` natively.
@@ -58,15 +101,18 @@ pub struct Settings {
     /// Developer tools: coding mode and its tray entry. Off for everyone who
     /// did not ask, so none of it loads.
     pub developer_mode: bool,
+    /// Set once the first-run welcome has dropped a pet onto the desktop, so
+    /// it never repeats. Installs that already have pets count as welcomed.
+    pub welcomed: bool,
+    /// The "meet your pet" tip card on the Pets page has been dismissed.
+    pub tips_dismissed: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
             version: 1,
-            pets: vec![PetSetting {
-                pack_id: "com.perch.budgie-classic".into(),
-                ..Default::default()
-            }],
+            // Empty on purpose: the first-run welcome picks the first pet.
+            pets: Vec::new(),
             paused: false,
             hidden: false,
             speed_scale: 1.,
@@ -80,6 +126,8 @@ impl Default for Settings {
             pet_screen: None,
             theme: ThemeMode::default(),
             accent: DEFAULT_ACCENT.into(),
+            welcomed: false,
+            tips_dismissed: false,
         }
     }
 }
@@ -100,6 +148,20 @@ impl Settings {
         self.developer_mode &= cfg!(feature = "coding");
         self.pets.retain(|p| !p.pack_id.is_empty());
         self.pets.truncate(8);
+        for pet in &mut self.pets {
+            pet.name = pet.name.as_deref().and_then(clean_name);
+            pet.met = clean_date(&pet.met);
+            pet.last_seen = clean_date(&pet.last_seen);
+            pet.days = pet.days.max(1);
+            pet.affection = if pet.affection.is_finite() {
+                pet.affection.clamp(0., 1.)
+            } else {
+                0.2
+            };
+        }
+        if !self.pets.is_empty() {
+            self.welcomed = true;
+        }
         self.accent = self.accent.to_lowercase();
         if !is_hex_color(&self.accent) || self.accent == RETIRED_DEFAULT_ACCENT {
             self.accent = DEFAULT_ACCENT.into();
@@ -160,7 +222,7 @@ mod tests {
     use super::*;
     #[test]
     fn a_corrupt_file_recovers_to_defaults_and_is_kept() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ledgeling-settings-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(dir.join(SETTINGS_FILE), "{ not json").unwrap();
         let (settings, note) = load(&dir);
@@ -171,7 +233,8 @@ mod tests {
     }
     #[test]
     fn round_trips_and_clamps_nonsense() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-rt-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-rt-{}", std::process::id()));
         let mut settings = Settings {
             speed_scale: 99.,
             ..Default::default()
@@ -184,8 +247,65 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
+    fn a_pets_bond_round_trips_and_nonsense_is_fixed() {
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-bond-{}", std::process::id()));
+        let settings = Settings {
+            pets: vec![PetSetting {
+                pack_id: "a".into(),
+                name: Some("Biscuit".into()),
+                met: Some("2026-10-01".into()),
+                last_seen: Some("2026-10-24".into()),
+                days: 7,
+                affection: 0.6,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        save(&dir, &settings).unwrap();
+        let (loaded, note) = load(&dir);
+        assert!(note.is_none());
+        assert_eq!(loaded.pets[0].name.as_deref(), Some("Biscuit"));
+        assert_eq!(loaded.pets[0].days, 7);
+        assert_eq!(loaded.pets[0].affection, 0.6);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut messy = Settings {
+            pets: vec![PetSetting {
+                pack_id: "a".into(),
+                name: Some("   ".into()),
+                met: Some("last tuesday".into()),
+                last_seen: Some("2026-13-40".into()),
+                days: 0,
+                affection: 9.,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        messy.pets.push(PetSetting {
+            pack_id: "b".into(),
+            name: Some(format!("  {}  ", "x".repeat(60))),
+            affection: f64::NAN,
+            ..Default::default()
+        });
+        messy.sanitize();
+        assert_eq!(messy.pets[0].name, None);
+        assert_eq!(messy.pets[0].met, None);
+        assert_eq!(messy.pets[0].last_seen, None);
+        assert_eq!(messy.pets[0].days, 1);
+        assert_eq!(messy.pets[0].affection, 1.);
+        assert_eq!(messy.pets[1].name.as_ref().map(|n| n.len()), Some(24));
+        assert_eq!(messy.pets[1].affection, 0.2);
+    }
+    #[test]
+    fn an_old_pet_entry_loads_with_default_bond() {
+        let pet: PetSetting = serde_json::from_str(r#"{"packId":"a","x":1.0}"#).unwrap();
+        assert_eq!((pet.days, pet.affection, pet.name), (1, 0.2, None));
+    }
+    #[test]
     fn theme_and_accent_round_trip() {
-        let dir = std::env::temp_dir().join(format!("perch-settings-theme-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-theme-{}", std::process::id()));
         let settings = Settings {
             theme: ThemeMode::Dark,
             accent: "#3A7BD5".into(),
@@ -215,7 +335,8 @@ mod tests {
     #[test]
     fn missing_theme_and_accent_read_as_defaults() {
         // A settings.json written before the feature existed has neither key.
-        let dir = std::env::temp_dir().join(format!("perch-settings-mig-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-mig-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(
             dir.join(SETTINGS_FILE),
@@ -233,5 +354,27 @@ mod tests {
             "coding mode stays off for existing users"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn an_old_file_with_pets_counts_as_welcomed() {
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-old-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            r#"{"version":1,"pets":[{"packId":"com.perch.budgie-classic"}]}"#,
+        )
+        .unwrap();
+        let (loaded, note) = load(&dir);
+        assert!(note.is_none());
+        assert!(loaded.welcomed);
+        assert!(!loaded.tips_dismissed);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn a_fresh_install_is_not_welcomed_and_has_no_pets() {
+        let settings = Settings::default();
+        assert!(!settings.welcomed);
+        assert!(settings.pets.is_empty());
     }
 }

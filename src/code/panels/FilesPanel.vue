@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ChevronRight, File, FilePlus, Folder, FolderOpen, FolderPlus, Pencil, RefreshCw, Trash2, ExternalLink } from '@lucide/vue'
 import { code, fileChanges, fileTick, openFile, openRequest, root, status } from '../state'
 import type { Entry } from '../types'
-import { ask } from '../confirm'
+import { ask } from '../../terminal/confirm'
 
 const listings = reactive(new Map<string, Entry[]>())
 const expanded = reactive(new Set<string>())

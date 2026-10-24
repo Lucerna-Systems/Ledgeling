@@ -2,7 +2,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { codeState, root } from './state'
 import { live } from './live'
-import { terms } from './terminals'
+import { terms } from '../terminal/terminals'
 import type { Note, Tone } from './types'
 
 /** The worktree on screen's notes: what its pet noticed, oldest first. */
