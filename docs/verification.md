@@ -566,3 +566,8 @@ canvas drawing variants made no difference.
 The old "83 MiB" figure was the Rust process RSS only, not the process tree.
 Windows and Linux were **not** measured. The destroy grace is now 60 s (it was
 10 minutes while measuring above); see `docs/development.md`.
+
+Not run: close, destroy and reopen of the companion with the 60 s grace in a
+release build (unsent assistant text and page restored from `ui_state.json`).
+The attempt on 2026-10-24 found the screen locked, so it was not verified at
+runtime; only the unit and UI tests cover it.
