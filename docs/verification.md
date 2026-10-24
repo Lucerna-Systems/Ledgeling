@@ -541,3 +541,28 @@ Stated plainly, because these are the difference between "built" and "shipped":
 - **A non-programmer following the authoring guide.** `docs/pack-authoring.md` is
   written for that test and has not been given to an actual non-programmer.
 - **Public release.** Nothing has been published anywhere.
+
+## 2026-10-24 memory measurement (macOS)
+
+Physical footprint per process from `python3 scripts/benchmark.py`
+(`footprint_by_process`), release build, macOS, one pet idle. Each figure is a
+single 90 s run; noise is about ±1 MiB. The process-tree finder launches with
+`open -n`, so the WebKit helpers are attributed to the app through their
+responsible pid.
+
+| Case | Total MiB | Breakdown |
+|---|---|---|
+| Before (companion hidden at launch) | 171.4 | app 24.0, GPU 63.5, WebContent 35.6 + 43.1, Networking 5.2 |
+| After lazy companion (no companion window) | 124.6-125.4 | app ~19, GPU ~60, overlay WebContent ~40, Networking ~5 |
+| Companion open | 177.3 (+52.7) | |
+| Companion hidden after close | 206.8 | held until the window is destroyed |
+| Zero-pet floor | 74.5 | WebKit floor for the transparent overlay |
+
+Variants tried on the overlay, none of which helps: a small overlay box leaves
+the GPU process unchanged (60.0 MiB) and only drops WebContent by about 20 MiB;
+a 1x1 background-image costs the same as the sprite (GPU 60.0 vs 61.1); CSS and
+canvas drawing variants made no difference.
+
+The old "83 MiB" figure was the Rust process RSS only, not the process tree.
+Windows and Linux were **not** measured. The destroy grace is now 60 s (it was
+10 minutes while measuring above); see `docs/development.md`.
