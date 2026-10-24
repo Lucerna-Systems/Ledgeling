@@ -37,6 +37,9 @@ const PET_MIN_MOVE: f64 = 3.;
 const PET_REVERSALS: usize = 3;
 const PET_WINDOW: f64 = 1.5;
 const PET_COOLDOWN: f64 = 2.;
+/// Slack in logical pixels beyond the sprite's half-width that still counts as
+/// standing at the end of a surface; a pet is never planned closer than that.
+const EDGE_SLACK: f64 = 6.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -858,6 +861,12 @@ impl Pet {
             _ => {
                 self.plan = None;
                 self.settle();
+                let reach = self.half_width(view.scale) + EDGE_SLACK * view.scale;
+                let to_end = surface.span_length() * perch.t.min(1. - perch.t);
+                let at_end = to_end <= reach;
+                if at_end && surface.orientation() == Orientation::Horizontal {
+                    self.pending.push(Event::EdgeReached);
+                }
             }
         }
     }
@@ -1008,6 +1017,8 @@ impl Pet {
     fn land(&mut self, vy: f64, view: &WorldView<'_>) {
         if self.thrown_fall && vy > HARD_LANDING * view.scale {
             self.pending.push(Event::LandedHard);
+        } else {
+            self.pending.push(Event::Landed);
         }
         self.thrown_fall = false;
         self.arc = Arc_::None;

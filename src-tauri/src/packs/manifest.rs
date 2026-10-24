@@ -303,9 +303,13 @@ pub enum Event {
     Petted,
     PetNearby,
     NewDay,
+    /// The pet came down onto a surface after falling.
+    Landed,
+    /// The pet walked to the end of a horizontal surface and stopped there.
+    EdgeReached,
 }
 impl Event {
-    pub const ALL: [Event; 19] = [
+    pub const ALL: [Event; 21] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
@@ -325,6 +329,8 @@ impl Event {
         Event::Petted,
         Event::PetNearby,
         Event::NewDay,
+        Event::Landed,
+        Event::EdgeReached,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -347,6 +353,8 @@ impl Event {
             Event::Petted => "petted",
             Event::PetNearby => "pet_nearby",
             Event::NewDay => "new_day",
+            Event::Landed => "landed",
+            Event::EdgeReached => "edge_reached",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
