@@ -50,54 +50,17 @@ titles, file names, app names or anything you type. You can see exactly what wou
     /// The only hosts this scope may contact, redirects included. Every entry
     /// is matched exactly, so a look-alike or a sub-domain is refused.
     ///
-    /// They are fixed when the app is built, from the environment variables
-    /// `LEDGELING_MARKETPLACE_HOSTS` and `LEDGELING_ANALYTICS_HOSTS` (a comma
-    /// separated list of bare host names, set per GitHub Environment). A build
-    /// without them has no hosts, so the feature is unavailable: it cannot be
-    /// switched on and nothing can connect.
-    pub fn hosts(self) -> Vec<String> {
-        parse_hosts(match self {
-            Scope::Marketplace => option_env!("LEDGELING_MARKETPLACE_HOSTS"),
-            Scope::Analytics => option_env!("LEDGELING_ANALYTICS_HOSTS"),
-        })
-    }
-
-    /// Whether this build knows any server for the scope.
-    pub fn available(self) -> bool {
-        !self.hosts().is_empty()
+    /// The `.invalid` names are placeholders (that top-level domain can never
+    /// resolve): replace them with the real server before shipping the feature.
+    pub fn hosts(self) -> &'static [&'static str] {
+        match self {
+            Scope::Marketplace => &["marketplace.ledgeling.invalid"],
+            Scope::Analytics => &["analytics.ledgeling.invalid"],
+        }
     }
 
     /// A scope that may not be granted for one session only.
     pub fn always_remembered(self) -> bool {
         matches!(self, Scope::Analytics)
     }
-}
-
-/// A comma-separated list of bare host names, such as `market.example.com`.
-/// Anything that is not one (a URL, a port, a path, an address, stray
-/// characters) is dropped rather than guessed at, so a typo in a build setting
-/// can only make a feature unavailable, never reach somewhere unintended.
-pub fn parse_hosts(raw: Option<&str>) -> Vec<String> {
-    let mut hosts: Vec<String> = raw
-        .unwrap_or_default()
-        .split(',')
-        .map(|h| h.trim().to_ascii_lowercase())
-        .filter(|h| is_bare_host(h))
-        .collect();
-    hosts.sort();
-    hosts.dedup();
-    hosts
-}
-
-fn is_bare_host(host: &str) -> bool {
-    !host.is_empty()
-        && host.len() <= 253
-        && host
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.')
-        && host
-            .split('.')
-            .all(|label| !label.is_empty() && !label.starts_with('-') && !label.ends_with('-'))
-        // A name, not an IP address.
-        && host.chars().any(|c| c.is_ascii_lowercase())
 }

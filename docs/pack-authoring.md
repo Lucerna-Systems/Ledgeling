@@ -279,6 +279,34 @@ Press **Export** on your pack. You get a `.petpack` file — anyone can drag it 
 their Ledgeling window to install it. Put a real licence in `LICENSE.txt` first so
 people know what they may do with your drawing.
 
+A `.petpack` holds only `pet.json`, `preview.png`, `LICENSE.txt` and
+`sprites/*.png` (lowercase letters, digits, `-` and `_` in the file name). Anything
+else is left out of the export and refused when someone installs the archive.
+Exporting twice gives the same bytes, so the file has a stable SHA-256 hash.
+
+### Limits
+
+Packs from strangers are untrusted, so everything is capped: at most 64 files,
+8 MiB per archive, 4 MiB per file, 16 MiB once unpacked; sprite strips up to
+4096×1024 px; 64 frames and 60 fps per clip; 32 clips, 64 states, 16 transitions
+per state, 64 reactions, 10 tags; names under 200 characters and the description
+under 2000. A pack over a limit fails with a message naming the limit.
+
+### Publishing checklist
+
+A pack going to a gallery must also pass the stricter publish check
+(`validate_pack_for_publish`): a three-number `version` such as `1.0.0` (updates are
+ordered by it), a lowercase reverse-DNS `id`, a `license` that is one of `CC0-1.0`,
+`CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `MIT`, `Apache-2.0` or
+`proprietary-redistributable`, a non-empty `LICENSE.txt`, a description, a
+256×256 `preview.png`, 48×48 frames, strips exactly frames × frame width wide, and
+no stray files. Installing a newer version of an installed pet is an update
+(`update_pack`); the same or an older version is refused, and a failed install
+leaves the installed pet untouched.
+
+Which names may change between versions is in
+[pack-format-stability.md](pack-format-stability.md).
+
 ---
 
 ## Things worth knowing

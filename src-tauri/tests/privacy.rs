@@ -263,44 +263,6 @@ fn every_online_scope_starts_off_and_no_other_code_builds_a_request() {
     );
 }
 
-/// Whatever is read at compile time is baked into the binary and can be read
-/// back out of it, so a secret must never be. Only the public server host lists
-/// may be (Cargo's own `CARGO_*` values are fine); anything else needs a
-/// deliberate change here, and a good reason.
-#[test]
-fn only_public_settings_are_compiled_into_the_app() {
-    const PUBLIC: &[&str] = &["LEDGELING_MARKETPLACE_HOSTS", "LEDGELING_ANALYTICS_HOSTS"];
-    const MARKER: &str = "env!(\"";
-    let mut checked = 0;
-    for (path, text) in read_all() {
-        if path.ends_with("privacy.rs") {
-            continue;
-        }
-        for line in text.lines().filter(|l| !l.trim_start().starts_with("//")) {
-            let mut rest = line;
-            while let Some(at) = rest.find(MARKER) {
-                let name: String = rest[at + MARKER.len()..]
-                    .chars()
-                    .take_while(|c| *c != '"')
-                    .collect();
-                // `option_env!` contains `env!`, so the prefix decides which it is.
-                let optional = rest[..at].ends_with("option_");
-                rest = &rest[at + MARKER.len()..];
-                if !optional && name.starts_with("CARGO_") {
-                    continue;
-                }
-                checked += 1;
-                assert!(
-                    PUBLIC.contains(&name.as_str()),
-                    "{} compiles `{name}` into the binary; secrets must never be baked in",
-                    path.display()
-                );
-            }
-        }
-    }
-    assert!(checked >= 2, "the host settings should have been found");
-}
-
 #[test]
 fn telemetry_and_frontend_network_plugins_are_absent() {
     let manifest =

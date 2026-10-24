@@ -168,7 +168,6 @@ fn switching_a_scope_off_stops_a_download_in_flight() {
 #[test]
 fn analytics_cannot_be_granted_for_one_session() {
     let net = Net::new(Consent::ephemeral());
-    net.allow_for_test(Scope::Analytics, "127.0.0.1");
     assert!(net.set(Scope::Analytics, Mode::Session).is_err());
     assert!(!net.allows(Scope::Analytics));
     net.set(Scope::Analytics, Mode::Remembered).unwrap();
@@ -200,54 +199,10 @@ fn only_remembered_choices_survive_a_restart_and_damage_means_off() {
 #[test]
 fn every_scope_names_its_hosts_and_says_what_it_is_for() {
     for scope in Scope::ALL {
+        assert!(!scope.hosts().is_empty());
         assert!(!scope.label().is_empty() && !scope.description().is_empty());
         assert_eq!(Scope::parse(scope.as_str()), Some(scope));
     }
-}
-
-#[test]
-fn host_settings_keep_only_bare_host_names() {
-    use super::scope::parse_hosts;
-    assert!(parse_hosts(None).is_empty());
-    assert!(parse_hosts(Some("")).is_empty());
-    assert_eq!(
-        parse_hosts(Some(
-            " Market.Example.com , cdn.example.com,market.example.com "
-        )),
-        ["cdn.example.com", "market.example.com"]
-    );
-    for bad in [
-        "https://market.example.com",
-        "market.example.com:8443",
-        "market.example.com/path",
-        "user@market.example.com",
-        "*.example.com",
-        "1.2.3.4",
-        "-bad.example.com",
-        "a..b.com",
-        "has space.com",
-    ] {
-        assert!(parse_hosts(Some(bad)).is_empty(), "{bad} should be dropped");
-    }
-}
-
-#[test]
-fn a_build_without_hosts_has_the_feature_unavailable_and_cannot_switch_it_on() {
-    // Only meaningful for a build made without the variables, like CI's tests.
-    if Scope::ALL.iter().any(|s| s.available()) {
-        return;
-    }
-    let net = Net::new(Consent::ephemeral());
-    for scope in Scope::ALL {
-        assert!(scope.hosts().is_empty() && !scope.available());
-        assert!(net.set(scope, Mode::Session).is_err() || scope.always_remembered());
-        assert!(net.set(scope, Mode::Remembered).is_err());
-        assert!(!net.allows(scope));
-    }
-    assert!(net
-        .status()
-        .iter()
-        .all(|s| !s.available && s.hosts.is_empty()));
 }
 
 mod marketplace_install {
@@ -356,18 +311,5 @@ mod marketplace_install {
         .unwrap_err();
         assert_eq!(error.code, "http_status");
         let _ = std::fs::remove_dir_all(&root);
-    }
-}
-
-#[test]
-fn hosts_come_from_the_build_environment_when_it_sets_them() {
-    for (scope, raw) in [
-        (
-            Scope::Marketplace,
-            option_env!("LEDGELING_MARKETPLACE_HOSTS"),
-        ),
-        (Scope::Analytics, option_env!("LEDGELING_ANALYTICS_HOSTS")),
-    ] {
-        assert_eq!(scope.hosts(), super::scope::parse_hosts(raw));
     }
 }
