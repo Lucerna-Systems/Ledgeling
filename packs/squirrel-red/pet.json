@@ -45,6 +45,7 @@
         "clip": "idle",
         "duration": [4, 12],
         "transitions": [
+          { "to": "chase", "weight": 8, "when": "cursor_speed > 5 && cursor_speed < 400 && cursor_distance < 500" },
           { "to": "forage", "weight": 4 },
           { "to": "explore", "weight": 3 },
           { "to": "nibble", "weight": 0.3 },
@@ -88,6 +89,11 @@
       "visit": {
         "clip": "move",
         "action": "move_toward_pet",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "chase": {
+        "clip": "move",
+        "action": "move_toward_cursor",
         "transitions": [{ "to": "rest", "weight": 1 }]
       },
       "fret": {
@@ -154,7 +160,8 @@
     { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
     { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
     { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
-    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 }
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 },
+    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
   ],
   "personality": {
     "activity": 0.9,

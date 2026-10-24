@@ -290,6 +290,7 @@ pub enum Event {
     Released,
     Clicked,
     CursorNearby,
+    CursorFast,
     UserIdleLong,
     UserReturned,
     LongSession,
@@ -309,13 +310,14 @@ pub enum Event {
     EdgeReached,
 }
 impl Event {
-    pub const ALL: [Event; 21] = [
+    pub const ALL: [Event; 22] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
         Event::Released,
         Event::Clicked,
         Event::CursorNearby,
+        Event::CursorFast,
         Event::UserIdleLong,
         Event::UserReturned,
         Event::LongSession,
@@ -340,6 +342,7 @@ impl Event {
             Event::Released => "released",
             Event::Clicked => "clicked",
             Event::CursorNearby => "cursor_nearby",
+            Event::CursorFast => "cursor_fast",
             Event::UserIdleLong => "user_idle_long",
             Event::UserReturned => "user_returned",
             Event::LongSession => "long_session",
@@ -369,7 +372,11 @@ impl Event {
             | Event::Clicked
             | Event::Thrown
             | Event::LandedHard => 90,
-            Event::UserReturned | Event::CursorNearby | Event::Petted | Event::PetNearby => 60,
+            Event::UserReturned
+            | Event::CursorNearby
+            | Event::CursorFast
+            | Event::Petted
+            | Event::PetNearby => 60,
             Event::LongSession | Event::BreakTaken | Event::NewDay => 50,
             _ => 30,
         }
