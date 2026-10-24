@@ -1471,7 +1471,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         if last_save.elapsed() > Duration::from_secs(5) {
             last_save = now;
         }
-        if last_companion_check.elapsed() > Duration::from_secs(15) {
+        if last_companion_check.elapsed() > Duration::from_secs(5) {
             last_companion_check = now;
             crate::companion::maintain(&handle);
         }

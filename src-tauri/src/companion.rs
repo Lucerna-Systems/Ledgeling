@@ -21,8 +21,9 @@ use std::{
 use tauri::{Emitter, Manager, State, WebviewWindow, WebviewWindowBuilder};
 
 pub const LABEL: &str = "main";
-/// How long the companion stays hidden before it may be destroyed.
-pub const GRACE: Duration = Duration::from_secs(10 * 60);
+/// How long the companion stays hidden before it may be destroyed (the update
+/// loop checks every 5 s, so destruction lands within about 65 s of hiding).
+pub const GRACE: Duration = Duration::from_secs(60);
 const UI_FILE: &str = "ui_state.json";
 const UI_MAX_BYTES: usize = 4 * 1024 * 1024;
 
@@ -294,10 +295,10 @@ mod tests {
 
     #[test]
     fn destroys_only_after_grace_when_idle() {
-        let g = Duration::from_secs(600);
+        let g = Duration::from_secs(60);
         assert!(!should_destroy(None, g, false, false));
         assert!(!should_destroy(
-            Some(Duration::from_secs(599)),
+            Some(Duration::from_secs(59)),
             g,
             false,
             false

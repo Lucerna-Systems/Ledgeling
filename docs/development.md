@@ -105,7 +105,7 @@ companion something uses `emit_if_open`, and events that must not be lost
 which queues them until the new webview calls `companion_ready`.
 
 Close policy: closing hides the window. The update loop destroys it only after
-it has stayed hidden for 10 minutes (`GRACE`) and no task is queued, running or
+it has stayed hidden for 60 seconds (`GRACE`, checked every 5 s) and no task is queued, running or
 waiting on the user, and the page reports nothing unsaved (`volatile`, true on
 the AI providers page where a typed key is not persisted). The frontend writes
 `{page, prompt, studio, volatile}` through `companion_save_ui` as it changes
