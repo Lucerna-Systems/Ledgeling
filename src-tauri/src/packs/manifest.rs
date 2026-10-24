@@ -227,15 +227,17 @@ pub enum Action {
     FleeFromCursor,
     PatrolCurrentSurface,
     ReturnToHomeSurface,
+    MoveTowardPet,
 }
 impl Action {
-    pub const ALL: [Action; 6] = [
+    pub const ALL: [Action; 7] = [
         Action::MoveToRandomSurface,
         Action::MoveToNearestSurface,
         Action::MoveTowardCursor,
         Action::FleeFromCursor,
         Action::PatrolCurrentSurface,
         Action::ReturnToHomeSurface,
+        Action::MoveTowardPet,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -245,6 +247,7 @@ impl Action {
             Action::FleeFromCursor => "flee_from_cursor",
             Action::PatrolCurrentSurface => "patrol_current_surface",
             Action::ReturnToHomeSurface => "return_to_home_surface",
+            Action::MoveTowardPet => "move_toward_pet",
         }
     }
     fn parse(name: &str) -> Option<Action> {
@@ -298,9 +301,10 @@ pub enum Event {
     Thrown,
     LandedHard,
     Petted,
+    PetNearby,
 }
 impl Event {
-    pub const ALL: [Event; 17] = [
+    pub const ALL: [Event; 18] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
@@ -318,6 +322,7 @@ impl Event {
         Event::Thrown,
         Event::LandedHard,
         Event::Petted,
+        Event::PetNearby,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -338,6 +343,7 @@ impl Event {
             Event::Thrown => "thrown",
             Event::LandedHard => "landed_hard",
             Event::Petted => "petted",
+            Event::PetNearby => "pet_nearby",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
@@ -352,7 +358,7 @@ impl Event {
             | Event::Clicked
             | Event::Thrown
             | Event::LandedHard => 90,
-            Event::UserReturned | Event::CursorNearby | Event::Petted => 60,
+            Event::UserReturned | Event::CursorNearby | Event::Petted | Event::PetNearby => 60,
             Event::LongSession | Event::BreakTaken => 50,
             _ => 30,
         }
@@ -1298,6 +1304,16 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
                     weight: 5.,
                     when: Condition::parse("idle_seconds > 240").ok(),
                 },
+                Transition {
+                    to: "visit".into(),
+                    weight: 1.,
+                    when: Condition::parse("pet_distance < 1500").ok(),
+                },
+                Transition {
+                    to: "doze".into(),
+                    weight: 4.,
+                    when: Condition::parse("pet_distance < 120 && energy < 0.4").ok(),
+                },
             ],
         },
     );
@@ -1307,6 +1323,20 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveToRandomSurface),
+            sound: None,
+            transitions: vec![Transition {
+                to: settle.to_string(),
+                weight: 1.,
+                when: None,
+            }],
+        },
+    );
+    states.insert(
+        "visit".to_string(),
+        State {
+            clip: "move".into(),
+            duration: (0., 0.),
+            action: Some(Action::MoveTowardPet),
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1407,6 +1437,7 @@ pub fn default_reactions(behavior: &Behavior) -> Vec<Reaction> {
         (Event::Thrown, "dizzy", 90, 0.),
         (Event::LandedHard, "dizzy", 90, 0.),
         (Event::Petted, "enjoy", 60, 3.),
+        (Event::PetNearby, "greet", 50, 120.),
     ]
     .into_iter()
     .filter(|(_, goto, _, _)| behavior.states.contains_key(*goto))

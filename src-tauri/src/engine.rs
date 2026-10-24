@@ -4,7 +4,7 @@
 use crate::{
     awareness::{Awareness, AwarenessSummary},
     packs::{loader, LocomotionClass, Pack},
-    pet::{fsm::Rng, spawn_point, Pet, WorldView},
+    pet::{fsm::Rng, spawn_point, Peer, Pet, WorldView},
     platform::Platform,
     settings::{PetSetting, Settings},
     world::{
@@ -333,12 +333,22 @@ impl Engine {
         let base = self.awareness.signals();
         let bounds = self.bounds();
         let held_by_mouse = platform.mouse_down();
+        let peers: Vec<Peer> = self
+            .pets
+            .iter()
+            .map(|pet| Peer {
+                id: pet.id,
+                position: pet.position,
+                perch: pet.perch,
+            })
+            .collect();
         let mut pets = std::mem::take(&mut self.pets);
         for pet in &mut pets {
             if pet.is_held() && held_by_mouse == Some(false) {
                 pet.release();
             }
             let view = WorldView {
+                peers: &peers,
                 surfaces: &self.surfaces,
                 graph: &self.graph,
                 bounds,

@@ -25,6 +25,10 @@ const MAX_THROW: f64 = 2400.;
 const THROW_SPEED: f64 = 700.;
 /// Landing speed (logical px/s) from which a thrown pet lands hard.
 const HARD_LANDING: f64 = 900.;
+/// How close another pet must come for `pet_nearby`, in logical pixels.
+const PET_NEARBY: f64 = 140.;
+/// The other pet must get this far away before `pet_nearby` can fire again.
+const PET_REARM: f64 = 200.;
 /// Horizontal air drag per 1/60 s, so a throw arcs rather than glides.
 const AIR_DRAG: f64 = 0.985;
 /// Cursor moves smaller than this (logical px) are jitter, not petting.
@@ -95,8 +99,18 @@ enum Arc_ {
     },
 }
 
+/// Another pet, as seen by the one looking: where it is and what it stands on.
+#[derive(Clone, Copy, Debug)]
+pub struct Peer {
+    pub id: u64,
+    pub position: Point,
+    pub perch: Option<Perch>,
+}
+
 /// What the world looks like to one pet on one tick.
 pub struct WorldView<'a> {
+    /// Every pet, this one included; each ignores its own id.
+    pub peers: &'a [Peer],
     pub surfaces: &'a [Surface],
     pub graph: &'a SurfaceGraph,
     pub bounds: Rect,
@@ -139,6 +153,7 @@ pub struct Pet {
     arc: Arc_,
     action_done: bool,
     was_near_cursor: bool,
+    was_near_pet: bool,
     /// Cursor velocity while held, logical px/s, smoothed.
     held_velocity: Point,
     /// The current fall began with the user letting go, so a hard landing is
@@ -179,6 +194,7 @@ impl Pet {
             arc: Arc_::Fall { vx: 0., vy: 0. },
             action_done: false,
             was_near_cursor: false,
+            was_near_pet: false,
             held_velocity: Point::new(0., 0.),
             thrown_fall: false,
             petting: Petting::default(),
@@ -425,6 +441,10 @@ impl Pet {
                 .map(|c| c.distance(self.position) / view.scale)
                 .unwrap_or(f64::INFINITY),
             is_dragging: self.motion == Motion::Held,
+            pet_distance: self
+                .nearest_peer(view)
+                .map(|peer| peer.position.distance(self.position) / view.scale)
+                .unwrap_or(f64::INFINITY),
             ..base
         }
     }
@@ -465,6 +485,12 @@ impl Pet {
             events.push(Event::CursorNearby);
         }
         self.was_near_cursor = near;
+        if signals.pet_distance < PET_NEARBY && !self.was_near_pet {
+            events.push(Event::PetNearby);
+            self.was_near_pet = true;
+        } else if signals.pet_distance > PET_REARM {
+            self.was_near_pet = false;
+        }
         if self.energy < 0.15 {
             events.push(Event::LowEnergy);
         }
@@ -612,6 +638,7 @@ impl Pet {
                 .and_then(|c| self.farthest_perch(view, c))
                 .or_else(|| self.random_perch(view)),
             Action::PatrolCurrentSurface => self.patrol_target(view),
+            Action::MoveTowardPet => self.peer_perch(view),
             Action::ReturnToHomeSurface => self.home.or_else(|| self.random_perch(view)),
         };
         match target {
@@ -1011,6 +1038,47 @@ impl Pet {
         let t = surface.t_of(surface.point(self.rng.range(surface.t_start(), surface.t_end())));
         self.perch_on(surface, t, view.scale)
             .or_else(|| self.perch_on(surface, surface.midpoint_t(), view.scale))
+    }
+
+    fn nearest_peer(&self, view: &WorldView<'_>) -> Option<Peer> {
+        view.peers
+            .iter()
+            .filter(|peer| peer.id != self.id)
+            .min_by(|a, b| {
+                a.position
+                    .distance(self.position)
+                    .total_cmp(&b.position.distance(self.position))
+            })
+            .copied()
+    }
+
+    /// Somewhere to stand beside the nearest other pet: its own perch when this
+    /// pet may use it, else the closest allowed one, a sprite's width short of
+    /// it on the side this pet comes from.
+    fn peer_perch(&self, view: &WorldView<'_>) -> Option<Perch> {
+        let peer = self.nearest_peer(view)?;
+        let beside = |perch: Perch| -> Option<Perch> {
+            let index = pathfind::locate(view.surfaces, perch)?;
+            let surface = &view.surfaces[index];
+            let gap = self.half_width(view.scale) * 2.2 / surface.span_length().max(1.);
+            let from_left = self.position.x < peer.position.x;
+            let t = if from_left {
+                perch.t - gap
+            } else {
+                perch.t + gap
+            };
+            let t = t.clamp(surface.t_start(), surface.t_end());
+            self.perch_on(surface, t, view.scale)
+                .or_else(|| self.perch_on(surface, perch.t, view.scale))
+        };
+        peer.perch
+            .filter(|perch| {
+                pathfind::locate(view.surfaces, *perch).is_some_and(|i| {
+                    pathfind::allowed(self.manifest(), &view.surfaces[i], view.scale)
+                })
+            })
+            .and_then(beside)
+            .or_else(|| self.nearest_perch(view, peer.position))
     }
 
     fn nearest_perch(&self, view: &WorldView<'_>, to: Point) -> Option<Perch> {

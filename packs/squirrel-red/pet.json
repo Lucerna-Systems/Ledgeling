@@ -46,7 +46,9 @@
           { "to": "forage", "weight": 4 },
           { "to": "explore", "weight": 3 },
           { "to": "doze", "weight": 5, "when": "idle_seconds > 240" },
-          { "to": "doze", "weight": 3, "when": "energy < 0.2" }
+          { "to": "doze", "weight": 3, "when": "energy < 0.2" },
+          { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
+          { "to": "visit", "weight": 1, "when": "pet_distance < 1500" }
         ]
       },
       "forage": {
@@ -58,6 +60,11 @@
       "explore": {
         "clip": "move",
         "action": "move_to_random_surface",
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "visit": {
+        "clip": "move",
+        "action": "move_toward_pet",
         "transitions": [{ "to": "rest", "weight": 1 }]
       },
       "fret": {
@@ -110,7 +117,8 @@
     { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
     { "on": "thrown", "goto": "dizzy", "priority": 90 },
     { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
-    { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
+    { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
+    { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 }
   ],
   "personality": {
     "activity": 0.9,

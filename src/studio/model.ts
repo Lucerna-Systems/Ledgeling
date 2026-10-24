@@ -48,6 +48,7 @@ export const actions = [
   { value: 'move_toward_cursor', label: 'come to the pointer' },
   { value: 'flee_from_cursor', label: 'run from the pointer' },
   { value: 'return_to_home_surface', label: 'go back home' },
+  { value: 'move_toward_pet', label: 'visit the nearest other pet' },
 ] as const
 
 export const events = [
@@ -57,6 +58,7 @@ export const events = [
   { value: 'thrown', label: 'you throw it' },
   { value: 'landed_hard', label: 'it lands hard after a throw' },
   { value: 'petted', label: 'you rub the pointer over it' },
+  { value: 'pet_nearby', label: 'another pet comes close' },
   { value: 'cursor_nearby', label: 'the pointer comes close' },
   { value: 'user_idle_long', label: 'you step away for a while' },
   { value: 'user_returned', label: 'you come back' },
@@ -78,6 +80,7 @@ export const signals: { value: string; label: string; kind: SignalKind; unit?: s
   { value: 'mood', label: 'its mood', kind: 'number', unit: '0–1', example: '0.5' },
   { value: 'hour', label: 'the hour of day', kind: 'number', unit: '0–23', example: '22' },
   { value: 'cursor_distance', label: 'distance to the pointer', kind: 'number', unit: 'px', example: '120' },
+  { value: 'pet_distance', label: 'distance to the nearest other pet', kind: 'number', unit: 'px', example: '140' },
   { value: 'surface_count', label: 'places it can stand', kind: 'number', example: '3' },
   { value: 'app_category', label: 'the kind of app in front', kind: 'category', example: 'code' },
   { value: 'is_dragging', label: 'you are dragging it', kind: 'bool', example: 'true' },

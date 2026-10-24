@@ -121,7 +121,8 @@
               "action": {
                 "enum": [
                   "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
-                  "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
+                  "flee_from_cursor", "patrol_current_surface", "return_to_home_surface",
+                  "move_toward_pet"
                 ]
               },
               "sound": { "type": "string" },
@@ -136,7 +137,7 @@
                     "weight": { "type": "number", "minimum": 0 },
                     "when": {
                       "type": "string",
-                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, is_dragging."
+                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, pet_distance, is_dragging."
                     }
                   }
                 }
@@ -158,7 +159,7 @@
               "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
               "cursor_nearby", "user_idle_long", "user_returned", "long_session",
               "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy",
-              "thrown", "landed_hard", "petted"
+              "thrown", "landed_hard", "petted", "pet_nearby"
             ]
           },
           "goto": { "type": "string" },

@@ -41,7 +41,11 @@ impl World {
         World { surfaces, graph }
     }
     fn view(&self) -> WorldView<'_> {
+        self.view_with(&[])
+    }
+    fn view_with<'a>(&'a self, peers: &'a [Peer]) -> WorldView<'a> {
         WorldView {
+            peers,
             surfaces: &self.surfaces,
             graph: &self.graph,
             bounds: Rect::new(0., 0., 1600., 1000.),
@@ -823,4 +827,184 @@ fn a_second_rub_inside_the_cooldown_does_nothing() {
         1,
         "after the cooldown"
     );
+}
+
+// ------------------------------------------------------------------ other pets
+
+fn tick_with_peers(pet: &mut Pet, world: &World, peers: &[Peer]) -> Signals {
+    let mut events = Vec::new();
+    pet.tick(
+        1. / 60.,
+        &world.view_with(peers),
+        Signals::default(),
+        &mut events,
+    )
+}
+
+fn peer_at(id: u64, x: f64, y: f64) -> Peer {
+    Peer {
+        id,
+        position: Point::new(x, y),
+        perch: None,
+    }
+}
+
+/// Run `ticks` frames with the peer at `x`, counting how often the pet newly
+/// notices it (the flag flips from not-near to near exactly when the event fires).
+fn notices(pet: &mut Pet, world: &World, own: Peer, other_x: f64, ticks: usize) -> usize {
+    let mut fired = 0;
+    for _ in 0..ticks {
+        let before = pet.was_near_pet;
+        let peers = [own, peer_at(2, other_x, own.position.y)];
+        tick_with_peers(pet, world, &peers);
+        if !before && pet.was_near_pet {
+            fired += 1;
+        }
+    }
+    fired
+}
+
+fn pinned_pet() -> (Pet, World, Peer) {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(true);
+    let own = peer_at(1, pet.position.x, pet.position.y);
+    (pet, world, own)
+}
+
+#[test]
+fn a_pet_alone_has_infinite_pet_distance_and_notices_no_one() {
+    let (mut pet, world, own) = pinned_pet();
+    let signals = tick_with_peers(&mut pet, &world, &[own]);
+    assert!(signals.pet_distance.is_infinite(), "its own id is ignored");
+    let signals = tick_with_peers(&mut pet, &world, &[]);
+    assert!(signals.pet_distance.is_infinite());
+    assert!(!pet.was_near_pet);
+}
+
+#[test]
+fn pet_distance_is_logical_pixels_to_the_nearest_other_pet() {
+    let (mut pet, world, own) = pinned_pet();
+    let peers = [
+        own,
+        peer_at(2, own.position.x + 300., own.position.y),
+        peer_at(3, own.position.x - 500., own.position.y),
+    ];
+    let signals = tick_with_peers(&mut pet, &world, &peers);
+    assert!(
+        (signals.pet_distance - 300.).abs() < 1e-6,
+        "{}",
+        signals.pet_distance
+    );
+}
+
+#[test]
+fn two_pets_within_140_notice_once_and_again_only_after_parting_past_200() {
+    let (mut pet, world, own) = pinned_pet();
+    let x = own.position.x;
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 30),
+        1,
+        "close: one event"
+    );
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 120),
+        0,
+        "staying close: no repeats"
+    );
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 170., 30),
+        0,
+        "inside the 200 px hysteresis band"
+    );
+    assert_eq!(notices(&mut pet, &world, own, x + 250., 30), 0, "parted");
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 5),
+        1,
+        "back again: fires again"
+    );
+}
+
+#[test]
+fn noticing_another_pet_reaches_the_pack_as_a_greeting() {
+    let (mut pet, world, own) = pinned_pet();
+    notices(&mut pet, &world, own, own.position.x + 100., 5);
+    assert_eq!(pet.state(), "greet");
+}
+
+fn peer_on(world: &World, owner: u64, t: f64) -> Peer {
+    let surface = world
+        .surfaces
+        .iter()
+        .find(|s| s.owner == owner && s.kind == crate::world::SurfaceKind::WindowTop)
+        .expect("a window top");
+    Peer {
+        id: 2,
+        position: surface.point(t),
+        perch: Some(Perch {
+            key: surface.key(),
+            t,
+        }),
+    }
+}
+
+#[test]
+fn move_toward_pet_brings_a_walker_beside_its_peer_on_the_same_window() {
+    let world = World::new(&[win(1, 100., 600., 1000., 200.)]);
+    let mut pet = Pet::new(1, pack("cat-tabby"), Point::new(150., 600.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    let peers = [peer_on(&world, 1, 0.9)];
+    pet.start_action(Action::MoveTowardPet, &world.view_with(&peers));
+    assert_eq!(pet.motion, Motion::Walking);
+    let mut events = Vec::new();
+    for _ in 0..(30 * 60) {
+        pet.tick(
+            1. / 60.,
+            &world.view_with(&peers),
+            Signals::default(),
+            &mut events,
+        );
+        if pet.motion != Motion::Walking {
+            break;
+        }
+    }
+    let gap = pet.position.distance(peers[0].position);
+    assert!(gap < 120., "ended {gap} px from its peer");
+    assert!(gap > 20., "beside it, not on top of it");
+}
+
+#[test]
+fn move_toward_pet_does_not_hop_a_gap_wider_than_the_pack_allows_and_still_finishes() {
+    // The cat hops 140 px; its peer is 300 px away across empty air, and the
+    // windows are far above the floor, so there is no way round.
+    let world = World::new(&[
+        win(1, 100., 300., 400., 200.),
+        win(2, 800., 300., 400., 200.),
+    ]);
+    let mut pet = Pet::new(1, pack("cat-tabby"), Point::new(300., 300.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    let peers = [peer_on(&world, 2, 0.5)];
+    pet.action_done = false;
+    pet.start_action(Action::MoveTowardPet, &world.view_with(&peers));
+    assert!(
+        pet.action_done,
+        "the action completes at once instead of hanging"
+    );
+    assert_ne!(pet.motion, Motion::Jumping);
+    assert_ne!(pet.motion, Motion::Walking);
+}
+
+#[test]
+fn move_toward_pet_with_no_peer_finishes_at_once() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    pet.action_done = false;
+    pet.start_action(Action::MoveTowardPet, &world.view());
+    assert!(pet.action_done);
+    assert_ne!(pet.motion, Motion::Walking);
 }

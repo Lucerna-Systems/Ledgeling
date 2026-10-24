@@ -26,9 +26,10 @@ pub enum Signal {
     SurfaceCount,
     CursorDistance,
     IsDragging,
+    PetDistance,
 }
 impl Signal {
-    pub const ALL: [Signal; 9] = [
+    pub const ALL: [Signal; 10] = [
         Signal::IdleSeconds,
         Signal::SessionMinutes,
         Signal::AppCategory,
@@ -38,6 +39,7 @@ impl Signal {
         Signal::SurfaceCount,
         Signal::CursorDistance,
         Signal::IsDragging,
+        Signal::PetDistance,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -50,6 +52,7 @@ impl Signal {
             Signal::SurfaceCount => "surface_count",
             Signal::CursorDistance => "cursor_distance",
             Signal::IsDragging => "is_dragging",
+            Signal::PetDistance => "pet_distance",
         }
     }
     fn parse(name: &str) -> Option<Signal> {
@@ -83,6 +86,8 @@ pub struct Signals {
     pub surface_count: f64,
     pub cursor_distance: f64,
     pub is_dragging: bool,
+    /// Logical pixels to the nearest other pet; infinite when it is alone.
+    pub pet_distance: f64,
 }
 impl Default for Signals {
     fn default() -> Self {
@@ -96,6 +101,7 @@ impl Default for Signals {
             surface_count: 0.,
             cursor_distance: f64::INFINITY,
             is_dragging: false,
+            pet_distance: f64::INFINITY,
         }
     }
 }
@@ -201,6 +207,7 @@ impl Test {
                     Signal::Mood => s.mood,
                     Signal::SurfaceCount => s.surface_count,
                     Signal::CursorDistance => s.cursor_distance,
+                    Signal::PetDistance => s.pet_distance,
                     _ => return false,
                 };
                 self.op.apply(actual, v)

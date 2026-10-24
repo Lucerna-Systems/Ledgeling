@@ -430,8 +430,18 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   `startled` for good; fixed in `Pet::ride` with a regression test. Hand run:
   the app was launched once with the cat and squirrel in settings and the cat
   folder was written into the packs directory, but the Mac session was locked
-  so the screen captured black; **the cat was not watched on screen**, and
-  nobody has seen it hop, nap or be flung by hand.
+  so the screen captured black. A second launch later, with the screen
+  unlocked, showed Miso standing on screen as a tabby cat (one screenshot); the
+  hop, nap and fling were **not** watched by hand.
+- **Phase 4, pets noticing each other.** fmt, clippy, `npm test` (258 lib, 18
+  timeline; the `tasks::apple` port test failed once and passed on re-run, it
+  is unrelated) and `npm run test:ui` (139) green. Unit tests cover
+  `pet_distance` (infinite alone, own id ignored), `pet_nearby` hysteresis
+  (140 px in, 200 px out), `move_toward_pet` (a cat reaches its peer on one
+  window, does not hop a gap wider than 140 px and finishes at once, finishes at
+  once with no peer), and two pets greeting through the engine. Hand run: the
+  squirrel and cat were launched together once; no screenshot caught them
+  greeting or visiting, so the pet-to-pet behaviour is **not** hand-verified.
 
 ## Not verified
 

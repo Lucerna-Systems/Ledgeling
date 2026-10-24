@@ -155,7 +155,9 @@ When you want more, describe what it does as a list of states:
 - `weight` is how likely a transition is compared to the others in the same list.
 - `action` is one of the movements Ledgeling already knows how to do:
   `move_to_random_surface`, `move_to_nearest_surface`, `move_toward_cursor`,
-  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`.
+  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`,
+  `move_toward_pet` (walk or hop to stand beside the nearest other pet; it does
+  nothing when the pet is alone or cannot reach it).
 - `when` is an optional condition. If it is false, that transition cannot happen.
 
 Conditions are deliberately tiny — a signal, a comparison, a value, joined with
@@ -169,7 +171,9 @@ hour >= 22 || hour < 6
 ```
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
-`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `is_dragging`.
+`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `pet_distance`
+(pixels to the nearest other pet; infinite when there is none),
+`is_dragging`.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:
@@ -204,6 +208,10 @@ generously on anything to do with nudging.
   { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
 ]
 ```
+
+`pet_nearby` fires once when another pet comes within about 140 px, and again
+only after they have parted by more than 200 px; use a long `cooldown` so a
+greeting stays special.
 
 Packs without a `behavior` block get these states and reactions for free; both
 clips are optional and fall back to `alert`/`happy`, then `idle`.

@@ -468,3 +468,41 @@ fn a_pet_walking_to_a_window_edge_to_hop_is_not_frozen_there() {
         "the squirrel hopped to the second window"
     );
 }
+
+#[test]
+fn two_pets_on_one_window_greet_each_other_through_the_engine() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 500., 800., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    engine.spawn("com.perch.cat-tabby").unwrap();
+    let top = engine
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
+        .expect("a window top")
+        .clone();
+    for (pet, t) in engine.pets.iter_mut().zip([0.30, 0.38]) {
+        pet.perch = Some(ledgeling::pet::pathfind::Perch { key: top.key(), t });
+        pet.position = top.point(t);
+        pet.listen(true);
+    }
+    let mut greeted = [false, false];
+    for _ in 0..300 {
+        engine.tick(1. / 60., &platform);
+        for (seen, pet) in greeted.iter_mut().zip(&engine.pets) {
+            *seen |= pet.state() == "greet";
+        }
+    }
+    assert_eq!(greeted, [true, true], "both noticed the other");
+}
+
+#[test]
+fn a_lone_pet_never_greets_anyone() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 500., 800., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    for _ in 0..600 {
+        engine.tick(1. / 60., &platform);
+        assert_ne!(engine.pets[0].state(), "greet");
+    }
+}

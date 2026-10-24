@@ -724,3 +724,61 @@ fn the_cat_is_a_hopper_that_stays_on_floors_and_hops_140() {
     let (bare, _) = parse(MINIMAL);
     assert_eq!(bare.unwrap().resolve_clip("stretch"), "idle");
 }
+
+// ------------------------------------------------------------------- pet distance
+
+#[test]
+fn pet_distance_is_a_condition_and_is_false_when_the_pet_is_alone() {
+    use super::expr::{Condition, Signals};
+    let near = Condition::parse("pet_distance < 120").unwrap();
+    let alone = Signals::default();
+    assert!(alone.pet_distance.is_infinite());
+    assert!(!near.evaluate(&alone));
+    assert!(near.evaluate(&Signals {
+        pet_distance: 100.,
+        ..alone
+    }));
+    let compound = Condition::parse("pet_distance < 120 && energy < 0.4").unwrap();
+    assert!(compound.evaluate(&Signals {
+        pet_distance: 100.,
+        energy: 0.2,
+        ..alone
+    }));
+    assert!(!compound.evaluate(&Signals {
+        pet_distance: 100.,
+        energy: 0.9,
+        ..alone
+    }));
+}
+
+#[test]
+fn an_unknown_signal_still_lists_the_valid_ones_including_pet_distance() {
+    let error = super::expr::Condition::parse("friend_distance < 3").unwrap_err();
+    assert!(
+        error.contains("Unknown signal `friend_distance`"),
+        "{error}"
+    );
+    assert!(error.contains("pet_distance"), "{error}");
+}
+
+#[test]
+fn pet_nearby_and_move_toward_pet_parse_and_every_bundled_pet_uses_them() {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
+        let pack = loader::load(&repo_pack(name), true).unwrap();
+        assert!(
+            pack.manifest
+                .reactions
+                .iter()
+                .any(|r| r.on.as_str() == "pet_nearby" && r.cooldown >= 120.),
+            "{name} greets a neighbour, rarely"
+        );
+        assert!(
+            pack.manifest
+                .behavior
+                .states
+                .values()
+                .any(|s| s.action == Some(manifest::Action::MoveTowardPet)),
+            "{name} can visit another pet"
+        );
+    }
+}
