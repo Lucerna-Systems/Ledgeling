@@ -124,6 +124,11 @@ mod tests {
         assert_eq!(known.program, "antigravity");
         assert!(!known.scripted, "Antigravity is never installed by the app");
         let tools = detect(Some(PathBuf::from("/nonexistent")));
-        assert!(tools.iter().find(|t| t.id == "antigravity").unwrap().installer.is_none());
+        assert!(tools
+            .iter()
+            .find(|t| t.id == "antigravity")
+            .unwrap()
+            .installer
+            .is_none());
     }
 }
