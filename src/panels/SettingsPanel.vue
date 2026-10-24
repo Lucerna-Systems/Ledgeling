@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Check, ChevronRight, Code2, FlaskConical, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
+import { Activity, Check, ChevronRight, Code2, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
 import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
 import type { ScreenView, Settings, ThemeMode } from '../types'
 
-const emit = defineEmits<{ go: [page: 'desktop' | 'awareness' | 'lab'] }>()
+const emit = defineEmits<{ go: [page: 'desktop' | 'awareness'] }>()
 
 const themeChoices: { value: ThemeMode; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -217,9 +217,6 @@ const neverSeen = [
     </button>
     <button class="link-row" @click="emit('go', 'awareness')">
       <Activity :size="17" /><div><h3>Awareness details</h3><p>Reminder timing and how apps are categorised.</p></div><ChevronRight :size="16" />
-    </button>
-    <button class="link-row" @click="emit('go', 'lab')">
-      <FlaskConical :size="17" /><div><h3>Pet Lab</h3><p>Tools for people making their own pets.</p></div><ChevronRight :size="16" />
     </button>
   </section>
   <p class="version-note">Ledgeling · Preview 0.1</p>
