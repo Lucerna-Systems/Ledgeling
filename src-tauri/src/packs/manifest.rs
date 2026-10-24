@@ -1467,6 +1467,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveTowardPet),
+            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1544,6 +1545,7 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
                 clip: clip.into(),
                 duration,
                 action: None,
+                speed_scale: 1.,
                 sound: None,
                 transitions: vec![Transition {
                     to: settle.to_string(),
