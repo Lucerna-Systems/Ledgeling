@@ -455,10 +455,14 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   and `npm run test:ui` (144) pass. Covered by tests only: opening each bundled
   pack and a saved 48 px pack with pixels intact, the plain-words refusal of
   other sizes, `draftFromPack` reproducing the squirrel's states, reactions and
-  frame counts, template copies getting a new id, and Export after save. The
-  hand run was NOT done: the Mac was screen-locked (black screenshots), so the
-  Start-from dropdown, Export .petpack and Edit in Studio have not been seen in
-  the real app. The live preview was not changed (Play/Pause already existed).
+  frame counts, template copies getting a new id, and Export after save. Hand-run
+  once on macOS (2026-10-24, clicks synthesized, screenshots viewed): the
+  Start-from dropdown listed the four bundled pets; Miso loaded as "Copy of Miso
+  the Cat" with its sprites; Save showed Export .petpack, which wrote a
+  `.petpack`; and the saved copy's menu offered Edit in Studio, which reopened
+  it with its frames. Not checked: re-importing the exported file, or a
+  hand-drawn edit round trip. The live preview was not changed (Play/Pause
+  already existed).
 
 ## Not verified
 
