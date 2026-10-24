@@ -16,6 +16,10 @@ import AwarenessPanel from './panels/AwarenessPanel.vue'
 import DesktopPanel from './panels/DesktopPanel.vue'
 import PetStudio from './studio/PetStudio.vue'
 import { syncAppIcon } from './appIcon'
+import { companionReady, startPersist, type UiState } from './uiState'
+import { draft } from './studio/state'
+import { restoreDraft, serializeDraft } from './studio/state'
+import { promptDraft } from './assistant/state'
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
 
 type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
@@ -51,12 +55,13 @@ let stopIcon = () => {}
 let stopAssistant = () => {}
 const assistantOff: (() => void)[] = []
 let assistantDisposed = false
+const handlers: Record<string, (value: unknown) => void> = {
+  'assistant:open': value => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' },
+  'assistant:drop': value => { droppedFiles.value = value as string[]; page.value = 'assistant' },
+  'providers:open': () => { page.value = 'providers' },
+}
 async function initAssistant() {
-  for (const [name, handler] of [
-    ['assistant:open', (value: unknown) => { activeConversation.value = null; assignedPet.value = value as number | null; page.value = 'assistant' }],
-    ['assistant:drop', (value: unknown) => { droppedFiles.value = value as string[]; page.value = 'assistant' }],
-    ['providers:open', () => { page.value = 'providers' }],
-  ] as const) {
+  for (const [name, handler] of Object.entries(handlers)) {
     const off = await listen(name, event => handler(event.payload))
     if (assistantDisposed) off(); else assistantOff.push(off)
   }
@@ -64,6 +69,31 @@ async function initAssistant() {
   const stop = await startTasks()
   if (assistantDisposed) stop(); else stopAssistant = stop
 }
+
+const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'lab', 'studio']
+/** Put back what the user was doing before the window was destroyed, then replay events that arrived while it loaded. */
+async function restoreAndWatch() {
+  const ready = await companionReady()
+  const ui = ready.ui
+  if (ui) {
+    if (typeof ui.prompt === 'string') promptDraft.value = ui.prompt
+    const studio = ui.studio ? restoreDraft(ui.studio) : null
+    if (studio) draft.value = studio
+    if (typeof ui.page === 'string' && (pages as string[]).includes(ui.page) && (ui.page !== 'studio' || studio)) {
+      if (subpages[ui.page as Page]) back.value = subpages[ui.page as Page]!
+      page.value = ui.page as Page
+    }
+  }
+  for (const { event, payload } of ready.pending) handlers[event]?.(payload)
+  if (assistantDisposed) return
+  stopPersist = startPersist([page, promptDraft, draft], (): UiState => ({
+    page: page.value,
+    prompt: promptDraft.value,
+    studio: serializeDraft(draft.value),
+    volatile: page.value === 'providers',
+  }))
+}
+let stopPersist = () => {}
 
 const waiting = computed(() => tasks.value.filter(task => task.status === 'waiting').length)
 function followup(task: Task) {
@@ -90,10 +120,10 @@ watch(snapshot, value => {
 })
 onMounted(() => {
   stop = start()
-  if (native) void initAssistant().catch(() => {})
+  if (native) void initAssistant().then(restoreAndWatch).catch(() => {})
   if (native) stopIcon = syncAppIcon()
 })
-onUnmounted(() => { stop(); stopIcon(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
+onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true; stopAssistant(); assistantOff.forEach(off => off()) })
 </script>
 
 <template>

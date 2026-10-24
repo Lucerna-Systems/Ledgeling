@@ -92,3 +92,24 @@ To turn it on, go to the repo's Settings → Secrets and variables → Actions a
 
 To turn it off again, delete `ITCH_ENABLED` or set it to anything other than
 `true`.
+
+## The companion window is created on demand
+
+A created-but-hidden webview costs roughly 37 MiB, so the companion (`main`) is
+declared with `create: false` in `tauri.conf.json` and built by
+`companion::ensure` (`src-tauri/src/companion.rs`) from that same config entry.
+Every open path (tray, a pet's bubble, `open_assistant`, drops) goes through
+`companion::reveal` or `companion::show`; code that merely wants to tell an open
+companion something uses `emit_if_open`, and events that must not be lost
+(`assistant:open`, `assistant:drop`, `providers:open`) use `companion::send`,
+which queues them until the new webview calls `companion_ready`.
+
+Close policy: closing hides the window. The update loop destroys it only after
+it has stayed hidden for 10 minutes (`GRACE`) and no task is queued, running or
+waiting on the user, and the page reports nothing unsaved (`volatile`, true on
+the AI providers page where a typed key is not persisted). The frontend writes
+`{page, prompt, studio, volatile}` through `companion_save_ui` as it changes
+(debounced) to `ui_state.json` in the config folder; `companion_ready` returns
+it when the window is recreated. Tasks and conversations live in the Rust store
+and are untouched. `RunEvent::ExitRequested` without a code is prevented, so
+destroying the companion never ends the app.
