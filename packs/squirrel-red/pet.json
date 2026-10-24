@@ -49,7 +49,9 @@
           { "to": "doze", "weight": 3, "when": "energy < 0.2" },
           { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
           { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
-          { "to": "watch", "weight": 3, "when": "affection > 0.5 && cursor_distance < 500" }
+          { "to": "watch", "weight": 3, "when": "affection > 0.5 && cursor_distance < 500" },
+          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
+          { "to": "forage", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
       },
       "forage": {
