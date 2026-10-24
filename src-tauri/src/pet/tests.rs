@@ -1261,7 +1261,7 @@ fn a_pet_peeks_when_it_walks_to_the_end_of_a_ledge() {
 
 // ------------------------------------------------------------------ cursor
 
-fn tick_with_cursor(
+fn tick_with_pointer(
     pet: &mut Pet,
     world: &World,
     cursor: Point,
@@ -1279,10 +1279,10 @@ fn a_resting_pet_turns_to_watch_the_cursor() {
     settle(&mut pet, &world, 20.);
     let mut events = Vec::new();
     let x = pet.position.x;
-    tick_with_cursor(&mut pet, &world, Point::new(x - 200., 350.), &mut events);
+    tick_with_pointer(&mut pet, &world, Point::new(x - 200., 350.), &mut events);
     if pet.motion == Motion::Settled {
         assert!(pet.flip_x, "looks left at a cursor on its left");
-        tick_with_cursor(&mut pet, &world, Point::new(x + 200., 350.), &mut events);
+        tick_with_pointer(&mut pet, &world, Point::new(x + 200., 350.), &mut events);
         assert!(!pet.flip_x, "and right at one on its right");
     }
 }
@@ -1298,7 +1298,7 @@ fn a_slow_cursor_reads_slow_and_a_fast_one_flinches_a_nearby_pet() {
     // 60 px/s for a second: well under the flinch threshold.
     let mut signals = Signals::default();
     for i in 0..60 {
-        signals = tick_with_cursor(
+        signals = tick_with_pointer(
             &mut pet,
             &world,
             Point::new(base.x + 100. + i as f64, base.y - 50.),
@@ -1314,7 +1314,7 @@ fn a_slow_cursor_reads_slow_and_a_fast_one_flinches_a_nearby_pet() {
 
     // 3000 px/s sweep past the pet.
     for i in 0..30 {
-        signals = tick_with_cursor(
+        signals = tick_with_pointer(
             &mut pet,
             &world,
             Point::new(base.x + 100. - 50. * i as f64, base.y - 50.),
@@ -1332,7 +1332,7 @@ fn a_fast_cursor_far_from_the_pet_is_ignored() {
     settle(&mut pet, &world, 20.);
     let mut events = Vec::new();
     for i in 0..30 {
-        tick_with_cursor(
+        tick_with_pointer(
             &mut pet,
             &world,
             Point::new(1500. - 50. * (i % 2) as f64 * 40., 900.),
