@@ -7,6 +7,8 @@ export const tasks = ref<Task[]>([])
 export const taskError = ref('')
 export const assignedPet = ref<number | null>(null)
 export const droppedFiles = ref<string[]>([])
+/** The unsent request text; module-level so the companion can save and restore it. */
+export const promptDraft = ref('')
 export const connections = ref<Connections>({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} })
 /** The connection a task for this pet actually runs on: its override, else the default. */
 export function effectiveConnection(petId: number | null): Connection {
