@@ -1420,6 +1420,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
             let _ = app.persist();
         }
         app.engine.tick(dt, &platform);
+        if app.engine.take_settings_changed() {
+            app.dirty = true;
+        }
         let resting =
             app.engine.suspended || app.engine.settings.paused || app.engine.settings.hidden;
         let plan = plan_render(&mut app, &renderer, resting);
