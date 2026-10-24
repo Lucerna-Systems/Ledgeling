@@ -627,6 +627,30 @@ fn pet_surface_ready(monitor: u64, state: State<'_, Shared>) {
     }
 }
 
+/// Where the pointer is over the overlay, from the overlay's own pointer
+/// events. Only a Wayland layer overlay asks for these, because there the
+/// pointer cannot be read any other way; `None` means it left the pets.
+#[tauri::command]
+fn pet_pointer(point: Option<(f64, f64)>, window: WebviewWindow, state: State<'_, Shared>) {
+    #[cfg(target_os = "linux")]
+    {
+        let monitor = locked(&state)
+            .ok()
+            .and_then(|app| app.engine.monitors.first().cloned());
+        let point = point.zip(monitor).map(|((x, y), monitor)| {
+            Point::new(
+                monitor.bounds.x + x * monitor.scale,
+                monitor.bounds.y + y * monitor.scale,
+            )
+        });
+        if window.label() == "pet-0" {
+            crate::platform::set_overlay_pointer(point);
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (point, window, state);
+}
+
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, window: WebviewWindow, state: State<'_, Shared>) {
     if window.label() == "main" {
@@ -795,6 +819,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             pet_surface_ready,
             crate::companion::companion_ready,
             crate::companion::companion_save_ui,
+            pet_pointer,
             quit_app
         ])
         .setup(|app| {
@@ -1089,6 +1114,15 @@ const OVERLAY_INSET: f64 = 1.;
 #[cfg(not(target_os = "windows"))]
 const OVERLAY_INSET: f64 = 0.;
 
+/// A layer overlay reports its own pointer; elsewhere the platform reads it.
+fn overlay_url() -> &'static str {
+    #[cfg(target_os = "linux")]
+    if crate::platform::layer::usable() {
+        return "index.html?pet&monitor=0&pointer";
+    }
+    "index.html?pet&monitor=0"
+}
+
 fn ensure_overlay(
     app: &tauri::AppHandle,
     monitor: &MonitorInfo,
@@ -1096,6 +1130,12 @@ fn ensure_overlay(
 ) -> Option<(WebviewWindow, bool)> {
     const LABEL: &str = "pet-0";
     if let Some(window) = app.get_webview_window(LABEL) {
+        // A layer surface fills whichever output it is put on.
+        #[cfg(target_os = "linux")]
+        if crate::platform::layer::active() {
+            crate::platform::layer::set_monitor(&window, monitor.bounds);
+            return Some((window, false));
+        }
         // Logical coordinates are pre-converted against the target screen's
         // scale because tao converts `set_size` with the window's *current*
         // screen scale, and the move is applied only after both calls return.
@@ -1115,35 +1155,43 @@ fn ensure_overlay(
         }
         return Some((window, false));
     }
-    let built = WebviewWindowBuilder::new(
-        app,
-        LABEL,
-        WebviewUrl::App("index.html?pet&monitor=0".into()),
-    )
-    .title("Ledgeling")
-    .inner_size(
-        (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
-        monitor.bounds.height / monitor.scale,
-    )
-    .position(
-        monitor.bounds.x / monitor.scale,
-        monitor.bounds.y / monitor.scale,
-    )
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .focused(false)
-    .accept_first_mouse(true)
-    .visible_on_all_workspaces(true)
-    .focusable(false)
-    .visible(!hidden)
-    .build();
+    let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(overlay_url().into()))
+        .title("Ledgeling")
+        .inner_size(
+            (monitor.bounds.width - OVERLAY_INSET) / monitor.scale,
+            monitor.bounds.height / monitor.scale,
+        )
+        .position(
+            monitor.bounds.x / monitor.scale,
+            monitor.bounds.y / monitor.scale,
+        )
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .accept_first_mouse(true)
+        .visible_on_all_workspaces(true)
+        .focusable(false)
+        .visible(!hidden)
+        .build();
     match built {
         Ok(window) => {
             crate::platform::pet_ui::overlay(&window);
+            #[cfg(target_os = "linux")]
+            if crate::platform::layer::usable() {
+                match crate::platform::layer::attach(&window, monitor.bounds) {
+                    Ok(()) => {
+                        if !hidden {
+                            let _ = window.show();
+                        }
+                        return Some((window, true));
+                    }
+                    Err(error) => eprintln!("Ledgeling could not make a layer overlay: {error}"),
+                }
+            }
             let _ = window.set_ignore_cursor_events(true);
             Some((window, true))
         }
@@ -1453,6 +1501,7 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
                     "grab": grab_points(&app.engine),
                     "suspended": app.engine.suspended,
                     "screens": app.engine.screens_available,
+                    "overlay": overlay_kind(),
                 })
             );
         }
@@ -1515,6 +1564,15 @@ fn kind_counts(surfaces: &[crate::world::Surface]) -> serde_json::Value {
         *counts.entry(surface.kind.as_str()).or_default() += 1;
     }
     serde_json::json!(counts)
+}
+
+/// How the overlay is shown, for the diagnostics line.
+fn overlay_kind() -> &'static str {
+    #[cfg(target_os = "linux")]
+    if crate::platform::layer::active() {
+        return "wayland-layer";
+    }
+    "window"
 }
 
 /// A point on each pet that catches the pointer, for the diagnostics line

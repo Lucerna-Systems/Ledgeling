@@ -3,12 +3,18 @@
 //! asks for a window title, never captures the screen, reads no key state and
 //! installs no input hook.
 //!
-//! On Wayland other apps' windows cannot be listed by design, so pets use the
-//! screen edges; see docs/verification.md for what each session supports.
+//! Wayland has no common way to list other apps' windows. Where the compositor
+//! offers its own (COSMIC, Hyprland, sway, niri; see `sources`), windows come
+//! from there, and the focused one's app id stands in for its process name.
+//! Elsewhere pets use the screen edges; see docs/verification.md for what each
+//! session supports.
 mod idle;
+pub mod layer;
+mod sources;
 mod x11;
 
 use super::{
+    wayland_model,
     x11_model::{self, Session},
     Platform, ProcessInfo,
 };
@@ -28,15 +34,28 @@ fn current_session() -> Session {
     )
 }
 
-/// A native Wayland overlay can be neither positioned nor kept above other
-/// windows, so on Wayland the toolkit is steered to XWayland when it exists
-/// and the user has not chosen a backend themselves.
+/// On Wayland the overlay is a layer surface where the compositor offers
+/// one. Elsewhere — GNOME, chiefly — an ordinary Wayland window can be neither
+/// positioned nor kept above other windows, so the toolkit is steered to
+/// XWayland when it exists and the user has not chosen a backend themselves.
 pub fn prepare_process() {
     if current_session() == Session::Wayland
+        && !layer::supported()
         && std::env::var_os("GDK_BACKEND").is_none()
         && std::env::var_os("DISPLAY").is_some()
     {
         std::env::set_var("GDK_BACKEND", "x11");
+    }
+}
+
+/// Where the pointer is over the layer-surface overlay, in virtual-desktop
+/// physical pixels, as the overlay's own pointer events report it. `None`
+/// once it has left the pets.
+static OVERLAY_POINTER: Mutex<Option<Point>> = Mutex::new(None);
+
+pub fn set_overlay_pointer(point: Option<Point>) {
+    if let Ok(mut pointer) = OVERLAY_POINTER.lock() {
+        *pointer = point;
     }
 }
 
@@ -50,6 +69,8 @@ pub struct NativePlatform {
     display: Mutex<Display>,
     monitors: Mutex<Vec<MonitorInfo>>,
     wayland_idle: OnceLock<idle::WaylandIdle>,
+    /// The compositor's window source, looked for once, on first use.
+    wayland_windows: OnceLock<Option<Box<dyn sources::WindowSource>>>,
 }
 
 impl Default for NativePlatform {
@@ -62,6 +83,7 @@ impl Default for NativePlatform {
             }),
             monitors: Mutex::new(Vec::new()),
             wayland_idle: OnceLock::new(),
+            wayland_windows: OnceLock::new(),
         }
     }
 }
@@ -92,6 +114,29 @@ impl NativePlatform {
         result
     }
 
+    fn window_source(&self) -> Option<&dyn sources::WindowSource> {
+        self.wayland_windows
+            .get_or_init(|| {
+                let source = sources::detect();
+                if std::env::var_os("LEDGELING_DIAGNOSTICS").is_some() {
+                    let name = source.as_ref().map_or("none", |s| s.name());
+                    eprintln!("Ledgeling's Wayland window source: {name}");
+                }
+                source
+            })
+            .as_deref()
+    }
+
+    /// Compositors lay windows out in logical pixels; the pet screen's scale
+    /// turns them into the physical pixels the engine works in.
+    fn layout_scale(&self) -> f64 {
+        self.monitors
+            .lock()
+            .ok()
+            .and_then(|m| m.first().map(|m| m.scale))
+            .unwrap_or(1.)
+    }
+
     fn monitor_for(&self, rect: Rect) -> u64 {
         self.monitors
             .lock()
@@ -112,9 +157,19 @@ impl Platform for NativePlatform {
         if self.session == Session::Wayland {
             // XWayland lists only X clients; perching on those would put pets
             // on edges that native Wayland windows are covering.
-            return Err(
-                "Wayland does not let apps see other windows. Using the desktop edge.".into(),
-            );
+            let Some(source) = self.window_source() else {
+                return Err(
+                    "This Wayland desktop does not let apps see other windows. Using the desktop edge."
+                        .into(),
+                );
+            };
+            let toplevels = source.toplevels()?;
+            return Ok(wayland_model::front_to_back(
+                &toplevels,
+                self.layout_scale(),
+                std::process::id(),
+                |rect| self.monitor_for(rect),
+            ));
         }
         let own_pid = std::process::id();
         self.with_x11(|x| {
@@ -138,17 +193,31 @@ impl Platform for NativePlatform {
 
     fn foreground_process(&self) -> Result<Option<ProcessInfo>, String> {
         if self.session == Session::Wayland {
-            // Only XWayland apps could be named, and the awareness layer keeps
-            // the last category it saw, so one XWayland game would stick.
-            return Ok(None);
+            // Without a window source only XWayland apps could be named, and
+            // the awareness layer keeps the last category it saw, so one
+            // XWayland game would stick.
+            let Some(source) = self.window_source() else {
+                return Ok(None);
+            };
+            let toplevels = source.toplevels()?;
+            let Some(focused) = wayland_model::focused(&toplevels) else {
+                return Ok(None);
+            };
+            // The executable is what the category map knows best; the app id
+            // stands in where the compositor gives no process.
+            if let Some(info) = focused.pid.and_then(process) {
+                return Ok(Some(info));
+            }
+            return Ok(focused
+                .app_id
+                .as_deref()
+                .and_then(wayland_model::app_name)
+                .map(|name| ProcessInfo { name, pid: 0 }));
         }
         let Some(pid) = self.with_x11(|x| x.active_pid())? else {
             return Ok(None);
         };
-        let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
-        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok();
-        let name = x11_model::process_name(exe.as_ref().and_then(|p| p.to_str()), comm.as_deref());
-        Ok(name.map(|name| ProcessInfo { name, pid }))
+        Ok(process(pid))
     }
 
     fn monitors(&self) -> Result<Vec<MonitorInfo>, String> {
@@ -174,6 +243,16 @@ impl Platform for NativePlatform {
         if monitors.is_empty() {
             return Ok(false);
         }
+        if self.session == Session::Wayland {
+            if let Some(source) = self.window_source() {
+                let toplevels = source.toplevels()?;
+                return Ok(wayland_model::fullscreen_active(
+                    &toplevels,
+                    self.layout_scale(),
+                    &monitors,
+                ));
+            }
+        }
         // On Wayland this still sees fullscreen XWayland apps, which is where
         // most games run; a focused native window reports no active X window.
         let own_pid = std::process::id();
@@ -185,6 +264,9 @@ impl Platform for NativePlatform {
     }
 
     fn cursor(&self) -> Option<Point> {
+        if layer::active() {
+            return OVERLAY_POINTER.lock().ok().and_then(|pointer| *pointer);
+        }
         // On Wayland, XWayland only learns where the pointer is while it is
         // over an X window, so this goes stale over native Wayland windows.
         self.with_x11(|x| x.pointer()).ok()
@@ -196,4 +278,12 @@ impl Platform for NativePlatform {
         // the release instead, as on Windows.
         None
     }
+}
+
+/// The executable's name for a process id: `/proc/<pid>/exe`, else `comm`.
+fn process(pid: u32) -> Option<ProcessInfo> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok();
+    let name = x11_model::process_name(exe.as_ref().and_then(|p| p.to_str()), comm.as_deref());
+    name.map(|name| ProcessInfo { name, pid })
 }

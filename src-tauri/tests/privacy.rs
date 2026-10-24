@@ -121,6 +121,39 @@ fn no_screen_capture_keystroke_or_clipboard_api_is_referenced() {
 }
 
 #[test]
+fn wayland_window_sources_drop_titles_where_they_arrive() {
+    // Some compositors push every window's title to anyone listing windows.
+    // The only thing a source may do with one is match the event and drop
+    // it: no field, binding or parsed key may carry a title onward. Test
+    // fixtures below `#[cfg(test)]` hold recorded replies, titles included.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/platform");
+    let mut checked = 0;
+    for (path, text) in read_all() {
+        let in_scope =
+            path.starts_with(root.join("linux/sources")) || path.ends_with("wayland_model.rs");
+        if !in_scope {
+            continue;
+        }
+        checked += 1;
+        let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+        for line in code.lines() {
+            if line.to_ascii_lowercase().contains("title") {
+                assert!(
+                    line.contains("Title { .. } => {}"),
+                    "{} handles a window title: `{}`",
+                    path.display(),
+                    line.trim()
+                );
+            }
+        }
+    }
+    assert!(
+        checked >= 5,
+        "the Wayland window sources should have been found"
+    );
+}
+
+#[test]
 fn networking_is_confined_to_explicit_task_adapters() {
     const NETWORK: &[&str] = &[
         "TcpStream",

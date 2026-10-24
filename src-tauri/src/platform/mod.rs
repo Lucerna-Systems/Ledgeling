@@ -45,7 +45,7 @@ pub use windows::NativePlatform;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{prepare_process, NativePlatform};
+pub use linux::{layer, prepare_process, set_overlay_pointer, NativePlatform};
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod fallback;
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -56,6 +56,7 @@ pub use fallback::NativePlatform;
 pub fn prepare_process() {}
 
 pub mod mock;
+pub mod wayland_model;
 pub mod x11_model;
 
 pub mod handoff;

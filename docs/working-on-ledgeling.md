@@ -71,7 +71,7 @@ Ledgeling; the repo and some identifiers still say `lupetty` or `perch`.
 | Rust | stable, via `rustup` | `cargo -V`. Components `clippy` and `rustfmt` |
 | macOS | Xcode Command Line Tools | `xcode-select --install` |
 | Windows | Visual Studio Build Tools ("Desktop development with C++"), WebView2 runtime (preinstalled on Windows 11) | Use PowerShell or Git Bash |
-| Linux | `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev` | Linux runs only in CI so far |
+| Linux | `libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-layer-shell-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev` (Debian/Ubuntu names) | Run by hand only on COSMIC so far; see `docs/verification.md` |
 
 Tauri's own prerequisites page covers anything missing: https://v2.tauri.app/start/prerequisites/
 

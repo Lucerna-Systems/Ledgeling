@@ -12,8 +12,9 @@ lifecycle all exist and are tested. Three bundled species — budgie, squirrel,
 gecko — differ only in data.
 
 What is genuinely outstanding is not code: the Windows build has had only a
-first hand-run on one Windows 11 machine, the Linux adapter has run only under
-Xvfb and headless sway in CI (see `docs/verification.md`), nothing
+first hand-run on one Windows 11 machine, the Linux adapter has run by hand only
+on one COSMIC (Wayland) desktop and otherwise under Xvfb and headless sway in CI
+(see `docs/verification.md`), nothing
 is signed, the performance budget has not
 been re-certified and the soak has not been run for this build, no outside author
 has shipped a pack, and nothing has been released. `docs/verification.md` is the
@@ -49,7 +50,7 @@ on other screens are clipped away before the graph is built.
 
 These are product-defining, not preferences. Violating one is a bug, not a tradeoff.
 
-1. **Window titles are never read.** Foreground detection goes `GetForegroundWindow` → `GetWindowThreadProcessId` → `QueryFullProcessImageNameW`, takes the process name, maps it to an `AppCategory`, and discards it. Titles contain email subjects, document names and URLs. M3-2 requires a test asserting no title API is called.
+1. **Window titles are never read.** Foreground detection goes `GetForegroundWindow` → `GetWindowThreadProcessId` → `QueryFullProcessImageNameW`, takes the process name, maps it to an `AppCategory`, and discards it. Titles contain email subjects, document names and URLs. M3-2 requires a test asserting no title API is called. On Wayland some window sources push titles unasked; they are dropped where they arrive, and `privacy.rs` asserts that too.
 2. **Pet packs are data, never code.** No JS, no Lua, no eval. Conditions use a fixed, non-Turing-complete grammar (`signal OP value` joined by `&&`/`||`) over a closed signal namespace. A malicious pack must at worst look wrong.
 3. **Zero network calls by core companion; opt-in assistant network access strictly isolated.** The passive companion makes zero network calls — no telemetry, no crash reporting, no update checks. Network access is strictly opt-in for assistant tasks, confined exclusively to four designated adapter files (`tasks/providers.rs`, `tasks/search.rs`, `tasks/commands.rs`, `tasks/apple.rs`), and enforced by `src-tauri/tests/privacy.rs`. Tauri capabilities stay minimal — no `shell`, no `fs` beyond the packs directory and config file.
 4. **Nudges are body language only.** No popups, toasts, text, or focus steals, ever. Cooldowns on everything; escalation caps at the third tier; suppressed in `game`/`media`.
