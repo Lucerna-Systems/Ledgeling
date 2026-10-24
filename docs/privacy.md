@@ -66,6 +66,7 @@ How it is kept honest:
   (`net-consent.json`); a missing or damaged file means everything is off.
 - All online requests go through one gate. It refuses a scope that is off before
   it opens any connection, talks https only, only to that scope's listed servers
+  (fixed when the app is built; a build with none cannot switch the feature on)
   (a redirect to any other server is not followed), caps how much it will download,
   and stops a request in progress the moment you switch its scope off.
 - Only the companion window can change these switches; a pet or a page cannot.

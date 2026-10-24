@@ -83,7 +83,10 @@ pub struct ScopeStatus {
     pub scope: Scope,
     pub label: &'static str,
     pub description: &'static str,
-    pub hosts: &'static [&'static str],
+    pub hosts: Vec<String>,
+    /// Whether this build knows a server for the scope. Unavailable scopes
+    /// cannot be switched on.
+    pub available: bool,
     pub mode: Mode,
     /// Whether "until I switch it off" is the only way to turn it on.
     pub always_remembered: bool,
@@ -117,6 +120,7 @@ impl Net {
                 label: scope.label(),
                 description: scope.description(),
                 hosts: scope.hosts(),
+                available: scope.available(),
                 mode: consent.mode(scope),
                 always_remembered: scope.always_remembered(),
             })
@@ -132,6 +136,12 @@ impl Net {
 
     /// Change one scope. Switching it off also stops its requests in flight.
     pub fn set(&self, scope: Scope, mode: Mode) -> Result<(), String> {
+        if mode != Mode::Off && self.hosts(scope).is_empty() {
+            return Err(format!(
+                "{} isn't available in this version of Ledgeling.",
+                scope.label()
+            ));
+        }
         self.consent
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -151,6 +161,15 @@ impl Net {
         self.gate(scope)?;
         let epoch = self.epochs[slot(scope)].load(Ordering::SeqCst);
         let hosts = self.hosts(scope);
+        if hosts.is_empty() {
+            return Err(NetError::new(
+                "unavailable",
+                format!(
+                    "{} isn't available in this version of Ledgeling.",
+                    scope.label()
+                ),
+            ));
+        }
         let url = check_url(&request.url, &hosts)?;
         let allowed = hosts.clone();
         let client = reqwest::blocking::Client::builder()
@@ -226,7 +245,7 @@ impl Net {
 
     fn hosts(&self, scope: Scope) -> Vec<String> {
         #[allow(unused_mut)]
-        let mut hosts: Vec<String> = scope.hosts().iter().map(|h| h.to_string()).collect();
+        let mut hosts: Vec<String> = scope.hosts();
         #[cfg(test)]
         hosts.extend(
             self.test_hosts

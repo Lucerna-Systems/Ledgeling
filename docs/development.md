@@ -77,6 +77,39 @@ To change the base version, bump `version` in `src-tauri/tauri.conf.json`,
 Release artifacts are a macOS DMG for Apple Silicon and one for Intel, a
 Windows x64 NSIS installer, and `SHA256SUMS.txt`. None of them are signed yet.
 
+## Online server addresses
+
+Online features (the pet marketplace, anonymous statistics) can only reach the
+servers a build was made with. Those are not in the source: they come from two
+variables read when the app is compiled.
+
+| Variable | Feature | Value |
+|---|---|---|
+| `LEDGELING_MARKETPLACE_HOSTS` | Pet marketplace | comma-separated bare host names, e.g. `market.example.com,cdn.example.com` |
+| `LEDGELING_ANALYTICS_HOSTS` | Anonymous statistics | the same format |
+
+A bare host name has no `https://`, port or path. Anything else is dropped, and a
+feature with no valid host is **unavailable**: it is hidden in the UI, cannot be
+switched on, and nothing can connect. A mistake in a setting therefore turns a
+feature off; it cannot point the app somewhere unintended. List a CDN host too if
+the marketplace redirects downloads to one, because a redirect to any host not on
+the list is not followed.
+
+**In CI.** The Release workflow's `build` job runs in the GitHub Environment named
+for the channel: `pre-alpha` for pushes to `main`, `alpha` for pushes to `prod`.
+Set the two variables under **Settings → Environments → pre-alpha / alpha →
+Environment variables** (variables, not secrets: the addresses end up in the
+binary anyway). That lets pre-alpha builds talk to a staging server and alphas to
+production. The Environments are created for you on first use; add protection
+rules there if alphas should need approval. Tests and the Verify workflow set
+none, so they run with every online feature unavailable.
+
+**Locally.** Set them for the build you run, for example
+`LEDGELING_MARKETPLACE_HOSTS=localhost npm run tauri dev`. Cargo rebuilds when
+they change. The host must still be https (the gate never allows plain http
+outside the test build), so a local server needs a certificate your machine
+trusts.
+
 ## itch.io
 
 The release workflow has an `itch` job that pushes each alpha to itch.io with
