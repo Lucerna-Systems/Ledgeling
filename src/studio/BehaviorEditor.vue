@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Flag, Plus, Trash2, X, Zap } from '@lucide/vue'
+import AiHelper from './AiHelper.vue'
 import BlockSelect from './BlockSelect.vue'
 import {
   actions, categories, clipInfo, clipsFor, equalityOps, events, nextKey, numberOps, renameState, signals, stateName,
@@ -67,6 +68,8 @@ function numberOrNull(event: Event) {
 
 <template>
   <div class="behavior-editor">
+    <AiHelper :draft="draft" />
+
     <section class="block-section">
       <header class="block-section-head">
         <h2><Zap :size="16" /> When something happens</h2>
