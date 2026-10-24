@@ -125,9 +125,6 @@ pub struct Jump {
 #[serde(rename_all = "camelCase")]
 pub struct Locomotion {
     pub class: LocomotionClass,
-    /// Author's own name for this kind of pet (`slitherer`); the engine
-    /// still moves it by `class`. Defaults to the class name.
-    pub kind: String,
     pub surfaces: Vec<SurfaceKind>,
     pub speed: Speed,
     pub jump: Jump,
@@ -146,7 +143,6 @@ impl Locomotion {
         };
         Self {
             class,
-            kind: class.as_str().to_string(),
             surfaces,
             speed: Speed {
                 surface: match class {
@@ -222,15 +218,6 @@ pub const ASSISTANT_CLIPS: &[(&str, &str)] = &[
     ("attention", "while its task is waiting for your answer"),
 ];
 
-/// A pack-named action: one of the built-in actions with its own speed. Still
-/// data — the engine only ever runs the built-in `base`.
-#[derive(Clone, Copy, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CustomAction {
-    pub base: Action,
-    pub speed_scale: f64,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -282,8 +269,6 @@ pub struct State {
     pub clip: String,
     pub duration: (f64, f64),
     pub action: Option<Action>,
-    /// Multiplier a custom action puts on movement speed while this state runs.
-    pub speed_scale: f64,
     pub sound: Option<String>,
     pub transitions: Vec<Transition>,
 }
@@ -305,7 +290,6 @@ pub enum Event {
     Released,
     Clicked,
     CursorNearby,
-    CursorFast,
     UserIdleLong,
     UserReturned,
     LongSession,
@@ -319,20 +303,15 @@ pub enum Event {
     Petted,
     PetNearby,
     NewDay,
-    /// The pet came down onto a surface after falling.
-    Landed,
-    /// The pet walked to the end of a horizontal surface and stopped there.
-    EdgeReached,
 }
 impl Event {
-    pub const ALL: [Event; 22] = [
+    pub const ALL: [Event; 19] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
         Event::Released,
         Event::Clicked,
         Event::CursorNearby,
-        Event::CursorFast,
         Event::UserIdleLong,
         Event::UserReturned,
         Event::LongSession,
@@ -346,8 +325,6 @@ impl Event {
         Event::Petted,
         Event::PetNearby,
         Event::NewDay,
-        Event::Landed,
-        Event::EdgeReached,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -357,7 +334,6 @@ impl Event {
             Event::Released => "released",
             Event::Clicked => "clicked",
             Event::CursorNearby => "cursor_nearby",
-            Event::CursorFast => "cursor_fast",
             Event::UserIdleLong => "user_idle_long",
             Event::UserReturned => "user_returned",
             Event::LongSession => "long_session",
@@ -371,8 +347,6 @@ impl Event {
             Event::Petted => "petted",
             Event::PetNearby => "pet_nearby",
             Event::NewDay => "new_day",
-            Event::Landed => "landed",
-            Event::EdgeReached => "edge_reached",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
@@ -387,11 +361,7 @@ impl Event {
             | Event::Clicked
             | Event::Thrown
             | Event::LandedHard => 90,
-            Event::UserReturned
-            | Event::CursorNearby
-            | Event::CursorFast
-            | Event::Petted
-            | Event::PetNearby => 60,
+            Event::UserReturned | Event::CursorNearby | Event::Petted | Event::PetNearby => 60,
             Event::LongSession | Event::BreakTaken | Event::NewDay => 50,
             _ => 30,
         }
@@ -443,7 +413,6 @@ pub struct Manifest {
     pub locomotion: Locomotion,
     pub animations: BTreeMap<String, Animation>,
     pub behavior: Behavior,
-    pub custom_actions: BTreeMap<String, CustomAction>,
     pub reactions: Vec<Reaction>,
     pub personality: Personality,
 }
@@ -534,9 +503,8 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
     let sprite = read_sprite(root, report);
     let locomotion = read_locomotion(root, report)?;
     let animations = read_animations(root, report);
-    let custom_actions = read_custom_actions(root, report);
     let behavior = match root.get("behavior") {
-        Some(value) => read_behavior(value, &animations, &custom_actions, report),
+        Some(value) => read_behavior(value, &animations, report),
         None => default_behavior(locomotion.class),
     };
     let reactions = read_reactions(root, &behavior, report);
@@ -557,14 +525,13 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
             "sprite",
             "locomotion",
             "animations",
-            "actions",
             "behavior",
             "reactions",
             "personality",
         ],
         report,
     );
-    let manifest = Manifest {
+    Some(Manifest {
         format,
         id,
         name,
@@ -577,123 +544,9 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
         locomotion,
         animations,
         behavior,
-        custom_actions,
         reactions,
         personality,
-    };
-    check_bounds(&manifest, report);
-    Some(manifest)
-}
-
-/// A three-number semantic version, `major.minor.patch`. Ordered, so installs
-/// can tell an update from a downgrade without a dependency.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version(pub u32, pub u32, pub u32);
-
-impl Version {
-    pub fn parse(text: &str) -> Option<Version> {
-        let mut parts = text.split('.');
-        let mut next = || parts.next()?.parse::<u32>().ok();
-        let version = Version(next()?, next()?, next()?);
-        parts.next().is_none().then_some(version)
-    }
-}
-
-/// Ceilings from `limits`: a pack can satisfy the grammar and still be
-/// expensive to hold or run, so size and fan-out are validated as well.
-fn check_bounds(manifest: &Manifest, report: &mut Report) {
-    use super::limits::*;
-    let too_long = |path: &str, text: &str, max: usize, report: &mut Report| {
-        let chars = text.chars().count();
-        if chars > max {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                path,
-                format!("The text is {chars} characters long."),
-                format!("Keep it to {max} characters or fewer."),
-            ));
-        }
-    };
-    too_long("id", &manifest.id, MAX_NAME_CHARS, report);
-    too_long("name", &manifest.name, MAX_NAME_CHARS, report);
-    too_long("author", &manifest.author, MAX_NAME_CHARS, report);
-    too_long("version", &manifest.version, MAX_NAME_CHARS, report);
-    too_long(
-        "description",
-        &manifest.description,
-        MAX_DESCRIPTION_CHARS,
-        report,
-    );
-    too_long("license", &manifest.license, MAX_LICENSE_CHARS, report);
-    if manifest.tags.len() > MAX_TAGS {
-        report.push(Diagnostic::error(
-            MANIFEST_FILE,
-            "tags",
-            format!("The pack has {} tags.", manifest.tags.len()),
-            format!("Use at most {MAX_TAGS} tags."),
-        ));
-    }
-    for (i, tag) in manifest.tags.iter().enumerate() {
-        too_long(&format!("tags[{i}]"), tag, MAX_TAG_CHARS, report);
-    }
-    if manifest.animations.len() > MAX_ANIMATIONS {
-        report.push(Diagnostic::error(
-            MANIFEST_FILE,
-            "animations",
-            format!(
-                "The pack declares {} animations.",
-                manifest.animations.len()
-            ),
-            format!("Use at most {MAX_ANIMATIONS} animations."),
-        ));
-    }
-    for (name, animation) in &manifest.animations {
-        if animation.frames > MAX_FRAMES {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                format!("animations.{name}.frames"),
-                format!("Found {} frames.", animation.frames),
-                format!("A clip may have at most {MAX_FRAMES} frames."),
-            ));
-        }
-        if animation.fps > MAX_FPS {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                format!("animations.{name}.fps"),
-                format!("Found {} frames per second.", animation.fps),
-                format!("Use {MAX_FPS} or fewer frames per second."),
-            ));
-        }
-    }
-    if manifest.behavior.states.len() > MAX_STATES {
-        report.push(Diagnostic::error(
-            MANIFEST_FILE,
-            "behavior.states",
-            format!(
-                "The pack declares {} states.",
-                manifest.behavior.states.len()
-            ),
-            format!("Use at most {MAX_STATES} states."),
-        ));
-    }
-    for (name, state) in &manifest.behavior.states {
-        if state.transitions.len() > MAX_TRANSITIONS_PER_STATE {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                format!("behavior.states.{name}.transitions"),
-                format!("The state has {} transitions.", state.transitions.len()),
-                format!("Use at most {MAX_TRANSITIONS_PER_STATE} transitions per state."),
-            ));
-        }
-    }
-    if manifest.reactions.len() > MAX_REACTIONS {
-        report.push(Diagnostic::error(
-            MANIFEST_FILE,
-            "reactions",
-            format!("The pack declares {} reactions.", manifest.reactions.len()),
-            format!("Use at most {MAX_REACTIONS} reactions."),
-        ));
-    }
+    })
 }
 
 /// serde's own message is developer-facing; this is the author-facing version.
@@ -794,61 +647,6 @@ fn read_sprite(root: &Map<String, Value>, report: &mut Report) -> SpriteBlock {
         report,
     );
     sprite
-}
-
-/// `"actions": { "scurry": { "base": "patrol_current_surface", "speed": 2 } }`
-/// names a built-in action with its own speed, for states to use.
-fn read_custom_actions(
-    root: &Map<String, Value>,
-    report: &mut Report,
-) -> BTreeMap<String, CustomAction> {
-    let mut out = BTreeMap::new();
-    let Some(map) = root
-        .get("actions")
-        .and_then(|v| expect_object(v, "actions", report))
-    else {
-        return out;
-    };
-    for (name, value) in map {
-        let path = format!("actions.{name}");
-        if Action::parse(name).is_some() {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                path.clone(),
-                format!("`{name}` is already a built-in action."),
-                "Choose a different name for the custom action.",
-            ));
-            continue;
-        }
-        let Some(item) = expect_object(value, &path, report) else {
-            continue;
-        };
-        let Some(base_name) = string(item, &path, "base", true, report) else {
-            continue;
-        };
-        let Some(base) = Action::parse(&base_name) else {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                format!("{path}.base"),
-                format!("Found `{base_name}`."),
-                format!(
-                    "Expected one of: {}.",
-                    Action::ALL
-                        .iter()
-                        .map(|a| a.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            ));
-            continue;
-        };
-        let speed_scale = number(item, &path, "speed", false, report)
-            .unwrap_or(1.)
-            .clamp(0.1, 5.);
-        note_unknown(item, &path, &["base", "speed"], report);
-        out.insert(name.clone(), CustomAction { base, speed_scale });
-    }
-    out
 }
 
 fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Locomotion> {
@@ -965,19 +763,6 @@ fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Loc
             );
         }
     }
-    if let Some(kind) = string(map, "locomotion", "type", false, report) {
-        let kind = kind.trim();
-        if kind.is_empty() || kind.chars().count() > 40 {
-            report.push(Diagnostic::error(
-                MANIFEST_FILE,
-                "locomotion.type",
-                "The type name is empty or longer than 40 characters.",
-                "Use a short label such as `slitherer`, or omit it to use the class name.",
-            ));
-        } else {
-            locomotion.kind = kind.to_string();
-        }
-    }
     if let Some(gravity) = number(map, "locomotion", "gravity", false, report) {
         locomotion.gravity = gravity.clamp(0., 4.);
     }
@@ -1009,7 +794,6 @@ fn read_locomotion(root: &Map<String, Value>, report: &mut Report) -> Option<Loc
         "locomotion",
         &[
             "class",
-            "type",
             "surfaces",
             "speed",
             "jump",
@@ -1185,7 +969,6 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
 fn read_behavior(
     value: &Value,
     animations: &BTreeMap<String, Animation>,
-    custom_actions: &BTreeMap<String, CustomAction>,
     report: &mut Report,
 ) -> Behavior {
     let mut behavior = Behavior {
@@ -1230,46 +1013,26 @@ fn read_behavior(
             ));
         }
         let duration = read_duration(state, &path, report);
-        let mut speed_scale = 1.;
         let action = match string(state, &path, "action", false, report) {
             None => None,
             Some(name) => match Action::parse(&name) {
                 Some(action) => Some(action),
-                None => match custom_actions.get(&name) {
-                    Some(custom) => {
-                        speed_scale = custom.speed_scale;
-                        Some(custom.base)
-                    }
-                    None => {
-                        report.push(Diagnostic::error(
-                            MANIFEST_FILE,
-                            format!("{path}.action"),
-                            format!("Unknown action `{name}`."),
-                            format!(
-                                "Expected one of: {}{}.",
-                                Action::ALL
-                                    .iter()
-                                    .map(|a| a.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                                if custom_actions.is_empty() {
-                                    ", or a name declared in the top-level `actions` block"
-                                        .to_string()
-                                } else {
-                                    format!(
-                                        ", or a custom action: {}",
-                                        custom_actions
-                                            .keys()
-                                            .cloned()
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    )
-                                }
-                            ),
-                        ));
-                        None
-                    }
-                },
+                None => {
+                    report.push(Diagnostic::error(
+                        MANIFEST_FILE,
+                        format!("{path}.action"),
+                        format!("Unknown action `{name}`."),
+                        format!(
+                            "Expected one of: {}.",
+                            Action::ALL
+                                .iter()
+                                .map(|a| a.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    ));
+                    None
+                }
             },
         };
         let mut transitions = Vec::new();
@@ -1321,7 +1084,6 @@ fn read_behavior(
                 clip,
                 duration,
                 action,
-                speed_scale,
                 sound: string(state, &path, "sound", false, report),
                 transitions,
             },
@@ -1533,7 +1295,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "idle".into(),
             duration: (6., 18.),
             action: None,
-            speed_scale: 1.,
             sound: None,
             transitions: vec![
                 Transition {
@@ -1565,7 +1326,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveToRandomSurface),
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1580,7 +1340,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveTowardPet),
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1595,7 +1354,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "sleep".into(),
             duration: (30., 120.),
             action: None,
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1610,7 +1368,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "happy".into(),
             duration: (2., 3.),
             action: None,
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1625,7 +1382,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "alert".into(),
             duration: (1., 2.),
             action: Some(Action::MoveToNearestSurface),
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1640,7 +1396,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "grabbed".into(),
             duration: (0.5, 0.5),
             action: None,
-            speed_scale: 1.,
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1658,7 +1413,6 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
                 clip: clip.into(),
                 duration,
                 action: None,
-                speed_scale: 1.,
                 sound: None,
                 transitions: vec![Transition {
                     to: settle.to_string(),

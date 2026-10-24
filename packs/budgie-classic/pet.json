@@ -33,9 +33,7 @@
     "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
     "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
     "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
-    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 },
-    "fluff": { "file": "sprites/fluff.png", "frames": 5, "fps": 8, "loop": false },
-    "dance": { "file": "sprites/dance.png", "frames": 6, "fps": 10 }
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
   },
   "behavior": {
     "initial": "perch",
@@ -48,16 +46,12 @@
           { "to": "preen", "weight": 3 },
           { "to": "relocate", "weight": 2 },
           { "to": "sing", "weight": 1 },
-          { "to": "fluff", "weight": 0.2 },
-          { "to": "dance", "weight": 0.2 },
           { "to": "restless", "weight": 4, "when": "session_minutes > 45" },
           { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
           { "to": "doze", "weight": 4, "when": "energy < 0.25" },
           { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
           { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
-          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" },
-          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
-          { "to": "sing", "weight": 2, "when": "hour >= 6 && hour < 10" }
+          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" }
         ]
       },
       "visit": {
@@ -68,16 +62,6 @@
       "preen": {
         "clip": "preen",
         "duration": [3, 6],
-        "transitions": [{ "to": "perch", "weight": 1 }]
-      },
-      "fluff": {
-        "clip": "fluff",
-        "duration": [2, 3],
-        "transitions": [{ "to": "perch", "weight": 1 }]
-      },
-      "dance": {
-        "clip": "dance",
-        "duration": [3, 5],
         "transitions": [{ "to": "perch", "weight": 1 }]
       },
       "relocate": {
@@ -157,8 +141,7 @@
     { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
     { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
     { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
-    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 },
-    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 }
   ],
   "personality": {
     "activity": 0.7,

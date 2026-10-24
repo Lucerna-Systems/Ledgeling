@@ -25,14 +25,13 @@ pub enum Signal {
     Mood,
     SurfaceCount,
     CursorDistance,
-    CursorSpeed,
     IsDragging,
     PetDistance,
     Affection,
     DaysTogether,
 }
 impl Signal {
-    pub const ALL: [Signal; 13] = [
+    pub const ALL: [Signal; 12] = [
         Signal::IdleSeconds,
         Signal::SessionMinutes,
         Signal::AppCategory,
@@ -41,7 +40,6 @@ impl Signal {
         Signal::Mood,
         Signal::SurfaceCount,
         Signal::CursorDistance,
-        Signal::CursorSpeed,
         Signal::IsDragging,
         Signal::PetDistance,
         Signal::Affection,
@@ -57,7 +55,6 @@ impl Signal {
             Signal::Mood => "mood",
             Signal::SurfaceCount => "surface_count",
             Signal::CursorDistance => "cursor_distance",
-            Signal::CursorSpeed => "cursor_speed",
             Signal::IsDragging => "is_dragging",
             Signal::PetDistance => "pet_distance",
             Signal::Affection => "affection",
@@ -94,8 +91,6 @@ pub struct Signals {
     pub mood: f64,
     pub surface_count: f64,
     pub cursor_distance: f64,
-    /// Pointer speed in logical pixels per second, smoothed over a few ticks.
-    pub cursor_speed: f64,
     pub is_dragging: bool,
     /// Logical pixels to the nearest other pet; infinite when it is alone.
     pub pet_distance: f64,
@@ -115,7 +110,6 @@ impl Default for Signals {
             mood: 0.7,
             surface_count: 0.,
             cursor_distance: f64::INFINITY,
-            cursor_speed: 0.,
             is_dragging: false,
             pet_distance: f64::INFINITY,
             affection: 0.2,
@@ -228,7 +222,6 @@ impl Test {
                     Signal::PetDistance => s.pet_distance,
                     Signal::Affection => s.affection,
                     Signal::DaysTogether => s.days_together,
-                    Signal::CursorSpeed => s.cursor_speed,
                     _ => return false,
                 };
                 self.op.apply(actual, v)

@@ -83,6 +83,11 @@ const status = computed(() => {
 const offline = computed(() => !snapshot.value || busy.value)
 const quiet = computed(() => !pets.value.length || !!settings.value?.paused || !!settings.value?.hidden || !!snapshot.value?.suspended)
 
+// A brand-new user's first launch opens on Pets, once, where the tip waits.
+let openedFirstRun = false
+watch(snapshot, value => {
+  if (value?.firstRun && !openedFirstRun) { openedFirstRun = true; page.value = 'pets' }
+})
 onMounted(() => {
   stop = start()
   if (native) void initAssistant().catch(() => {})

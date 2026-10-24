@@ -40,7 +40,7 @@ fn win(id: u64, x: f64, y: f64, w: f64, h: f64) -> WindowInfo {
 fn packs() -> HashMap<String, Arc<ledgeling::packs::Pack>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packs");
     let mut packs = HashMap::new();
-    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
         let pack = loader::load(&root.join(name), true)
             .unwrap_or_else(|report| panic!("{name}:\n{}", report.text()));
         packs.insert(pack.manifest.id.clone(), Arc::new(pack));
@@ -275,6 +275,50 @@ fn pets_and_positions_survive_a_restart() {
     let _ = std::fs::remove_dir_all(&directory);
 }
 
+fn day(d: u32) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap()
+}
+
+#[test]
+fn a_bond_survives_a_restart_and_cools_over_a_long_absence() {
+    let (mut engine, _) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.set_today(day(1));
+    let id = engine.spawn("com.perch.squirrel-red").unwrap();
+    assert!(engine.rename_pet(id, "  Biscuit "));
+    engine.pets[0].bond.affection = 0.7;
+    engine.set_today(day(2));
+    engine.set_today(day(2));
+    assert_eq!(engine.pets[0].bond.days, 2);
+    engine.remember_pets();
+
+    let mut same_day = Engine::new(engine.settings.clone(), packs());
+    same_day.set_monitors(monitors());
+    same_day.set_today(day(2));
+    same_day.restore_pets();
+    let pet = &same_day.pets[0];
+    assert_eq!(pet.display_name(), "Biscuit");
+    assert_eq!((pet.bond.days, pet.bond.met), (2, day(1)));
+    assert!((pet.bond.affection - 0.7).abs() < 1e-9);
+
+    let mut later = Engine::new(engine.settings.clone(), packs());
+    later.set_monitors(monitors());
+    later.set_today(day(12));
+    later.restore_pets();
+    let pet = &later.pets[0];
+    assert_eq!(pet.bond.days, 3, "coming back on a new day counts it");
+    assert!(
+        (pet.bond.affection - 0.5).abs() < 1e-9,
+        "10 days away cost 0.2"
+    );
+
+    let mut ages = Engine::new(engine.settings.clone(), packs());
+    ages.settings.pets[0].affection = 0.1;
+    ages.set_monitors(monitors());
+    ages.set_today(day(30));
+    ages.restore_pets();
+    assert_eq!(ages.pets[0].bond.affection, 0.);
+}
+
 #[test]
 fn a_pets_working_folder_survives_a_restart_unless_the_folder_is_gone() {
     let directory = std::env::temp_dir().join(format!("ledgeling-folder-{}", std::process::id()));
@@ -317,6 +361,7 @@ fn a_pet_whose_pack_was_uninstalled_is_dropped_rather_than_crashing() {
         x: Some(10.),
         y: Some(10.),
         folder: None,
+        ..Default::default()
     }];
     let mut engine = Engine::new(settings, packs());
     engine.set_monitors(monitors());
@@ -345,4 +390,164 @@ fn awareness_can_be_switched_off_entirely_and_the_pet_still_lives() {
     );
     assert_eq!(summary.nudge_tier, 0);
     assert!(engine.pets[0].perch.is_some(), "the pet is unaffected");
+}
+
+#[test]
+fn a_first_run_drops_one_pet_onto_the_frontmost_window_and_never_again() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    assert!(!engine.settings.welcomed);
+    engine.request_welcome();
+    run(&mut engine, &platform, 0.1);
+    assert_eq!(engine.pets.len(), 1, "exactly one pet is welcomed");
+    assert!(engine.settings.welcomed);
+    assert!(!engine.welcome_pending());
+    let pet = &engine.pets[0];
+    assert_eq!(
+        pet.motion,
+        ledgeling::pet::Motion::Falling,
+        "it arrives falling"
+    );
+    assert!(pet.position.y < 100., "from the top of the screen");
+    assert!(
+        (pet.position.x - 600.).abs() < 1.,
+        "above the window's centre"
+    );
+    run(&mut engine, &platform, 6.);
+    let perch = engine.pets[0].perch.expect("it landed on something");
+    assert_eq!(perch.key.kind.as_str(), "window_top");
+    assert_eq!(engine.pets.len(), 1);
+}
+
+#[test]
+fn the_welcome_waits_for_a_window_to_land_on() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![]]);
+    engine.request_welcome();
+    run(&mut engine, &platform, 0.1);
+    assert!(engine.pets.len() <= 1);
+    assert!(engine.settings.welcomed || engine.welcome_pending());
+}
+
+#[test]
+fn nothing_is_welcomed_when_already_welcomed_or_pets_exist() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.settings.welcomed = true;
+    engine.request_welcome();
+    run(&mut engine, &platform, 1.);
+    assert!(engine.pets.is_empty());
+
+    let (mut engine, platform) = engine_with_saved_pet();
+    engine.request_welcome();
+    assert!(!engine.welcome_pending());
+    run(&mut engine, &platform, 1.);
+    assert_eq!(engine.pets.len(), 1);
+}
+
+fn engine_with_saved_pet() -> (Engine, MockPlatform) {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    (engine, platform)
+}
+
+/// A and B are 100 px apart (hoppable); C is 200 px beyond B (not). All three
+/// sit far above the floor, so the pet cannot drop to it and walk round.
+/// Returns whether it ever stood on B; a hopper must also never reach C.
+fn hop_between_windows(pack: &str, hopper: bool) -> bool {
+    let (mut engine, platform) = engine(
+        monitors(),
+        vec![vec![
+            win(1, 100., 300., 400., 200.),
+            win(2, 600., 300., 400., 200.),
+            win(3, 1200., 300., 300., 200.),
+        ]],
+    );
+    run(&mut engine, &platform, 1.);
+    engine.spawn(pack).unwrap();
+    let top = engine
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
+        .expect("window A has a visible top");
+    engine.pets[0].perch = Some(ledgeling::pet::pathfind::Perch {
+        key: top.key(),
+        t: top.midpoint_t(),
+    });
+    engine.pets[0].position = top.point(top.midpoint_t());
+    let mut on_b = false;
+    for _ in 0..(900 * 60) {
+        engine.tick(1. / 60., &platform);
+        let Some(perch) = engine.pets[0].perch else {
+            continue;
+        };
+        if hopper {
+            assert_eq!(
+                perch.key.kind,
+                ledgeling::world::SurfaceKind::WindowTop,
+                "{pack} only stands on window tops here"
+            );
+        }
+        // A climber can walk down a window's side to the floor and round, so
+        // only the hopper is held to the gap.
+        assert!(
+            !hopper || perch.key.owner != 3,
+            "{pack} crossed the 200 px gap to the third window"
+        );
+        on_b |= perch.key.owner == 2;
+    }
+    on_b
+}
+
+#[test]
+fn the_cat_only_perches_on_standable_surfaces_and_never_hops_a_gap_wider_than_140() {
+    assert!(
+        hop_between_windows("com.perch.cat-tabby", true),
+        "the cat hopped the 100 px gap to the second window"
+    );
+}
+
+#[test]
+fn a_pet_walking_to_a_window_edge_to_hop_is_not_frozen_there() {
+    // Regression: the walk reached the edge, where the pet has no clearance,
+    // was told its surface was lost, and stayed in `startled` for good.
+    assert!(
+        hop_between_windows("com.perch.squirrel-red", false),
+        "the squirrel hopped to the second window"
+    );
+}
+
+#[test]
+fn two_pets_on_one_window_greet_each_other_through_the_engine() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 500., 800., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    engine.spawn("com.perch.cat-tabby").unwrap();
+    let top = engine
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
+        .copied()
+        .expect("a window top");
+    for (pet, t) in engine.pets.iter_mut().zip([0.30, 0.38]) {
+        pet.perch = Some(ledgeling::pet::pathfind::Perch { key: top.key(), t });
+        pet.position = top.point(t);
+        pet.listen(true);
+    }
+    let mut greeted = [false, false];
+    for _ in 0..300 {
+        engine.tick(1. / 60., &platform);
+        for (seen, pet) in greeted.iter_mut().zip(&engine.pets) {
+            *seen |= pet.state() == "greet";
+        }
+    }
+    assert_eq!(greeted, [true, true], "both noticed the other");
+}
+
+#[test]
+fn a_lone_pet_never_greets_anyone() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 500., 800., 300.)]]);
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    for _ in 0..600 {
+        engine.tick(1. / 60., &platform);
+        assert_ne!(engine.pets[0].state(), "greet");
+    }
 }
