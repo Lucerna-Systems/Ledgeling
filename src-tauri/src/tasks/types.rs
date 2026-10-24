@@ -22,6 +22,10 @@ pub struct Connection {
     pub model: String,
     pub endpoint: String,
     pub executable: String,
+    /// Whether a local reasoning model may think before it answers. Stamped from
+    /// `Connections::ollama_thinking` by `effective_connection`, never stored here.
+    #[serde(skip)]
+    pub thinking: bool,
 }
 impl Default for Connection {
     fn default() -> Self {
@@ -30,6 +34,7 @@ impl Default for Connection {
             model: String::new(),
             endpoint: String::new(),
             executable: String::new(),
+            thinking: false,
         }
     }
 }
@@ -59,6 +64,9 @@ pub struct ProviderSetup {
 pub struct Connections {
     pub active: Connection,
     pub search_enabled: bool,
+    /// Lets Ollama reasoning models think before answering. Off by default: a
+    /// small model can spend a minute thinking and look stuck.
+    pub ollama_thinking: bool,
     /// Per-companion overrides; pets without an entry use `active`.
     pub per_pet: BTreeMap<u64, Connection>,
     /// Only providers in here can be picked or run.
@@ -69,10 +77,12 @@ pub struct Connections {
 /// The connection a task for `pet_id` actually runs on: the pet's override
 /// when one is set, otherwise the global default.
 pub fn effective_connection(config: &Connections, pet_id: Option<u64>) -> Connection {
-    pet_id
+    let mut connection = pet_id
         .and_then(|id| config.per_pet.get(&id))
         .cloned()
-        .unwrap_or_else(|| config.active.clone())
+        .unwrap_or_else(|| config.active.clone());
+    connection.thinking = config.ollama_thinking;
+    connection
 }
 /// What the machine actually has: installed harnesses and saved API keys.
 #[derive(Clone, Serialize, Deserialize, Default, Debug, PartialEq)]
