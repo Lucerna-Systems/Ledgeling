@@ -33,7 +33,9 @@
     "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
     "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
     "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
-    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 },
+    "fluff": { "file": "sprites/fluff.png", "frames": 5, "fps": 8, "loop": false },
+    "dance": { "file": "sprites/dance.png", "frames": 6, "fps": 10 }
   },
   "behavior": {
     "initial": "perch",
@@ -46,6 +48,8 @@
           { "to": "preen", "weight": 3 },
           { "to": "relocate", "weight": 2 },
           { "to": "sing", "weight": 1 },
+          { "to": "fluff", "weight": 0.2 },
+          { "to": "dance", "weight": 0.2 },
           { "to": "restless", "weight": 4, "when": "session_minutes > 45" },
           { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
           { "to": "doze", "weight": 4, "when": "energy < 0.25" },
@@ -64,6 +68,16 @@
       "preen": {
         "clip": "preen",
         "duration": [3, 6],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "fluff": {
+        "clip": "fluff",
+        "duration": [2, 3],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "dance": {
+        "clip": "dance",
+        "duration": [3, 5],
         "transitions": [{ "to": "perch", "weight": 1 }]
       },
       "relocate": {
