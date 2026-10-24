@@ -27,9 +27,11 @@ pub enum Signal {
     CursorDistance,
     IsDragging,
     PetDistance,
+    Affection,
+    DaysTogether,
 }
 impl Signal {
-    pub const ALL: [Signal; 10] = [
+    pub const ALL: [Signal; 12] = [
         Signal::IdleSeconds,
         Signal::SessionMinutes,
         Signal::AppCategory,
@@ -40,6 +42,8 @@ impl Signal {
         Signal::CursorDistance,
         Signal::IsDragging,
         Signal::PetDistance,
+        Signal::Affection,
+        Signal::DaysTogether,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -53,6 +57,8 @@ impl Signal {
             Signal::CursorDistance => "cursor_distance",
             Signal::IsDragging => "is_dragging",
             Signal::PetDistance => "pet_distance",
+            Signal::Affection => "affection",
+            Signal::DaysTogether => "days_together",
         }
     }
     fn parse(name: &str) -> Option<Signal> {
@@ -88,6 +94,10 @@ pub struct Signals {
     pub is_dragging: bool,
     /// Logical pixels to the nearest other pet; infinite when it is alone.
     pub pet_distance: f64,
+    /// How fond this pet is of the user, 0 to 1.
+    pub affection: f64,
+    /// Days the user and this pet have spent together.
+    pub days_together: f64,
 }
 impl Default for Signals {
     fn default() -> Self {
@@ -102,6 +112,8 @@ impl Default for Signals {
             cursor_distance: f64::INFINITY,
             is_dragging: false,
             pet_distance: f64::INFINITY,
+            affection: 0.2,
+            days_together: 1.,
         }
     }
 }
@@ -208,6 +220,8 @@ impl Test {
                     Signal::SurfaceCount => s.surface_count,
                     Signal::CursorDistance => s.cursor_distance,
                     Signal::PetDistance => s.pet_distance,
+                    Signal::Affection => s.affection,
+                    Signal::DaysTogether => s.days_together,
                     _ => return false,
                 };
                 self.op.apply(actual, v)

@@ -302,9 +302,10 @@ pub enum Event {
     LandedHard,
     Petted,
     PetNearby,
+    NewDay,
 }
 impl Event {
-    pub const ALL: [Event; 18] = [
+    pub const ALL: [Event; 19] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
@@ -323,6 +324,7 @@ impl Event {
         Event::LandedHard,
         Event::Petted,
         Event::PetNearby,
+        Event::NewDay,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -344,6 +346,7 @@ impl Event {
             Event::LandedHard => "landed_hard",
             Event::Petted => "petted",
             Event::PetNearby => "pet_nearby",
+            Event::NewDay => "new_day",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
@@ -359,7 +362,7 @@ impl Event {
             | Event::Thrown
             | Event::LandedHard => 90,
             Event::UserReturned | Event::CursorNearby | Event::Petted | Event::PetNearby => 60,
-            Event::LongSession | Event::BreakTaken => 50,
+            Event::LongSession | Event::BreakTaken | Event::NewDay => 50,
             _ => 30,
         }
     }
@@ -1438,6 +1441,7 @@ pub fn default_reactions(behavior: &Behavior) -> Vec<Reaction> {
         (Event::LandedHard, "dizzy", 90, 0.),
         (Event::Petted, "enjoy", 60, 3.),
         (Event::PetNearby, "greet", 50, 120.),
+        (Event::NewDay, "greet", 50, 600.),
     ]
     .into_iter()
     .filter(|(_, goto, _, _)| behavior.states.contains_key(*goto))

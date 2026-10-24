@@ -1008,3 +1008,45 @@ fn move_toward_pet_with_no_peer_finishes_at_once() {
     assert!(pet.action_done);
     assert_ne!(pet.motion, Motion::Walking);
 }
+
+#[test]
+fn petting_raises_affection_and_it_clamps_at_one() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let before = pet.bond.affection;
+    let (xs, y) = (zig(&pet), pet.position.y - 20.);
+    rub(&mut pet, &world, &xs, y, 0.1);
+    assert!((pet.bond.affection - before - 0.02).abs() < 1e-9);
+    pet.bond.affection = 0.995;
+    pet.click();
+    pet.click();
+    assert_eq!(pet.bond.affection, 1.);
+}
+
+#[test]
+fn a_later_day_adds_one_day_and_one_new_day_event() {
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 24).unwrap();
+    pet.bond = crate::pet::Bond::new(day);
+    pet.roll_day(day);
+    assert_eq!(pet.bond.days, 1);
+    assert!(pet.pending.is_empty());
+    let next = day.succ_opt().unwrap();
+    pet.roll_day(next);
+    pet.roll_day(next);
+    assert_eq!(pet.bond.days, 2);
+    assert_eq!(
+        pet.pending.iter().filter(|e| **e == Event::NewDay).count(),
+        1
+    );
+}
+
+#[test]
+fn a_pet_shows_the_name_it_was_given() {
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    let pack_name = pet.display_name().to_string();
+    pet.bond.name = Some("Biscuit".into());
+    assert_eq!(pet.display_name(), "Biscuit");
+    pet.bond.name = None;
+    assert_eq!(pet.display_name(), pack_name);
+}

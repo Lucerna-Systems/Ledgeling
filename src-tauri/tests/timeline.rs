@@ -275,6 +275,50 @@ fn pets_and_positions_survive_a_restart() {
     let _ = std::fs::remove_dir_all(&directory);
 }
 
+fn day(d: u32) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap()
+}
+
+#[test]
+fn a_bond_survives_a_restart_and_cools_over_a_long_absence() {
+    let (mut engine, _) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.set_today(day(1));
+    let id = engine.spawn("com.perch.squirrel-red").unwrap();
+    assert!(engine.rename_pet(id, "  Biscuit "));
+    engine.pets[0].bond.affection = 0.7;
+    engine.set_today(day(2));
+    engine.set_today(day(2));
+    assert_eq!(engine.pets[0].bond.days, 2);
+    engine.remember_pets();
+
+    let mut same_day = Engine::new(engine.settings.clone(), packs());
+    same_day.set_monitors(monitors());
+    same_day.set_today(day(2));
+    same_day.restore_pets();
+    let pet = &same_day.pets[0];
+    assert_eq!(pet.display_name(), "Biscuit");
+    assert_eq!((pet.bond.days, pet.bond.met), (2, day(1)));
+    assert!((pet.bond.affection - 0.7).abs() < 1e-9);
+
+    let mut later = Engine::new(engine.settings.clone(), packs());
+    later.set_monitors(monitors());
+    later.set_today(day(12));
+    later.restore_pets();
+    let pet = &later.pets[0];
+    assert_eq!(pet.bond.days, 3, "coming back on a new day counts it");
+    assert!(
+        (pet.bond.affection - 0.5).abs() < 1e-9,
+        "10 days away cost 0.2"
+    );
+
+    let mut ages = Engine::new(engine.settings.clone(), packs());
+    ages.settings.pets[0].affection = 0.1;
+    ages.set_monitors(monitors());
+    ages.set_today(day(30));
+    ages.restore_pets();
+    assert_eq!(ages.pets[0].bond.affection, 0.);
+}
+
 #[test]
 fn a_pets_working_folder_survives_a_restart_unless_the_folder_is_gone() {
     let directory = std::env::temp_dir().join(format!("ledgeling-folder-{}", std::process::id()));
@@ -317,6 +361,7 @@ fn a_pet_whose_pack_was_uninstalled_is_dropped_rather_than_crashing() {
         x: Some(10.),
         y: Some(10.),
         folder: None,
+        ..Default::default()
     }];
     let mut engine = Engine::new(settings, packs());
     engine.set_monitors(monitors());

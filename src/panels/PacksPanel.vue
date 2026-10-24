@@ -25,6 +25,8 @@ const classes = [
 const moves: Record<string, string> = Object.fromEntries(classes.map(c => [c.value, c.label]))
 const spawnedFor = computed(() => new Set(pets.value.map(p => p.packId)))
 
+const petFor = (packId: string) => pets.value.find(p => p.packId === packId)
+
 const needsAttention = (pack: PackSummary) => !pack.loadable || pack.errors > 0 || pack.warnings > 0
 const sorted = <T,>(values: T[]) => [...new Set(values)].sort()
 const authorOptions = computed(() => [{ value: 'any', label: 'Anyone' }, ...sorted(packs.value.map(p => p.summary.author).filter(Boolean)).map(a => ({ value: a, label: `By ${a}` }))])
@@ -70,6 +72,12 @@ async function dismissTip() {
   if (settings.value) await saveSettings({ ...settings.value, tipsDismissed: true })
 }
 
+async function rename(petId: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const name = input.value.trim()
+  await call('rename_pet', { petId, name })
+  input.value = petFor(pets.value.find(p => p.id === petId)?.packId ?? '')?.name ?? name
+}
 async function spawn(id: string) { await call('spawn_pet', { packId: id }) }
 async function despawn(id: string) {
   const pet = pets.value.find(p => p.packId === id)
@@ -136,6 +144,11 @@ async function exportPack(id: string) {
         </header>
         <p class="pack-description">{{ listing.summary.description }}</p>
         <p v-if="!listing.summary.loadable" class="pack-problem"><AlertTriangle :size="13" /> This pet can't be brought out right now.</p>
+        <div v-if="petFor(listing.summary.id)" class="pack-bond">
+          <input class="pet-name" maxlength="24" :value="petFor(listing.summary.id)!.name" :aria-label="`Name for ${listing.summary.name}`" @change="rename(petFor(listing.summary.id)!.id, $event)" @keydown.enter="($event.target as HTMLInputElement).blur()">
+          <span class="bond-days">Together {{ petFor(listing.summary.id)!.days }} {{ petFor(listing.summary.id)!.days === 1 ? 'day' : 'days' }}</span>
+          <meter class="affection" min="0" max="1" :value="petFor(listing.summary.id)!.affection" aria-label="How fond it is of you" />
+        </div>
         <div class="pack-actions">
           <button v-if="!spawnedFor.has(listing.summary.id)" class="primary-button" :disabled="!listing.summary.loadable" @click="spawn(listing.summary.id)"><PawPrint :size="15" /> Bring out</button>
           <button v-else @click="despawn(listing.summary.id)">Send home</button>

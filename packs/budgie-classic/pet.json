@@ -50,7 +50,8 @@
           { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
           { "to": "doze", "weight": 4, "when": "energy < 0.25" },
           { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
-          { "to": "visit", "weight": 1, "when": "pet_distance < 1500" }
+          { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
+          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" }
         ]
       },
       "visit": {
@@ -139,7 +140,8 @@
     { "on": "thrown", "goto": "dizzy", "priority": 90 },
     { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
     { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
-    { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 }
+    { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 }
   ],
   "personality": {
     "activity": 0.7,

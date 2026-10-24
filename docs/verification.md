@@ -443,6 +443,14 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   squirrel and cat were launched together once; no screenshot caught them
   greeting or visiting, so the pet-to-pet behaviour is **not** hand-verified.
 
+- **Phase 5, remembering you.** fmt, clippy, `npm test` (263 lib, 19 timeline, 7
+  privacy) and `npm run test:ui` (140) pass. Hand-run once on macOS (2026-10-24)
+  with a seeded settings file: the Pets page showed the cat's name, "Together 5
+  days" and an affection meter near 60%, and `settings.json` held the same bond
+  after quitting. Not confirmed: a second launch reading it back by eye, the
+  meter fill measured, a real midnight rollover, and the affectionate behaviors
+  seen playing. Those are covered by unit and timeline tests only.
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":

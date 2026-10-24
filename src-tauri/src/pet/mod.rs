@@ -8,6 +8,7 @@ use crate::{
     packs::{manifest::Event, Action, LocomotionClass, Manifest, Pack, Signals},
     world::{EdgeKind, Orientation, Point, Rect, Surface, SurfaceGraph, SurfaceKey},
 };
+use chrono::NaiveDate;
 use fsm::{Machine, Rng};
 use locomotion::{air_offset, sprite_rotation};
 use pathfind::{Perch, Plan};
@@ -125,6 +126,28 @@ pub struct WorldView<'a> {
     pub attention: Option<u64>,
 }
 
+/// What a pet remembers about the user: a name, how long they have known each
+/// other and how fond it has become. Dates come from the engine, never a clock.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bond {
+    pub name: Option<String>,
+    pub met: NaiveDate,
+    pub last_seen: NaiveDate,
+    pub days: u32,
+    pub affection: f64,
+}
+impl Bond {
+    pub fn new(today: NaiveDate) -> Self {
+        Self {
+            name: None,
+            met: today,
+            last_seen: today,
+            days: 1,
+            affection: 0.2,
+        }
+    }
+}
+
 /// Rubbing the pointer back and forth over a pet: reversals of horizontal
 /// direction inside its hit box, counted over a short window.
 #[derive(Default)]
@@ -154,6 +177,7 @@ pub struct Pet {
     action_done: bool,
     was_near_cursor: bool,
     was_near_pet: bool,
+    pub bond: Bond,
     /// Cursor velocity while held, logical px/s, smoothed.
     held_velocity: Point,
     /// The current fall began with the user letting go, so a hard landing is
@@ -195,6 +219,7 @@ impl Pet {
             action_done: false,
             was_near_cursor: false,
             was_near_pet: false,
+            bond: Bond::new(NaiveDate::default()),
             held_velocity: Point::new(0., 0.),
             thrown_fall: false,
             petting: Petting::default(),
@@ -293,6 +318,27 @@ impl Pet {
         self.pending.push(Event::Startup);
     }
 
+    /// The name the user gave it, else the pack's.
+    pub fn display_name(&self) -> &str {
+        self.bond
+            .name
+            .as_deref()
+            .unwrap_or(&self.pack.manifest.name)
+    }
+
+    fn gain(&mut self, amount: f64) {
+        self.bond.affection = (self.bond.affection + amount).clamp(0., 1.);
+    }
+
+    /// A later calendar day than the last it was seen: one more day together.
+    pub fn roll_day(&mut self, today: NaiveDate) {
+        if today > self.bond.last_seen {
+            self.bond.days += 1;
+            self.bond.last_seen = today;
+            self.pending.push(Event::NewDay);
+        }
+    }
+
     pub fn is_held(&self) -> bool {
         self.motion == Motion::Held
     }
@@ -368,6 +414,7 @@ impl Pet {
     pub fn click(&mut self) {
         self.pending.push(Event::Clicked);
         self.mood = (self.mood + 0.03).min(1.);
+        self.gain(0.005);
     }
 
     /// Swap in a reloaded pack without losing where the pet is standing.
@@ -445,6 +492,8 @@ impl Pet {
                 .nearest_peer(view)
                 .map(|peer| peer.position.distance(self.position) / view.scale)
                 .unwrap_or(f64::INFINITY),
+            affection: self.bond.affection,
+            days_together: self.bond.days as f64,
             ..base
         }
     }
@@ -485,6 +534,9 @@ impl Pet {
             events.push(Event::CursorNearby);
         }
         self.was_near_cursor = near;
+        if events.contains(&Event::UserReturned) {
+            self.gain(0.01);
+        }
         if signals.pet_distance < PET_NEARBY && !self.was_near_pet {
             events.push(Event::PetNearby);
             self.was_near_pet = true;
@@ -534,6 +586,7 @@ impl Pet {
             self.petting.reversals.clear();
             self.petting.quiet_until = now + PET_COOLDOWN;
             self.mood = (self.mood + 0.08).min(1.);
+            self.gain(0.02);
             events.push(Event::Petted);
         }
     }

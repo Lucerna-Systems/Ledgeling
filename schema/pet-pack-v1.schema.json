@@ -137,7 +137,7 @@
                     "weight": { "type": "number", "minimum": 0 },
                     "when": {
                       "type": "string",
-                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, pet_distance, is_dragging."
+                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, pet_distance, affection, days_together, is_dragging."
                     }
                   }
                 }
@@ -159,7 +159,7 @@
               "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
               "cursor_nearby", "user_idle_long", "user_returned", "long_session",
               "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy",
-              "thrown", "landed_hard", "petted", "pet_nearby"
+              "thrown", "landed_hard", "petted", "pet_nearby", "new_day"
             ]
           },
           "goto": { "type": "string" },

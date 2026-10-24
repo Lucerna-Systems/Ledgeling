@@ -4,14 +4,15 @@
 use crate::{
     awareness::{Awareness, AwarenessSummary},
     packs::{loader, LocomotionClass, Pack},
-    pet::{fsm::Rng, spawn_point, Peer, Pet, WorldView},
+    pet::{fsm::Rng, spawn_point, Bond, Peer, Pet, WorldView},
     platform::Platform,
-    settings::{PetSetting, Settings},
+    settings::{clean_name, PetSetting, Settings},
     world::{
         self, virtual_desktop, MonitorInfo, Point, Rect, Surface, SurfaceChange, SurfaceGraph,
         SurfaceTracker, WindowInfo,
     },
 };
+use chrono::NaiveDate;
 use std::{collections::HashMap, sync::Arc};
 
 /// Baseline window poll, bumped for a couple of seconds after any change.
@@ -50,6 +51,7 @@ pub struct Engine {
     last_suspend_check: f64,
     rng: Rng,
     pending_welcome: bool,
+    today: NaiveDate,
 }
 
 impl Engine {
@@ -79,6 +81,7 @@ impl Engine {
             last_suspend_check: f64::NEG_INFINITY,
             rng: Rng::new(0x5EED_1234),
             pending_welcome: false,
+            today: NaiveDate::default(),
         }
     }
 
@@ -160,6 +163,7 @@ impl Engine {
         let id = self.next_id;
         self.next_id += 1;
         let mut pet = Pet::new(id, pack, position);
+        pet.bond = Bond::new(self.today);
         pet.perch = perch;
         pet.home = perch;
         if perch.is_some() {
@@ -167,6 +171,30 @@ impl Engine {
         }
         self.pets.push(pet);
         Ok(id)
+    }
+
+    /// Tell the engine what day it is. Kept out of the pets so bond logic needs
+    /// no clock: a later day than a pet was last seen is one more day together.
+    pub fn set_today(&mut self, day: NaiveDate) {
+        self.today = day;
+        for pet in &mut self.pets {
+            pet.roll_day(day);
+        }
+    }
+
+    pub fn today(&self) -> NaiveDate {
+        self.today
+    }
+
+    /// Rename a pet; an empty name goes back to the pack's own.
+    pub fn rename_pet(&mut self, id: u64, name: &str) -> bool {
+        match self.pets.iter_mut().find(|p| p.id == id) {
+            Some(pet) => {
+                pet.bond.name = clean_name(name);
+                true
+            }
+            None => false,
+        }
     }
 
     /// The bubble opened on one pet; there is only one bubble, so opening it
@@ -208,6 +236,10 @@ impl Engine {
         for setting in wanted {
             match self.spawn(&setting.pack_id) {
                 Ok(id) => {
+                    if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+                        pet.bond = bond_from(&setting, self.today);
+                        pet.roll_day(self.today);
+                    }
                     // A saved spot only applies while it is still on the
                     // screens pets have: coordinates from a disconnected
                     // display would drop the pet outside the world it was
@@ -301,6 +333,11 @@ impl Engine {
                 x: pet.position.x.is_finite().then_some(pet.position.x),
                 y: pet.position.y.is_finite().then_some(pet.position.y),
                 folder: pet.folder.clone(),
+                name: pet.bond.name.clone(),
+                met: Some(pet.bond.met.to_string()),
+                last_seen: Some(pet.bond.last_seen.to_string()),
+                days: pet.bond.days,
+                affection: pet.bond.affection,
             })
             .collect();
     }
@@ -464,5 +501,23 @@ impl Engine {
 
     pub fn class_of(&self, pack_id: &str) -> Option<LocomotionClass> {
         self.packs.get(pack_id).map(|p| p.manifest.locomotion.class)
+    }
+}
+
+/// A pet's bond as saved. A long absence cools it a little (0.02 a missed day,
+/// at most 0.2) and never resets it.
+fn bond_from(setting: &PetSetting, today: NaiveDate) -> Bond {
+    let parse = |d: &Option<String>| {
+        d.as_deref()
+            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+    };
+    let last_seen = parse(&setting.last_seen).unwrap_or(today);
+    let missed = (today - last_seen).num_days().max(0) as f64;
+    Bond {
+        name: setting.name.clone(),
+        met: parse(&setting.met).unwrap_or(today),
+        last_seen,
+        days: setting.days.max(1),
+        affection: (setting.affection - (missed * 0.02).min(0.2)).max(0.),
     }
 }

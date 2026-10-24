@@ -154,6 +154,9 @@ export interface PetView {
   energy: number
   mood: number
   surface: string | null
+  /** Days spent together, and how fond the pet is of the user (0 to 1). */
+  days: number
+  affection: number
 }
 
 export interface MonitorInfo { id: number; bounds: Rect; work: Rect; scale: number; isPrimary: boolean }

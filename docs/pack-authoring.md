@@ -173,7 +173,8 @@ hour >= 22 || hour < 6
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
 `hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `pet_distance`
 (pixels to the nearest other pet; infinite when there is none),
-`is_dragging`.
+`affection` (0 to 1, grows when the pet is petted and clicked, cools a little
+during long absences), `days_together`, `is_dragging`.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:
@@ -212,6 +213,10 @@ generously on anything to do with nudging.
 `pet_nearby` fires once when another pet comes within about 140 px, and again
 only after they have parted by more than 200 px; use a long `cooldown` so a
 greeting stays special.
+
+`new_day` fires once when the user's first day with the pet rolls over to the
+next calendar day it is on screen; a `greet` reaction with a long `cooldown`
+makes a good morning hello.
 
 Packs without a `behavior` block get these states and reactions for free; both
 clips are optional and fall back to `alert`/`happy`, then `idle`.

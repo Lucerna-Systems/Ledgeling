@@ -39,3 +39,22 @@ it('does not show the tip once it was dismissed before', async () => {
   expect(wrapper.find('.tip-card').exists()).toBe(false)
   wrapper.unmount()
 })
+
+it('renames a pet that is out with the trimmed name', async () => {
+  const summary = { id: 'pip', name: 'Pip', author: 'a', version: '1', description: '', license: '', tags: [], class: 'flier', surfaces: [], animations: [], assistantClips: [], preview: null, directory: '', builtin: true, errors: 0, warnings: 0, notes: 0, loadable: true }
+  api.invoke.mockImplementation(async (command: string, args: { settings?: unknown }) => {
+    if (command === 'list_packs') return [{ summary, report: { diagnostics: [] } }]
+    if (command === 'set_settings') return { settings: args.settings, pets: [], packs: [], notes: [] }
+    return undefined
+  })
+  snapshot.value = { settings: { ...settings, tipsDismissed: true }, packs: [], notes: [], pets: [{ id: 7, packId: 'pip', name: 'Pip', days: 3, affection: 0.4 }] } as unknown as Snapshot
+  const wrapper = mount(PacksPanel)
+  await flushPromises()
+  expect(wrapper.find('.bond-days').text()).toBe('Together 3 days')
+  const input = wrapper.get('input.pet-name')
+  await input.setValue('  Biscuit  ')
+  await input.trigger('change')
+  await flushPromises()
+  expect(api.invoke).toHaveBeenCalledWith('rename_pet', { petId: 7, name: 'Biscuit' })
+  wrapper.unmount()
+})

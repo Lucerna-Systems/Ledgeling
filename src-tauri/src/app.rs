@@ -78,6 +78,8 @@ pub struct PetView {
     pub energy: f64,
     pub mood: f64,
     pub surface: Option<String>,
+    pub days: u32,
+    pub affection: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -140,7 +142,7 @@ impl App {
                 .map(|pet| PetView {
                     id: pet.id,
                     pack_id: pet.pack.manifest.id.clone(),
-                    name: pet.pack.manifest.name.clone(),
+                    name: pet.display_name().to_string(),
                     class: pet.pack.manifest.locomotion.class.as_str().to_string(),
                     state: pet.state().to_string(),
                     clip: pet.clip().to_string(),
@@ -151,6 +153,8 @@ impl App {
                     energy: pet.energy,
                     mood: pet.mood,
                     surface: pet.perch.map(|p| p.key.kind.as_str().to_string()),
+                    days: pet.bond.days,
+                    affection: pet.bond.affection,
                 })
                 .collect(),
             packs: loader::scan(&self.packs_dir)
@@ -224,7 +228,7 @@ pub fn task_pet(
     let pet = state.engine.pets.iter().find(|p| Some(p.id) == pet_id)?;
     Some(crate::tasks::types::TaskPet {
         pack_id: pet.pack.manifest.id.clone(),
-        name: pet.pack.manifest.name.clone(),
+        name: pet.display_name().to_string(),
     })
 }
 
@@ -560,6 +564,17 @@ async fn spawn_pet(pack_id: String, state: State<'_, Shared>) -> Result<u64, Str
 }
 
 #[tauri::command]
+async fn rename_pet(pet_id: u64, name: String, state: State<'_, Shared>) -> Result<(), String> {
+    let mut app = locked(&state)?;
+    if !app.engine.rename_pet(pet_id, &name) {
+        return Err("That pet is not on the desktop.".into());
+    }
+    app.dirty = true;
+    let _ = app.persist();
+    Ok(())
+}
+
+#[tauri::command]
 async fn despawn_pet(pet_id: u64, state: State<'_, Shared>) -> Result<(), String> {
     let mut app = locked(&state)?;
     if !app.engine.despawn(pet_id) {
@@ -615,6 +630,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
     tauri::Builder::default()
         .on_menu_event(handle_menu)
         .invoke_handler(tauri::generate_handler![
+            rename_pet,
             crate::platform::pet_ui::pet_folder,
             crate::platform::pet_ui::pet_folder_drag,
             crate::platform::pet_ui::show_pet_bubble,
@@ -837,6 +853,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             if let Ok(executable) = std::env::current_exe() {
                 let _ = crate::autostart::apply(engine.settings.launch_at_login, &executable);
             }
+            engine.set_today(chrono::Local::now().date_naive());
             let missing = engine.restore_pets();
             engine.request_welcome();
             let first_run = engine.welcome_pending();
@@ -1383,6 +1400,11 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
         // this thread, so bookkeeping on it cannot deadlock.
         for monitor in std::mem::take(&mut app.atlas_recheck) {
             renderer.request_atlases(monitor);
+        }
+        let today = chrono::Local::now().date_naive();
+        if today != app.engine.today() {
+            app.engine.set_today(today);
+            let _ = app.persist();
         }
         app.engine.tick(dt, &platform);
         let resting =
