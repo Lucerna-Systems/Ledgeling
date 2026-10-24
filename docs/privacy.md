@@ -1,8 +1,9 @@
 # What Ledgeling looks at
 
-Ledgeling runs entirely on your computer. There is no account, no server, and no
-telemetry. Nothing you do in Ledgeling reaches a network, because the program contains
-no code that can reach one.
+Ledgeling runs entirely on your computer. There is no account and nothing is sent
+anywhere by default: every online feature is **off until you switch it on**, and
+you can switch it off again at any time. See [Online features](#online-features)
+below.
 
 ## Collected
 
@@ -24,7 +25,8 @@ no code that can reach one.
   and installs no keyboard hook.
 - **Screen contents.** No screenshots, no screen recording permission, ever.
 - **The clipboard, your files, your file paths, your browser history or tabs.**
-- **Anything sent anywhere.** There is no network code in the build.
+- **Anything sent anywhere** unless you have switched on an online feature, and then
+  only what that feature says it sends.
 
 ## How the application category is worked out
 
@@ -42,8 +44,36 @@ part of this sequence.
 
 `src-tauri/tests/privacy.rs` fails the build if any source file references a
 window-title API, a screen-capture API, a keyboard-state API, or anything that can
-open a network connection, and if Ledgeling's permission list grants anything beyond
-local window events. It is checked by a machine on every test run, not by memory.
+open a network connection outside the `net` gate and the assistant's task adapters,
+if more than one file holds an HTTP client, if the gate's `send` does not check your
+consent first, and if Ledgeling's permission list grants anything beyond local
+window events. It is checked by a machine on every test run, not by memory.
+
+## Online features
+
+Each optional online feature is a named **scope**. Today there are two:
+
+- **Pet marketplace.** Browse, download and update pets. Nothing is contacted until
+  you switch it on and press a button in the marketplace. You can allow it for one
+  session (it is off again after Ledgeling quits) or until you switch it off.
+- **Anonymous usage statistics.** Off by default, and only ever on until you switch
+  it off. No statistics are collected or sent yet; the switch exists so that the
+  promise is in place before the feature is.
+
+How it is kept honest:
+
+- Every scope starts off. Only a choice you made to *remember* is written to disk
+  (`net-consent.json`); a missing or damaged file means everything is off.
+- All online requests go through one gate. It refuses a scope that is off before
+  it opens any connection, talks https only, only to that scope's listed servers
+  (a redirect to any other server is not followed), caps how much it will download,
+  and stops a request in progress the moment you switch its scope off.
+- Only the companion window can change these switches; a pet or a page cannot.
+- Downloaded pets are checked against the hash the marketplace published before
+  anything is unpacked, and are held to the pack limits in
+  [pack-authoring.md](pack-authoring.md).
+- Statistics, when they exist, will be a fixed list of events with no free text:
+  never window titles, file names, app names, pet names or anything you type.
 
 ## Coding mode (Developer tools)
 

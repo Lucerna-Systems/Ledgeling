@@ -3,6 +3,7 @@
 pub mod builtin;
 pub mod diagnostics;
 pub mod expr;
+pub mod gallery;
 pub mod limits;
 pub mod loader;
 pub mod manifest;

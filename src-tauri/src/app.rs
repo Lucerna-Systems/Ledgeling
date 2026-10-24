@@ -4,9 +4,14 @@ use crate::tasks::commands::*;
 use crate::{
     awareness::AwarenessSummary,
     engine::Engine,
+    net::{Consent, Mode as NetMode, Net, Scope, ScopeStatus},
     packs::{
-        builtin, diagnostics::Report, loader, manifest::Event, sprites, LocomotionClass,
-        PackListing, PackSummary,
+        builtin,
+        diagnostics::Report,
+        gallery,
+        loader::{self, InstallError, InstallMode},
+        manifest::Event,
+        sprites, LocomotionClass, PackListing, PackSummary,
     },
     pet::{Attend, Motion},
     platform::{NativePlatform, Platform},
@@ -466,23 +471,129 @@ async fn validate_pack(path: String, state: State<'_, Shared>) -> Result<Report,
     })
 }
 
-#[tauri::command]
-async fn install_pack(path: String, state: State<'_, Shared>) -> Result<PackSummary, String> {
-    let dir = locked(&state)?.packs_dir.clone();
-    let summary = loader::install(Path::new(&path), &dir)?;
-    let mut app = locked(&state)?;
-    app.engine.reload_packs(&dir);
+/// The packs directory, or an install error when the app state is unusable.
+fn packs_dir_for_install(state: &State<'_, Shared>) -> Result<PathBuf, InstallError> {
+    locked(state)
+        .map(|app| app.packs_dir.clone())
+        .map_err(|e| InstallError::new("io", e))
+}
+
+fn install_from(
+    path: &str,
+    expected_sha256: Option<&str>,
+    mode: InstallMode,
+    state: &State<'_, Shared>,
+) -> Result<PackSummary, InstallError> {
+    let dir = packs_dir_for_install(state)?;
+    if let Some(expected) = expected_sha256 {
+        loader::verify_hash(Path::new(path), expected)?;
+    }
+    let summary = loader::install_with(Path::new(path), &dir, mode)?;
+    locked(state)
+        .map_err(|e| InstallError::new("io", e))?
+        .engine
+        .reload_packs(&dir);
     Ok(summary)
+}
+
+/// Install a `.petpack` or pack folder. With `expected_sha256` the file is
+/// checked against that hash before anything is unpacked.
+#[tauri::command]
+async fn install_pack(
+    path: String,
+    expected_sha256: Option<String>,
+    state: State<'_, Shared>,
+) -> Result<PackSummary, InstallError> {
+    install_from(&path, expected_sha256.as_deref(), InstallMode::New, &state)
 }
 
 /// Replace an installed pack with a strictly newer version of the same id.
 #[tauri::command]
-async fn update_pack(path: String, state: State<'_, Shared>) -> Result<PackSummary, String> {
-    let dir = locked(&state)?.packs_dir.clone();
-    let summary = loader::install_with(Path::new(&path), &dir, loader::InstallMode::Update)?;
-    let mut app = locked(&state)?;
-    app.engine.reload_packs(&dir);
+async fn update_pack(
+    path: String,
+    expected_sha256: Option<String>,
+    state: State<'_, Shared>,
+) -> Result<PackSummary, InstallError> {
+    install_from(
+        &path,
+        expected_sha256.as_deref(),
+        InstallMode::Update,
+        &state,
+    )
+}
+
+/// Download a pet from the marketplace and install it (or update it). Refused
+/// unless the user has switched the marketplace on, and only the companion
+/// window may ask.
+#[tauri::command]
+async fn gallery_install(
+    url: String,
+    expected_sha256: String,
+    gallery_id: String,
+    update: bool,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+    net: State<'_, Arc<Net>>,
+) -> Result<PackSummary, InstallError> {
+    if window.label() != "main" {
+        return Err(InstallError::new(
+            "refused",
+            "Pets can only be downloaded from the companion window.",
+        ));
+    }
+    let dir = packs_dir_for_install(&state)?;
+    let net = net.inner().clone();
+    let mode = if update {
+        InstallMode::Update
+    } else {
+        InstallMode::New
+    };
+    // The download blocks, so it runs off the async thread, and the engine lock
+    // is taken only for the reload afterwards.
+    let summary = tauri::async_runtime::spawn_blocking(move || {
+        gallery::download_and_install(&net, &dir, &url, &expected_sha256, &gallery_id, mode)
+    })
+    .await
+    .map_err(|_| InstallError::new("failed", "The download stopped unexpectedly."))??;
+    let dir = packs_dir_for_install(&state)?;
+    locked(&state)
+        .map_err(|e| InstallError::new("io", e))?
+        .engine
+        .reload_packs(&dir);
     Ok(summary)
+}
+
+/// Where each marketplace-installed pack came from, keyed by pack id.
+#[tauri::command]
+async fn pack_sources(
+    state: State<'_, Shared>,
+) -> Result<std::collections::BTreeMap<String, gallery::Source>, String> {
+    let dir = locked(&state)?.packs_dir.clone();
+    Ok(gallery::sources(&dir))
+}
+
+/// Every optional online feature, and whether the user has switched it on.
+#[tauri::command]
+async fn net_status(net: State<'_, Arc<Net>>) -> Result<Vec<ScopeStatus>, String> {
+    Ok(net.status())
+}
+
+/// Switch one online feature on or off. Only the companion window may: the
+/// choice belongs to the person, not to a page.
+#[tauri::command]
+async fn net_set(
+    scope: Scope,
+    mode: NetMode,
+    window: WebviewWindow,
+    net: State<'_, Arc<Net>>,
+) -> Result<Vec<ScopeStatus>, String> {
+    if window.label() != "main" {
+        return Err("Online features can only be changed from the companion window.".into());
+    }
+    net.set(scope, mode)?;
+    let status = net.status();
+    let _ = window.app_handle().emit("net-changed", &status);
+    Ok(status)
 }
 
 /// The stricter check a pack must pass before it is published to a gallery.
@@ -506,6 +617,7 @@ async fn uninstall_pack(id: String, state: State<'_, Shared>) -> Result<(), Stri
                 .unwrap_or_default()
         });
     loader::uninstall(&dir, &id)?;
+    gallery::forget_source(&dir, &id);
     if let Some(folder) = builtin_folder {
         // Remember the removal so the built-in is not written back on launch.
         app.engine.settings.uninstalled_builtins.push(folder);
@@ -571,8 +683,16 @@ async fn studio_open_pack(
     crate::packs::studio::open(Path::new(&listing.summary.directory))
 }
 
+/// An exported `.petpack` and the SHA-256 of its bytes, which is what a
+/// marketplace publishes and a downloader checks.
+#[derive(Serialize)]
+struct ExportResult {
+    path: String,
+    sha256: String,
+}
+
 #[tauri::command]
-async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, String> {
+async fn export_pack(id: String, state: State<'_, Shared>) -> Result<ExportResult, String> {
     let app = locked(&state)?;
     let dir = app.packs_dir.clone();
     let listing = loader::scan(&dir)
@@ -587,8 +707,11 @@ async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, Str
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or(id)
     ));
-    loader::export(&source, &destination)?;
-    Ok(destination.to_string_lossy().to_string())
+    let exported = loader::export(&source, &destination)?;
+    Ok(ExportResult {
+        path: destination.to_string_lossy().to_string(),
+        sha256: exported.sha256,
+    })
 }
 
 #[tauri::command]
@@ -832,6 +955,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             validate_pack,
             install_pack,
             update_pack,
+            gallery_install,
+            pack_sources,
+            net_status,
+            net_set,
             validate_pack_for_publish,
             uninstall_pack,
             new_pack,
@@ -861,6 +988,9 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 Err(error) => migration_note = Some(error),
             }
             app.manage(crate::companion::CompanionState::new(&config_dir));
+            // Every optional online feature starts off; only choices the user
+            // chose to remember are read back.
+            app.manage(Arc::new(Net::new(Consent::load(&config_dir))));
             crate::platform::pet_ui::init(app.handle());
             let task_handle = app.handle().clone();
             let task_service =
@@ -1028,7 +1158,7 @@ fn install_dropped(shared: &Shared, handle: &tauri::AppHandle, paths: Vec<PathBu
                 Ok(summary) => app
                     .notes
                     .push(format!("Installed {} by {}.", summary.name, summary.author)),
-                Err(problem) => app.notes.push(problem),
+                Err(problem) => app.notes.push(problem.to_string()),
             }
         }
         app.engine.reload_packs(&directory);

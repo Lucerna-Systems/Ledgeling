@@ -518,7 +518,9 @@ fn duplicate_pack_ids_are_rejected_with_the_name_of_the_installed_one() {
     std::fs::create_dir_all(&root).unwrap();
     let first = loader::install(&repo_pack("gecko-glass"), &root).expect("first install");
     assert_eq!(first.id, "com.perch.gecko-glass");
-    let error = loader::install(&repo_pack("gecko-glass"), &root).unwrap_err();
+    let error = loader::install(&repo_pack("gecko-glass"), &root)
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("already installed"), "{error}");
     assert!(error.contains("Glass the Gecko"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
@@ -957,7 +959,7 @@ mod hardening {
         let root = scratch(tag);
         let archive = root.join("x.petpack");
         zip_of(&archive, files);
-        let error = loader::install(&archive, &root).unwrap_err();
+        let error = loader::install(&archive, &root).unwrap_err().to_string();
         let _ = std::fs::remove_dir_all(&root);
         error
     }
@@ -1025,7 +1027,7 @@ mod hardening {
         zip.add_symlink("sprites/idle.png", "/etc/passwd", plain)
             .unwrap();
         zip.finish().unwrap();
-        let error = loader::install(&archive, &root).unwrap_err();
+        let error = loader::install(&archive, &root).unwrap_err().to_string();
         assert!(error.contains("symbolic link"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1149,12 +1151,14 @@ mod hardening {
         let work = editable("gecko-glass", &root);
         loader::install(&work, &packs).expect("first install");
 
-        let error = loader::install_with(&work, &packs, InstallMode::Update).unwrap_err();
+        let error = loader::install_with(&work, &packs, InstallMode::Update)
+            .unwrap_err()
+            .to_string();
         assert!(
             error.contains("higher"),
             "same version is not an update: {error}"
         );
-        let error = loader::install(&work, &packs).unwrap_err();
+        let error = loader::install(&work, &packs).unwrap_err().to_string();
         assert!(error.contains("already installed"), "{error}");
 
         let manifest = std::fs::read_to_string(work.join("pet.json")).unwrap();
@@ -1176,7 +1180,9 @@ mod hardening {
             manifest.replace("\"version\": \"1.0.0\"", "\"version\": \"0.9.0\""),
         )
         .unwrap();
-        let error = loader::install_with(&work, &packs, InstallMode::Update).unwrap_err();
+        let error = loader::install_with(&work, &packs, InstallMode::Update)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("higher"), "{error}");
         let still = loader::scan(&packs);
         assert_eq!(
@@ -1197,7 +1203,8 @@ mod hardening {
             &root.join("empty"),
             InstallMode::Update,
         )
-        .unwrap_err();
+        .unwrap_err()
+        .to_string();
         assert!(error.contains("nothing to update"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1298,6 +1305,56 @@ mod hardening {
         .contains("LICENSE.txt"));
         assert!(
             check("stray", &|d| std::fs::write(d.join("run.sh"), "x").unwrap()).contains("run.sh")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn install_errors_carry_a_stable_code_the_ui_can_switch_on() {
+        let root = scratch("codes");
+        let packs = root.join("packs");
+        std::fs::create_dir_all(&packs).unwrap();
+        let work = editable("gecko-glass", &root);
+        loader::install(&work, &packs).unwrap();
+        let code = |r: Result<_, loader::InstallError>| -> &'static str {
+            r.map(|_: loader::PackSummary| ()).unwrap_err().code
+        };
+        assert_eq!(code(loader::install(&work, &packs)), "already_installed");
+        assert_eq!(
+            code(loader::install_with(&work, &packs, InstallMode::Update)),
+            "not_newer"
+        );
+        assert_eq!(
+            code(loader::install_with(
+                &repo_pack("cat-tabby"),
+                &root.join("none"),
+                InstallMode::Update
+            )),
+            "not_installed"
+        );
+        let broken = editable("cat-tabby", &root);
+        std::fs::write(broken.join("pet.json"), "{ not json").unwrap();
+        assert_eq!(code(loader::install(&broken, &packs)), "invalid_pack");
+        let big = vec![0_u8; (limits::MAX_ENTRY_BYTES + 1) as usize];
+        let archive = root.join("big.petpack");
+        zip_of(&archive, &[("pet.json", b"{}"), ("sprites/a.png", &big)]);
+        assert_eq!(code(loader::install(&archive, &packs)), "archive_limit");
+        zip_of(&archive, &[("pet.json", b"{}"), ("run.sh", b"x")]);
+        assert_eq!(code(loader::install(&archive, &packs)), "not_allowed");
+        zip_of(&archive, &[("readme.md", b"x")]);
+        assert_eq!(code(loader::install(&archive, &packs)), "no_manifest");
+        std::fs::write(&archive, b"not a zip").unwrap();
+        assert_eq!(
+            code(loader::install(&archive, &packs)),
+            "unreadable_archive"
+        );
+        let exported = loader::export(&work, &root.join("ok.petpack")).unwrap();
+        assert!(loader::verify_hash(&root.join("ok.petpack"), &exported.sha256).is_ok());
+        assert_eq!(
+            loader::verify_hash(&root.join("ok.petpack"), &"0".repeat(64))
+                .unwrap_err()
+                .code,
+            "hash_mismatch"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

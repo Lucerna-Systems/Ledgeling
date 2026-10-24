@@ -507,6 +507,22 @@ Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
   each publish rule failing on its own, the four bundled pets passing the publish
   check, a snapshot of the event, signal, action and class names, and the JSON
   schema carrying the same limits as the code.
+- **Online gate and contract (same branch).** `cargo test`: 286 lib tests and 10
+  privacy tests passing; `vitest run` 164 passing; `vue-tsc --noEmit` clean. New
+  tests cover: every scope off by default and an offline request opening no
+  connection (checked against a local server), a scope reaching only its own
+  hosts, a redirect off the list not followed, a response over the cap failing,
+  switching a scope off stopping a download in flight, analytics refusing
+  session-only consent, only remembered choices surviving a restart and a damaged
+  consent file meaning off, a marketplace download installing and recording its
+  source, a wrong hash installing nothing, an offline or error-status download
+  being refused with its own code. `privacy.rs` now also checks that the HTTP
+  client lives in one file, that `send` checks consent first, and that consent is
+  not in `Settings`. **Not run:** the marketplace host names are `.invalid`
+  placeholders, so nothing here has contacted a real server and TLS, real
+  redirects and a real marketplace were never exercised; no Vue UI uses
+  `net_set`, `gallery_install` or the new commands yet; the commands were not
+  driven from the running app.
 - **Not run:** `cargo clippy --all-targets -D warnings` is red on four
   pre-existing lints outside `packs` (`platform/handoff.rs`, `settings.rs`,
   `tasks/mod.rs` twice); none are in the pack code. The new commands

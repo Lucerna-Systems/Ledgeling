@@ -176,6 +176,8 @@ fn networking_is_confined_to_explicit_task_adapters() {
             ]
             .iter()
             .any(|p| path.ends_with(p))
+            // The gate for every optional online feature; see the next tests.
+            || path.components().any(|c| c.as_os_str() == "net")
         {
             continue;
         }
@@ -195,6 +197,68 @@ fn networking_is_confined_to_explicit_task_adapters() {
             );
         }
     }
+}
+
+/// The `net` folder is exempt above only so it can hold the gate. Inside it,
+/// the HTTP client lives in one file, and that file's `send` checks consent
+/// before it does anything else.
+#[test]
+fn the_http_client_lives_in_one_file_and_checks_consent_first() {
+    let net = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/net");
+    let mut with_client = Vec::new();
+    for entry in std::fs::read_dir(&net).unwrap().flatten() {
+        let text = std::fs::read_to_string(entry.path()).unwrap();
+        let uses = text.lines().any(|l| {
+            !l.trim_start().starts_with("//") && (l.contains("reqwest") || l.contains("hyper::"))
+        });
+        if uses {
+            with_client.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+    assert_eq!(
+        with_client,
+        ["client.rs"],
+        "only net/client.rs may hold an HTTP client"
+    );
+    let client = std::fs::read_to_string(net.join("client.rs")).unwrap();
+    let send = client
+        .split("pub fn send(")
+        .nth(1)
+        .expect("net/client.rs must define `send`");
+    let first_statement = send.lines().nth(1).unwrap_or_default().trim();
+    assert_eq!(
+        first_statement, "self.gate(scope)?;",
+        "`send` must check consent before anything else"
+    );
+    // The consent check is the only thing that can make a scope reachable.
+    assert_eq!(
+        client
+            .matches("reqwest::blocking::Client::builder()")
+            .count(),
+        1,
+        "a second client would be a way around `send`"
+    );
+}
+
+#[test]
+fn every_online_scope_starts_off_and_no_other_code_builds_a_request() {
+    // Settings must not carry a network switch the frontend could flip by
+    // sending a whole Settings object: consent lives in `net`, written only by
+    // `net_set`.
+    let settings =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/settings.rs"))
+            .unwrap();
+    assert!(
+        !settings.to_lowercase().contains("online"),
+        "consent does not belong in Settings"
+    );
+    let consent =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/net/consent.rs"))
+            .unwrap();
+    assert!(
+        consent.contains("#[default]\n    Off"),
+        "the default mode must be Off"
+    );
 }
 
 #[test]

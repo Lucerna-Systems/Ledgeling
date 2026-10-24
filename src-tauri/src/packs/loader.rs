@@ -444,6 +444,33 @@ fn broken_summary(directory: &Path, report: &Report, builtin: bool) -> PackSumma
     }
 }
 
+/// Why an install was refused. The `code` is stable and meant for the UI to
+/// switch on; the `message` is plain language for the person.
+///
+/// Codes: `unreadable_archive`, `archive_limit`, `not_allowed`, `no_manifest`,
+/// `invalid_pack`, `already_installed`, `not_installed`, `not_newer`, `bundled`,
+/// `hash_mismatch`, `io`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct InstallError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl InstallError {
+    pub fn new(code: &'static str, message: impl Into<String>) -> InstallError {
+        InstallError {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for InstallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallMode {
     /// The id must not be installed already.
@@ -454,7 +481,7 @@ pub enum InstallMode {
 
 /// Install a `.petpack` (a renamed zip) or a plain folder into the packs
 /// directory. Duplicate ids are rejected with the name of the existing pack.
-pub fn install(source: &Path, packs_dir: &Path) -> Result<PackSummary, String> {
+pub fn install(source: &Path, packs_dir: &Path) -> Result<PackSummary, InstallError> {
     install_with(source, packs_dir, InstallMode::New)
 }
 
@@ -462,7 +489,7 @@ pub fn install_with(
     source: &Path,
     packs_dir: &Path,
     mode: InstallMode,
-) -> Result<PackSummary, String> {
+) -> Result<PackSummary, InstallError> {
     let staging = packs_dir.join(".staging");
     let staged = if source.is_dir() {
         source.to_path_buf()
@@ -474,33 +501,60 @@ pub fn install_with(
     result
 }
 
+/// Check a downloaded `.petpack` against the hash the server published, before
+/// anything is unpacked.
+pub fn verify_hash(archive: &Path, expected: &str) -> Result<(), InstallError> {
+    let actual = hash_petpack(archive).map_err(|e| InstallError::new("unreadable_archive", e))?;
+    if actual.eq_ignore_ascii_case(expected.trim()) {
+        Ok(())
+    } else {
+        Err(InstallError::new(
+            "hash_mismatch",
+            "The downloaded pet does not match what the marketplace published. It was not installed.",
+        ))
+    }
+}
+
 fn install_staged(
     staged: &Path,
     packs_dir: &Path,
     mode: InstallMode,
-) -> Result<PackSummary, String> {
-    let pack = load(staged, false)
-        .map_err(|report| format!("This pack cannot be installed yet:\n\n{}", report.text()))?;
+) -> Result<PackSummary, InstallError> {
+    let pack = load(staged, false).map_err(|report| {
+        InstallError::new(
+            "invalid_pack",
+            format!("This pack cannot be installed yet:\n\n{}", report.text()),
+        )
+    })?;
     let existing = scan(packs_dir)
         .into_iter()
         .find(|e| e.summary.id == pack.manifest.id);
     match (&existing, mode) {
         (Some(existing), InstallMode::New) => {
-            return Err(format!(
-                "A pack with the id `{}` is already installed: {} by {}. \
+            return Err(InstallError::new(
+                "already_installed",
+                format!(
+                    "A pack with the id `{}` is already installed: {} by {}. \
 Change the `id` in pet.json, or update the installed pack instead.",
-                pack.manifest.id, existing.summary.name, existing.summary.author
+                    pack.manifest.id, existing.summary.name, existing.summary.author
+                ),
             ));
         }
         (None, InstallMode::Update) => {
-            return Err(format!(
-                "No installed pack has the id `{}`, so there is nothing to update.",
-                pack.manifest.id
+            return Err(InstallError::new(
+                "not_installed",
+                format!(
+                    "No installed pack has the id `{}`, so there is nothing to update.",
+                    pack.manifest.id
+                ),
             ));
         }
         (Some(existing), InstallMode::Update) => {
             if existing.summary.builtin {
-                return Err("Bundled pets cannot be replaced.".into());
+                return Err(InstallError::new(
+                    "bundled",
+                    "Bundled pets cannot be replaced.",
+                ));
             }
             let (old, new) = (
                 Version::parse(&existing.summary.version),
@@ -509,16 +563,20 @@ Change the `id` in pet.json, or update the installed pack instead.",
             match (old, new) {
                 (Some(old), Some(new)) if new > old => {}
                 _ => {
-                    return Err(format!(
-                        "`{}` is installed at version {}; an update must have a higher \
+                    return Err(InstallError::new(
+                        "not_newer",
+                        format!(
+                            "`{}` is installed at version {}; an update must have a higher \
 three-number version, but this one is {}.",
-                        pack.manifest.id, existing.summary.version, pack.manifest.version
+                            pack.manifest.id, existing.summary.version, pack.manifest.version
+                        ),
                     ));
                 }
             }
         }
         (None, InstallMode::New) => {}
     }
+    let io = |what: &str, e: std::io::Error| InstallError::new("io", format!("{what}: {e}"));
     let target = match &existing {
         Some(existing) => PathBuf::from(&existing.summary.directory),
         None => packs_dir.join(folder_name(&pack.manifest.id)),
@@ -535,26 +593,26 @@ three-number version, but this one is {}.",
     let _ = std::fs::remove_dir_all(&backup);
     if let Err(e) = copy_pack(staged, &incoming) {
         let _ = std::fs::remove_dir_all(&incoming);
-        return Err(format!("Could not copy the pack into place: {e}"));
+        return Err(io("Could not copy the pack into place", e));
     }
     if target.exists() {
         if let Err(e) = std::fs::rename(&target, &backup) {
             let _ = std::fs::remove_dir_all(&incoming);
-            return Err(format!("Could not replace {target:?}: {e}"));
+            return Err(io("Could not replace the installed pack", e));
         }
         if let Err(e) = std::fs::rename(&incoming, &target) {
             let _ = std::fs::rename(&backup, &target);
             let _ = std::fs::remove_dir_all(&incoming);
-            return Err(format!("Could not move the pack into place: {e}"));
+            return Err(io("Could not move the pack into place", e));
         }
         let _ = std::fs::remove_dir_all(&backup);
     } else if let Err(e) = std::fs::rename(&incoming, &target) {
         let _ = std::fs::remove_dir_all(&incoming);
-        return Err(format!("Could not move the pack into place: {e}"));
+        return Err(io("Could not move the pack into place", e));
     }
     load(&target, false)
         .map(|pack| pack.summary())
-        .map_err(|report| report.text())
+        .map_err(|report| InstallError::new("invalid_pack", report.text()))
 }
 
 pub fn uninstall(packs_dir: &Path, id: &str) -> Result<(), String> {
@@ -590,34 +648,38 @@ fn is_archive_litter(name: &str) -> bool {
 
 /// Extract an archive into `into`, refusing anything a pack may not contain.
 /// Declared sizes in a zip can lie, so every read is bounded as well as checked.
-fn extract(archive: &Path, into: &Path) -> Result<PathBuf, String> {
+fn extract(archive: &Path, into: &Path) -> Result<PathBuf, InstallError> {
+    let unreadable = |what: String| InstallError::new("unreadable_archive", what);
+    let limit = |what: String| InstallError::new("archive_limit", what);
+    let refused = |what: String| InstallError::new("not_allowed", what);
     let _ = std::fs::remove_dir_all(into);
-    std::fs::create_dir_all(into)
-        .map_err(|e| format!("Could not prepare the staging folder: {e}"))?;
+    std::fs::create_dir_all(into).map_err(|e| {
+        InstallError::new("io", format!("Could not prepare the staging folder: {e}"))
+    })?;
     let size = std::fs::metadata(archive)
-        .map_err(|e| format!("Could not open {}: {e}", archive.display()))?
+        .map_err(|e| unreadable(format!("Could not open {}: {e}", archive.display())))?
         .len();
     if size > MAX_ARCHIVE_BYTES {
-        return Err(format!(
+        return Err(limit(format!(
             "{} is {} MiB; a .petpack may be at most {} MiB.",
             archive.display(),
             size >> 20,
             MAX_ARCHIVE_BYTES >> 20
-        ));
+        )));
     }
     let file = std::fs::File::open(archive)
-        .map_err(|e| format!("Could not open {}: {e}", archive.display()))?;
+        .map_err(|e| unreadable(format!("Could not open {}: {e}", archive.display())))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| {
-        format!(
+        unreadable(format!(
             "{} is not a readable .petpack archive: {e}",
             archive.display()
-        )
+        ))
     })?;
     if zip.len() > MAX_ARCHIVE_ENTRIES {
-        return Err(format!(
+        return Err(limit(format!(
             "The archive holds {} entries; a pack may hold at most {MAX_ARCHIVE_ENTRIES}.",
             zip.len()
-        ));
+        )));
     }
     // Archives are often zipped with the pack folder inside; find that prefix.
     let names: Vec<String> = zip.file_names().map(|n| n.replace('\\', "/")).collect();
@@ -634,9 +696,12 @@ fn extract(archive: &Path, into: &Path) -> Result<PathBuf, String> {
         match wrapped.as_slice() {
             [only] => only.trim_end_matches(MANIFEST_FILE).to_string(),
             _ => {
-                return Err(format!(
-                    "The archive has no {MANIFEST_FILE} at its top level. \
+                return Err(InstallError::new(
+                    "no_manifest",
+                    format!(
+                        "The archive has no {MANIFEST_FILE} at its top level. \
 A .petpack is a zip of the pack folder's contents."
+                    ),
                 ))
             }
         }
@@ -646,64 +711,66 @@ A .petpack is a zip of the pack folder's contents."
     for i in 0..zip.len() {
         let mut entry = zip
             .by_index(i)
-            .map_err(|e| format!("Could not read the archive: {e}"))?;
+            .map_err(|e| unreadable(format!("Could not read the archive: {e}")))?;
         let raw = entry.name().replace('\\', "/");
         if is_archive_litter(&raw) {
             continue;
         }
         if entry.enclosed_name().is_none() {
-            return Err(format!("`{raw}` points outside the pack folder."));
+            return Err(refused(format!("`{raw}` points outside the pack folder.")));
         }
         if entry.is_dir() {
             continue;
         }
         if entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000) {
-            return Err(format!(
+            return Err(refused(format!(
                 "`{raw}` is a symbolic link, which packs may not contain."
-            ));
+            )));
         }
         let Some(name) = raw.strip_prefix(prefix.as_str()) else {
-            return Err(format!("`{raw}` is outside the pack folder `{prefix}`."));
+            return Err(refused(format!(
+                "`{raw}` is outside the pack folder `{prefix}`."
+            )));
         };
         if !is_allowed_path(name) {
-            return Err(format!(
+            return Err(refused(format!(
                 "`{name}` is not allowed in a pack. Packs hold `{MANIFEST_FILE}`, `preview.png`, \
 `LICENSE.txt` and `sprites/*.png` (lowercase letters, digits, `-` and `_`)."
-            ));
+            )));
         }
         if !seen.insert(name.to_string()) {
-            return Err(format!("`{name}` appears twice in the archive."));
+            return Err(refused(format!("`{name}` appears twice in the archive.")));
         }
         if entry.size() > MAX_ENTRY_BYTES {
-            return Err(format!(
+            return Err(limit(format!(
                 "`{name}` is {} MiB uncompressed; a pack file may be at most {} MiB.",
                 entry.size() >> 20,
                 MAX_ENTRY_BYTES >> 20
-            ));
+            )));
         }
         let mut bytes = Vec::new();
         (&mut entry)
             .take(MAX_ENTRY_BYTES + 1)
             .read_to_end(&mut bytes)
-            .map_err(|e| format!("Could not read {name}: {e}"))?;
+            .map_err(|e| unreadable(format!("Could not read {name}: {e}")))?;
         if bytes.len() as u64 > MAX_ENTRY_BYTES {
-            return Err(format!(
+            return Err(limit(format!(
                 "`{name}` is larger than the {} MiB limit for one pack file.",
                 MAX_ENTRY_BYTES >> 20
-            ));
+            )));
         }
         total += bytes.len() as u64;
         if total > MAX_UNCOMPRESSED_TOTAL {
-            return Err(format!(
+            return Err(limit(format!(
                 "The archive expands to more than {} MiB, which is the limit for a pack.",
                 MAX_UNCOMPRESSED_TOTAL >> 20
-            ));
+            )));
         }
         let target = into.join(name);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
+            std::fs::create_dir_all(parent).map_err(|e| InstallError::new("io", e.to_string()))?;
         }
-        std::fs::write(&target, bytes).map_err(|e| format!("{e}"))?;
+        std::fs::write(&target, bytes).map_err(|e| InstallError::new("io", e.to_string()))?;
     }
     Ok(into.to_path_buf())
 }
