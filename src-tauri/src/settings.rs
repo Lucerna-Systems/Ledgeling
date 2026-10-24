@@ -250,16 +250,18 @@ mod tests {
     fn a_pets_bond_round_trips_and_nonsense_is_fixed() {
         let dir =
             std::env::temp_dir().join(format!("ledgeling-settings-bond-{}", std::process::id()));
-        let mut settings = Settings::default();
-        settings.pets = vec![PetSetting {
-            pack_id: "a".into(),
-            name: Some("Biscuit".into()),
-            met: Some("2026-10-01".into()),
-            last_seen: Some("2026-10-24".into()),
-            days: 7,
-            affection: 0.6,
+        let settings = Settings {
+            pets: vec![PetSetting {
+                pack_id: "a".into(),
+                name: Some("Biscuit".into()),
+                met: Some("2026-10-01".into()),
+                last_seen: Some("2026-10-24".into()),
+                days: 7,
+                affection: 0.6,
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         save(&dir, &settings).unwrap();
         let (loaded, note) = load(&dir);
         assert!(note.is_none());
@@ -268,16 +270,18 @@ mod tests {
         assert_eq!(loaded.pets[0].affection, 0.6);
         let _ = std::fs::remove_dir_all(&dir);
 
-        let mut messy = Settings::default();
-        messy.pets = vec![PetSetting {
-            pack_id: "a".into(),
-            name: Some("   ".into()),
-            met: Some("last tuesday".into()),
-            last_seen: Some("2026-13-40".into()),
-            days: 0,
-            affection: 9.,
+        let mut messy = Settings {
+            pets: vec![PetSetting {
+                pack_id: "a".into(),
+                name: Some("   ".into()),
+                met: Some("last tuesday".into()),
+                last_seen: Some("2026-13-40".into()),
+                days: 0,
+                affection: 9.,
+                ..Default::default()
+            }],
             ..Default::default()
-        }];
+        };
         messy.pets.push(PetSetting {
             pack_id: "b".into(),
             name: Some(format!("  {}  ", "x".repeat(60))),

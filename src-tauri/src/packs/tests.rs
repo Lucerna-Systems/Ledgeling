@@ -488,7 +488,7 @@ fn exported_packs_round_trip_through_the_petpack_archive() {
 
 mod studio_saves {
     use super::super::studio::{save, StudioImage};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn image(name: &str, frames: u32) -> StudioImage {
         let (width, height) = (32 * frames, 32);
@@ -543,6 +543,75 @@ mod studio_saves {
         assert!(summary.loadable);
         assert!(root.join("com.studio.pebble/sprites/idle.png").exists());
         assert!(!root.join(".studio-staging").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_saved_design_opens_again_with_its_pixels() {
+        use super::super::studio::open;
+        let root = root("open");
+        // A 48 px pack written the way Studio writes it.
+        let (width, height) = (48u32 * 2, 48u32);
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        pixels[((20 * width + 60) * 4) as usize..][..4].copy_from_slice(&[9, 8, 7, 255]);
+        let strip = StudioImage {
+            name: "idle".into(),
+            width,
+            height,
+            pixels: pixels.clone(),
+        };
+        let move_strip = StudioImage {
+            name: "move".into(),
+            width: 48,
+            height,
+            pixels: vec![255; 48 * 48 * 4],
+        };
+        let text = manifest("com.studio.pebble", "Pebble").replace(
+            "\"width\": 32, \"height\": 32",
+            "\"width\": 48, \"height\": 48",
+        );
+        save(&root, &text, &[strip, move_strip], &image("preview", 1)).unwrap();
+        let opened = open(&root.join("com.studio.pebble")).unwrap();
+        assert!(opened.manifest.contains("com.studio.pebble"));
+        let idle = opened.strips.iter().find(|s| s.name == "idle").unwrap();
+        assert_eq!((idle.width, idle.height), (96, 48));
+        assert_eq!(idle.pixels, pixels);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn opening_a_pet_that_is_not_48_pixels_is_refused_in_plain_words() {
+        use super::super::studio::open;
+        let root = root("refuse");
+        save(
+            &root,
+            &manifest("com.studio.pebble", "Pebble"),
+            &[image("idle", 2), image("move", 1)],
+            &image("preview", 1),
+        )
+        .unwrap();
+        let error = open(&root.join("com.studio.pebble")).unwrap_err();
+        assert!(
+            error.contains("48×48") && error.contains("32×32"),
+            "{error}"
+        );
+        assert!(error.contains("Edit its files directly"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_bundled_pet_opens_in_studio_with_all_its_strips() {
+        use super::super::{builtin, studio::open};
+        let root = root("builtin");
+        builtin::restore(&root, &[]).unwrap();
+        for listing in super::super::loader::scan(&root) {
+            let opened = open(Path::new(&listing.summary.directory)).unwrap();
+            assert_eq!(opened.strips.len(), listing.summary.animations.len());
+            for strip in &opened.strips {
+                assert_eq!(strip.height, 48);
+                assert_eq!(strip.width % 48, 0);
+            }
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

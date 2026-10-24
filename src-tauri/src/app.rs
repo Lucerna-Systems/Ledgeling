@@ -534,6 +534,20 @@ async fn save_studio_pack(
     Ok(summary)
 }
 
+/// Pet Studio: hand a pack's manifest and decoded sprites to the editor.
+#[tauri::command]
+async fn studio_open_pack(
+    id: String,
+    state: State<'_, Shared>,
+) -> Result<crate::packs::studio::StudioPack, String> {
+    let dir = locked(&state)?.packs_dir.clone();
+    let listing = loader::scan(&dir)
+        .into_iter()
+        .find(|l| l.summary.id == id)
+        .ok_or_else(|| format!("No installed pack has the id `{id}`."))?;
+    crate::packs::studio::open(Path::new(&listing.summary.directory))
+}
+
 #[tauri::command]
 async fn export_pack(id: String, state: State<'_, Shared>) -> Result<String, String> {
     let app = locked(&state)?;
@@ -631,6 +645,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
         .on_menu_event(handle_menu)
         .invoke_handler(tauri::generate_handler![
             rename_pet,
+            studio_open_pack,
             crate::platform::pet_ui::pet_folder,
             crate::platform::pet_ui::pet_folder_drag,
             crate::platform::pet_ui::show_pet_bubble,

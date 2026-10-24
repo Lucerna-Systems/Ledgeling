@@ -16,7 +16,11 @@ HTMLCanvasElement.prototype.toDataURL = () => 'data:,'
 globalThis.ImageData ??= class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} } as never
 
 beforeEach(() => {
-  api.invoke.mockReset().mockResolvedValue({ id: 'com.studio.ember', name: 'Ember' })
+  api.invoke.mockReset().mockImplementation(async (command: string) => {
+    if (command === 'list_packs') return []
+    if (command === 'export_pack') return '/packs/ember.petpack'
+    return { id: 'com.studio.ember', name: 'Ember' }
+  })
   draft.value = starterDraft()
 })
 
@@ -44,6 +48,21 @@ it('saves the design as a pack and can bring it straight out', async () => {
   expect(args.preview).toMatchObject({ name: 'preview', width: 256, height: 256 })
   expect(api.invoke.mock.calls.find(c => c[0] === 'spawn_pet')![1]).toEqual({ packId: 'com.studio.ember' })
   expect(wrapper.text()).toContain('is saved and ready')
+  wrapper.unmount()
+})
+
+it('offers Export .petpack after a save and exports the saved pet', async () => {
+  const frame = blankFrame()
+  frame.set([255, 0, 0, 255], (20 * FRAME + 20) * 4)
+  draft.value.name = 'Ember'
+  draft.value.clips.idle!.frames = [frame]
+  const wrapper = mount(PetStudio)
+  expect(wrapper.text()).not.toContain('Export .petpack')
+  await wrapper.findAll('button').find(b => b.text() === 'Save')!.trigger('click')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('Export .petpack'))
+  await wrapper.findAll('button').find(b => b.text().includes('Export .petpack'))!.trigger('click')
+  await vi.waitFor(() => expect(wrapper.text()).toContain('/packs/ember.petpack'))
+  expect(api.invoke).toHaveBeenCalledWith('export_pack', { id: 'com.studio.ember' })
   wrapper.unmount()
 })
 

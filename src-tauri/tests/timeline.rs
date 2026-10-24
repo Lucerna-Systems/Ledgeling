@@ -524,8 +524,8 @@ fn two_pets_on_one_window_greet_each_other_through_the_engine() {
         .surfaces
         .iter()
         .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
-        .expect("a window top")
-        .clone();
+        .copied()
+        .expect("a window top");
     for (pet, t) in engine.pets.iter_mut().zip([0.30, 0.38]) {
         pet.perch = Some(ledgeling::pet::pathfind::Perch { key: top.key(), t });
         pet.position = top.point(t);

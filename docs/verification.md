@@ -451,6 +451,15 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   meter fill measured, a real midnight rollover, and the affectionate behaviors
   seen playing. Those are covered by unit and timeline tests only.
 
+- **Phase 6, Studio.** fmt, clippy, `npm test` (266 lib, 19 timeline, 7 privacy)
+  and `npm run test:ui` (144) pass. Covered by tests only: opening each bundled
+  pack and a saved 48 px pack with pixels intact, the plain-words refusal of
+  other sizes, `draftFromPack` reproducing the squirrel's states, reactions and
+  frame counts, template copies getting a new id, and Export after save. The
+  hand run was NOT done: the Mac was screen-locked (black screenshots), so the
+  Start-from dropdown, Export .petpack and Edit in Studio have not been seen in
+  the real app. The live preview was not changed (Play/Pause already existed).
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":

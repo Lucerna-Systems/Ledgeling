@@ -102,6 +102,8 @@ export interface StateDraft { key: number; name: string; clip: string; action: s
 export interface ReactionDraft { key: number; on: string; goto: string; cooldown: number | null }
 export interface ClipDraft { frames: Uint8ClampedArray[]; fps: number; loop: boolean }
 export interface Draft {
+  /** Set when editing a pack that already exists, so saving replaces it. */
+  id?: string
   name: string
   author: string
   description: string
@@ -174,7 +176,7 @@ const locomotion: Record<Movement, Record<string, unknown>> = {
 }
 
 export function conditionText(when: Condition[]) {
-  return when.map(c => `${c.signal} ${c.op} ${c.value.trim()}`).join(' && ')
+  return when.map(c => [c.signal, c.op, c.value.trim()].filter(Boolean).join(' ')).join(' && ')
 }
 
 /** The clips a save writes: exactly the ones that have been drawn. */
@@ -223,7 +225,7 @@ export function buildManifest(draft: Draft) {
   }
   return {
     format: 1,
-    id: `com.studio.${slug(draft.name)}`,
+    id: draft.id ?? `com.studio.${slug(draft.name)}`,
     name: draft.name.trim(),
     author: draft.author.trim() || 'Me',
     version: '1.0.0',
@@ -259,5 +261,74 @@ export function payload(draft: Draft, preview: { width: number; height: number; 
     manifest: JSON.stringify(buildManifest(draft), null, 2),
     strips,
     preview: { name: 'preview', width: preview.width, height: preview.height, pixels: Array.from(preview.pixels) },
+  }
+}
+
+/** What `studio_open_pack` returns: the manifest text and every strip as RGBA. */
+export interface OpenedPack { manifest: string; strips: { name: string; width: number; height: number; pixels: number[] }[] }
+
+const conditionPattern = /^\s*([a-z_]+)\s*(>=|<=|==|!=|>|<)\s*(\S+)\s*$/
+
+/** A `when` the editor can show row by row; anything else is kept whole, so a hand-written condition survives a round trip. */
+function parseWhen(when: unknown): Condition[] {
+  if (typeof when !== 'string' || !when.trim()) return []
+  if (when.includes('||')) return [{ signal: when.trim(), op: '', value: '' }]
+  const parts = when.split('&&').map(part => conditionPattern.exec(part))
+  if (parts.some(match => !match)) return [{ signal: when.trim(), op: '', value: '' }]
+  return parts.map(match => ({ signal: match![1]!, op: match![2]!, value: match![3]! }))
+}
+
+/**
+ * The inverse of `buildManifest` and `payload`: a design from an installed pack.
+ * `copy` makes a new pet out of it ("Copy of …", a fresh id); without it, saving
+ * replaces the pack that was opened. Packs with no behavior block start from the
+ * starter behavior; details the editor has no field for (reaction priorities,
+ * extra metadata) fall back to the format's defaults.
+ */
+export function draftFromPack(opened: OpenedPack, options: { copy?: boolean } = {}): Draft {
+  const manifest = JSON.parse(opened.manifest) as Record<string, any>
+  const movement = (manifest.locomotion?.class ?? 'walker') as Movement
+  const clipsOut: Record<string, ClipDraft> = {}
+  for (const image of opened.strips) {
+    const info = manifest.animations?.[image.name] ?? {}
+    const count = Math.max(1, Math.min(MAX_FRAMES, Math.round(image.width / FRAME)))
+    const frames: Uint8ClampedArray[] = []
+    for (let index = 0; index < count; index++) {
+      const frame = blankFrame()
+      for (let y = 0; y < FRAME; y++) {
+        const from = (y * image.width + index * FRAME) * 4
+        frame.set(image.pixels.slice(from, from + FRAME * 4), y * FRAME * 4)
+      }
+      frames.push(frame)
+    }
+    clipsOut[image.name] = { frames, fps: Number(info.fps) || 8, loop: info.loop !== false }
+  }
+  const base = starterDraft(movement)
+  const behavior = manifest.behavior
+  const hasBehavior = behavior && typeof behavior === 'object' && behavior.states && Object.keys(behavior.states).length > 0
+  const states: StateDraft[] = hasBehavior
+    ? Object.entries<Record<string, any>>(behavior.states).map(([name, state]) => ({
+        key: nextKey(),
+        name,
+        clip: state.clip ?? 'idle',
+        action: state.action ?? '',
+        duration: Array.isArray(state.duration) ? [Number(state.duration[0]), Number(state.duration[1])] : null,
+        transitions: (state.transitions ?? []).map((t: Record<string, any>) => ({ to: t.to, weight: Number(t.weight) || 1, when: parseWhen(t.when) })),
+      }))
+    : base.states
+  const reactions: ReactionDraft[] = hasBehavior
+    ? (manifest.reactions ?? []).map((r: Record<string, any>) => ({ key: nextKey(), on: r.on, goto: r.goto, cooldown: r.cooldown ? Number(r.cooldown) : null }))
+    : base.reactions
+  const name = String(manifest.name ?? 'My Pet')
+  return {
+    ...(options.copy ? {} : { id: String(manifest.id) }),
+    name: options.copy ? `Copy of ${name}` : name,
+    author: String(manifest.author ?? ''),
+    description: String(manifest.description ?? ''),
+    movement,
+    clips: clipsOut,
+    initial: hasBehavior ? String(behavior.initial) : base.initial,
+    states,
+    reactions,
   }
 }
