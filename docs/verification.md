@@ -518,8 +518,12 @@ Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
   source, a wrong hash installing nothing, an offline or error-status download
   being refused with its own code. `privacy.rs` now also checks that the HTTP
   client lives in one file, that `send` checks consent first, and that consent is
-  not in `Settings`. **Not run:** the marketplace host names are `.invalid`
-  placeholders, so nothing here has contacted a real server and TLS, real
+  not in `Settings`. Server hosts are now build-time variables
+  (`LEDGELING_MARKETPLACE_HOSTS`, `LEDGELING_ANALYTICS_HOSTS`, wired to the
+  `pre-alpha` and `alpha` GitHub Environments in `release.yml`); parsing and the
+  unavailable-without-hosts behaviour are tested. **Not run:** the release
+  workflow change has not run (the variables are not set anywhere yet), and no
+  build has been made with real hosts, so nothing here has contacted a real server and TLS, real
   redirects and a real marketplace were never exercised; no Vue UI uses
   `net_set`, `gallery_install` or the new commands yet; the commands were not
   driven from the running app.

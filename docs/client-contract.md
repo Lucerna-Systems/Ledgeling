@@ -29,8 +29,9 @@ is `off` until the user chooses otherwise. `analytics` refuses `session`.
 | `validate_pack_for_publish` | `path` | `Report`; empty of errors means publishable |
 
 `gallery_install` fetches only from the `marketplace` scope's hosts, which are
-listed in `src-tauri/src/net/scope.rs` (placeholders until the server exists).
-The URL's host must be on that list; the listing, search and authentication calls
+fixed when the app is built from `LEDGELING_MARKETPLACE_HOSTS` (see
+[development.md](development.md#online-server-addresses)). The URL's host must be
+on that list; the listing, search and authentication calls
 of your server's API are not part of this contract, and a new call to your server
 should be made through `net::Net::send`, not from the webview.
 
@@ -40,7 +41,9 @@ Install and download: `unreadable_archive`, `archive_limit`, `not_allowed`,
 `no_manifest`, `invalid_pack`, `already_installed`, `not_installed`, `not_newer`,
 `bundled`, `hash_mismatch`, `io`.
 
-Network: `offline` (the scope is off), `refused` (address not allowed),
+Network: `offline` (the scope is off), `unavailable` (this build has no server
+for it; `net_status` reports `available: false` and `net_set` refuses to turn it
+on), `refused` (address not allowed),
 `failed`, `too_large`, `cancelled` (the user switched the scope off),
 `http_status` (the server answered with an error status).
 
