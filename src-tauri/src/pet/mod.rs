@@ -72,7 +72,12 @@ pub enum Attend {
     Busy,
     /// Its task cannot go further without an answer from the user.
     NeedsUser,
+    /// The user is holding the mouse on it to pet it.
+    Tended,
 }
+
+/// Mood a pet gains per second of being petted.
+const PETTING_MOOD_PER_SECOND: f64 = 0.15;
 
 impl Attend {
     /// The clip slot this maps to, or `None` to keep playing the pack's own
@@ -81,7 +86,7 @@ impl Attend {
     /// make packs harder to write for no gain.
     pub fn clip(self) -> Option<&'static str> {
         match self {
-            Attend::Listening => None,
+            Attend::Listening | Attend::Tended => None,
             Attend::Busy => Some("busy"),
             Attend::NeedsUser => Some("attention"),
         }
@@ -205,6 +210,11 @@ pub struct Pet {
     listening: bool,
     /// What this pet's task is doing, when it has one.
     working: Option<Attend>,
+    /// Being petted by a held press right now.
+    tended: bool,
+    /// Where the pet stood when it was picked up, so a press that turns out
+    /// to be petting puts it back instead of leaving it under the cursor.
+    grabbed_from: Option<(Point, Option<Perch>)>,
     pending: Vec<Event>,
     /// The user asked this pet to go somewhere else; served on the next tick.
     relocate_requested: bool,
@@ -259,6 +269,8 @@ impl Pet {
             clip_started: 0.,
             listening: false,
             working: None,
+            tended: false,
+            grabbed_from: None,
             pending: Vec::new(),
             relocate_requested: false,
             sound_request: None,
@@ -309,6 +321,9 @@ impl Pet {
     // ------------------------------------------------------------ interaction
 
     pub fn grab(&mut self) {
+        if self.motion != Motion::Held {
+            self.grabbed_from = Some((self.position, self.perch));
+        }
         self.motion = Motion::Held;
         self.arc = Arc_::None;
         self.plan = None;
@@ -318,6 +333,10 @@ impl Pet {
     /// Let go. Speed at release becomes the throw; the pet reports `Thrown`
     /// when it was flung and its pack reacts to that, else plain `Released`.
     pub fn release(&mut self) {
+        self.grabbed_from = None;
+        if std::mem::take(&mut self.tended) {
+            return;
+        }
         if self.motion == Motion::Held {
             let clamp = |v: f64| v.clamp(-MAX_THROW, MAX_THROW);
             let (vx, vy) = (clamp(self.held_velocity.x), clamp(self.held_velocity.y));
@@ -377,10 +396,42 @@ impl Pet {
         self.motion == Motion::Held
     }
 
+    /// The press stayed where it was: this is petting, not a drag. The pet
+    /// goes back to where it was picked up and stays there until the button
+    /// comes up. Petting raises mood for as long as it lasts.
+    pub fn begin_tending(&mut self) {
+        if self.motion != Motion::Held {
+            return;
+        }
+        if let Some((position, perch)) = self.grabbed_from.take() {
+            self.position = position;
+            self.perch = perch;
+        }
+        if self.perch.is_some() {
+            self.motion = Motion::Settled;
+            self.arc = Arc_::None;
+        } else {
+            // It was airborne when picked up; it drops while being petted.
+            self.motion = Motion::Falling;
+            self.arc = Arc_::Fall { vx: 0., vy: 0. };
+        }
+        self.held_velocity = Point::new(0., 0.);
+        self.plan = None;
+        self.action_done = true;
+        self.tended = true;
+        self.pending.push(Event::Clicked);
+    }
+
+    pub fn is_tended(&self) -> bool {
+        self.tended
+    }
+
     /// Whether this pet is with the user, and why. A task outranks the bubble:
     /// what it is doing is more informative than the fact that it is listening.
     pub fn attend(&self) -> Option<Attend> {
-        self.working.or(self.listening.then_some(Attend::Listening))
+        self.working
+            .or(self.tended.then_some(Attend::Tended))
+            .or(self.listening.then_some(Attend::Listening))
     }
 
     /// The bubble opened or closed on this pet.
@@ -576,6 +627,9 @@ impl Pet {
         }
         self.energy = (self.energy + circadian_drift(signals.hour) * hours).clamp(0., 1.);
         let mut mood = self.mood;
+        if self.tended {
+            mood += PETTING_MOOD_PER_SECOND * dt;
+        }
         if signals.session_minutes > 75. {
             mood -= 0.10 * hours;
         }
