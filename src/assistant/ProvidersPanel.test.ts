@@ -13,7 +13,7 @@ const found: ProviderDetection = {
   codexInstalled: false, claudeCode: false, ollamaApp: true, ollamaReachable: true, openaiKey: false, anthropicKey: false,
   compatibleKey: false, braveKey: false, appleSupported: true, appleReady: true, appleDetail: 'Apple Intelligence is ready. Runs entirely on this Mac.',
 }
-const empty = (): Connections => ({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, perPet: {}, providers: {} })
+const empty = (): Connections => ({ active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} })
 
 beforeEach(() => {
   connections.value = empty()
