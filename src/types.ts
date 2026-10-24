@@ -117,6 +117,9 @@ export interface Settings {
   accent: string
   /** Developer tools: coding mode, its window and its menu entry. */
   developerMode: boolean
+  welcomed: boolean
+  /** The "meet your pet" tip card has been dismissed. */
+  tipsDismissed: boolean
 }
 
 export interface SessionSummary {
@@ -180,4 +183,6 @@ export interface Snapshot {
   native: boolean
   /** False in builds made without coding mode. */
   codingAvailable: boolean
+  /** True on a brand-new user's first launch: open on the Pets page once. */
+  firstRun: boolean
 }

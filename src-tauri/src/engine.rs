@@ -49,6 +49,7 @@ pub struct Engine {
     fast_until: f64,
     last_suspend_check: f64,
     rng: Rng,
+    pending_welcome: bool,
 }
 
 impl Engine {
@@ -77,6 +78,7 @@ impl Engine {
             fast_until: 0.,
             last_suspend_check: f64::NEG_INFINITY,
             rng: Rng::new(0x5EED_1234),
+            pending_welcome: false,
         }
     }
 
@@ -234,6 +236,47 @@ impl Engine {
         missing
     }
 
+    /// Ask for the first-run welcome: a pet dropped onto the window the user is
+    /// looking at. Only a fresh install qualifies, and only once.
+    pub fn request_welcome(&mut self) {
+        if !self.settings.welcomed && self.pets.is_empty() {
+            self.pending_welcome = true;
+        }
+    }
+
+    /// Whether a welcome is still waiting for a window to land on.
+    pub fn welcome_pending(&self) -> bool {
+        self.pending_welcome
+    }
+
+    fn welcome(&mut self) {
+        self.pending_welcome = false;
+        self.settings.welcomed = true;
+        let preferred = "com.perch.squirrel-red";
+        let pack_id = if self.packs.contains_key(preferred) {
+            Some(preferred.to_string())
+        } else {
+            self.packs.keys().min().cloned()
+        };
+        let Some(id) = pack_id.and_then(|pack| self.spawn(&pack).ok()) else {
+            return;
+        };
+        let bounds = self.bounds();
+        let Some(window) = self.windows.first() else {
+            return;
+        };
+        let x = window
+            .rect
+            .center()
+            .x
+            .clamp(bounds.x, bounds.x + bounds.width);
+        let y = bounds.y;
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.position = Point::new(x, y);
+            pet.drop_in();
+        }
+    }
+
     /// Gives a pet its default working folder, or takes it away.
     pub fn set_pet_folder(&mut self, id: u64, folder: Option<String>) {
         if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
@@ -277,6 +320,9 @@ impl Engine {
             return;
         }
         self.scan(platform);
+        if self.pending_welcome && !self.surfaces.is_empty() {
+            self.welcome();
+        }
         let mut events = self.awareness.tick(dt, platform);
         if self.awareness.nudge.tier() >= 2 {
             self.attention = self.windows.first().map(|w| w.id);

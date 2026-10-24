@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, Brush, Check, Download, FolderOpen, MoreHorizontal, Package, PawPrint, Search, Trash2, X } from '@lucide/vue'
-import { call, packs, pets, refreshPacks, snapshot } from '../state'
+import { call, packs, pets, refreshPacks, saveSettings, settings, snapshot } from '../state'
 import type { PackSummary } from '../types'
 import DiagnosticList from './DiagnosticList.vue'
 import FilterPill from '../components/FilterPill.vue'
@@ -65,6 +65,11 @@ function diagnosticLabel(pack: PackSummary) {
   return counted.length ? counted.join(' · ') : 'Details'
 }
 
+const tipVisible = computed(() => !!settings.value && !settings.value.tipsDismissed)
+async function dismissTip() {
+  if (settings.value) await saveSettings({ ...settings.value, tipsDismissed: true })
+}
+
 async function spawn(id: string) { await call('spawn_pet', { packId: id }) }
 async function despawn(id: string) {
   const pet = pets.value.find(p => p.packId === id)
@@ -81,6 +86,10 @@ async function exportPack(id: string) {
 </script>
 
 <template>
+  <div v-if="tipVisible" class="tip-card" role="note">
+    <p><strong>Meet your pet.</strong> Pick it up and throw it.</p>
+    <button class="icon-button" aria-label="Dismiss tip" @click="dismissTip"><X :size="14" /></button>
+  </div>
   <div class="sticky-top">
   <section class="page-heading">
     <div>

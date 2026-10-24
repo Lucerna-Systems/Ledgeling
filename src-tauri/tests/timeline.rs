@@ -346,3 +346,59 @@ fn awareness_can_be_switched_off_entirely_and_the_pet_still_lives() {
     assert_eq!(summary.nudge_tier, 0);
     assert!(engine.pets[0].perch.is_some(), "the pet is unaffected");
 }
+
+#[test]
+fn a_first_run_drops_one_pet_onto_the_frontmost_window_and_never_again() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    assert!(!engine.settings.welcomed);
+    engine.request_welcome();
+    run(&mut engine, &platform, 0.1);
+    assert_eq!(engine.pets.len(), 1, "exactly one pet is welcomed");
+    assert!(engine.settings.welcomed);
+    assert!(!engine.welcome_pending());
+    let pet = &engine.pets[0];
+    assert_eq!(
+        pet.motion,
+        ledgeling::pet::Motion::Falling,
+        "it arrives falling"
+    );
+    assert!(pet.position.y < 100., "from the top of the screen");
+    assert!(
+        (pet.position.x - 600.).abs() < 1.,
+        "above the window's centre"
+    );
+    run(&mut engine, &platform, 6.);
+    let perch = engine.pets[0].perch.expect("it landed on something");
+    assert_eq!(perch.key.kind.as_str(), "window_top");
+    assert_eq!(engine.pets.len(), 1);
+}
+
+#[test]
+fn the_welcome_waits_for_a_window_to_land_on() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![]]);
+    engine.request_welcome();
+    run(&mut engine, &platform, 0.1);
+    assert!(engine.pets.len() <= 1);
+    assert!(engine.settings.welcomed || engine.welcome_pending());
+}
+
+#[test]
+fn nothing_is_welcomed_when_already_welcomed_or_pets_exist() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.settings.welcomed = true;
+    engine.request_welcome();
+    run(&mut engine, &platform, 1.);
+    assert!(engine.pets.is_empty());
+
+    let (mut engine, platform) = engine_with_saved_pet();
+    engine.request_welcome();
+    assert!(!engine.welcome_pending());
+    run(&mut engine, &platform, 1.);
+    assert_eq!(engine.pets.len(), 1);
+}
+
+fn engine_with_saved_pet() -> (Engine, MockPlatform) {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    (engine, platform)
+}

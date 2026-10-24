@@ -214,6 +214,17 @@ impl Pet {
         }
     }
 
+    /// Arrives from above rather than appearing on a perch: the first-run
+    /// welcome uses it so the new pet visibly lands and greets.
+    pub fn drop_in(&mut self) {
+        self.motion = Motion::Falling;
+        self.arc = Arc_::Fall { velocity: 0. };
+        self.perch = None;
+        self.home = None;
+        self.plan = None;
+        self.pending.push(Event::Startup);
+    }
+
     pub fn is_held(&self) -> bool {
         self.motion == Motion::Held
     }

@@ -489,3 +489,6 @@ details[open] > summary { margin-bottom: 12px; color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+.tip-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding: 10px 14px; border: 1px solid var(--border, rgba(128,128,128,.25)); border-radius: 10px; background: var(--accent-soft, rgba(91,91,214,.1)); font-size: 14px; }
+.tip-card p { margin: 0; }

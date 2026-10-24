@@ -33,6 +33,9 @@ pub struct App {
     pub notes: Vec<String>,
     pub lab_active: bool,
     pub dirty: bool,
+    /// This launch is a brand-new user's first: a pet is about to be dropped
+    /// in and the companion opens on the Pets page.
+    pub first_run: bool,
     /// Monitors whose overlay has just mounted and needs its spawn payloads
     /// re-sent: the first tick's sends land before the webview can listen.
     pub atlas_recheck: Vec<u64>,
@@ -103,6 +106,9 @@ pub struct Snapshot {
     pub native: bool,
     /// Whether this build includes coding mode at all.
     pub coding_available: bool,
+    /// True on the launch that welcomed a brand-new user, so the companion
+    /// opens on the Pets page once.
+    pub first_run: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -185,6 +191,7 @@ impl App {
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
             coding_available: cfg!(feature = "coding"),
+            first_run: self.first_run,
         }
     }
 
@@ -831,6 +838,8 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 let _ = crate::autostart::apply(engine.settings.launch_at_login, &executable);
             }
             let missing = engine.restore_pets();
+            engine.request_welcome();
+            let first_run = engine.welcome_pending();
             crate::platform::pet_ui::seed_folders(engine.pet_folders());
             for pack_id in missing {
                 notes.push(format!(
@@ -845,6 +854,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
                 notes,
                 lab_active: false,
                 dirty: false,
+                first_run,
                 atlas_recheck: Vec::new(),
                 screens: found,
                 pet_screen,
@@ -900,7 +910,12 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             // A server orphaned by a previous crash would still hold the model.
             crate::tasks::apple::reap_stale();
             // The dashboard is opened explicitly from the tray or Connections.
-            main.hide()?;
+            if first_run {
+                main.show()?;
+                let _ = main.set_focus();
+            } else {
+                main.hide()?;
+            }
             let handle = app.handle().clone();
             std::thread::spawn(move || run_loop(shared, handle));
             Ok(())

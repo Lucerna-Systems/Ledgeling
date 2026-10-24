@@ -61,15 +61,18 @@ pub struct Settings {
     /// Developer tools: coding mode and its tray entry. Off for everyone who
     /// did not ask, so none of it loads.
     pub developer_mode: bool,
+    /// Set once the first-run welcome has dropped a pet onto the desktop, so
+    /// it never repeats. Installs that already have pets count as welcomed.
+    pub welcomed: bool,
+    /// The "meet your pet" tip card on the Pets page has been dismissed.
+    pub tips_dismissed: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
             version: 1,
-            pets: vec![PetSetting {
-                pack_id: "com.perch.budgie-classic".into(),
-                ..Default::default()
-            }],
+            // Empty on purpose: the first-run welcome picks the first pet.
+            pets: Vec::new(),
             paused: false,
             hidden: false,
             speed_scale: 1.,
@@ -83,6 +86,8 @@ impl Default for Settings {
             pet_screen: None,
             theme: ThemeMode::default(),
             accent: DEFAULT_ACCENT.into(),
+            welcomed: false,
+            tips_dismissed: false,
         }
     }
 }
@@ -103,6 +108,9 @@ impl Settings {
         self.developer_mode &= cfg!(feature = "coding");
         self.pets.retain(|p| !p.pack_id.is_empty());
         self.pets.truncate(8);
+        if !self.pets.is_empty() {
+            self.welcomed = true;
+        }
         self.accent = self.accent.to_lowercase();
         if !is_hex_color(&self.accent) || self.accent == RETIRED_DEFAULT_ACCENT {
             self.accent = DEFAULT_ACCENT.into();
@@ -239,5 +247,27 @@ mod tests {
             "coding mode stays off for existing users"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn an_old_file_with_pets_counts_as_welcomed() {
+        let dir =
+            std::env::temp_dir().join(format!("ledgeling-settings-old-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join(SETTINGS_FILE),
+            r#"{"version":1,"pets":[{"packId":"com.perch.budgie-classic"}]}"#,
+        )
+        .unwrap();
+        let (loaded, note) = load(&dir);
+        assert!(note.is_none());
+        assert!(loaded.welcomed);
+        assert!(!loaded.tips_dismissed);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn a_fresh_install_is_not_welcomed_and_has_no_pets() {
+        let settings = Settings::default();
+        assert!(!settings.welcomed);
+        assert!(settings.pets.is_empty());
     }
 }

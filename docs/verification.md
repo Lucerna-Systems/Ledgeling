@@ -402,6 +402,18 @@ the bubble, nor at all on Windows or Linux.**
   there, and the pop-out window. Agent events on Windows are untested (the hook
   runs the app's own binary, so it should work, but it has not been run).
 
+## Pet sprint (2026-10-24)
+
+Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`
+136 passing. All hand runs below are macOS, one machine, run once.
+
+- **Phase 1, the first minute.** fmt, clippy, `npm test` (229 lib, 14 timeline)
+  and `npm run test:ui` (139) green. Hand-run once on macOS: settings.json moved
+  aside, `npm run tauri dev`; the companion opened on Pets with the tip card and
+  the squirrel was seen standing on the top edge of the frontmost window. The
+  fall and greeting animation were not watched frame by frame; settings.json was
+  restored afterwards.
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":
