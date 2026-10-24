@@ -655,6 +655,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             task_rename,
             task_delete,
             task_cancel,
+            task_force_stop,
             task_approve,
             task_undo,
             task_connections,
