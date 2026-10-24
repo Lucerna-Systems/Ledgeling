@@ -464,6 +464,16 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   hand-drawn edit round trip. The live preview was not changed (Play/Pause
   already existed).
 
+- **Performance, end of sprint (2026-10-24): over budget.** `scripts/benchmark.py
+  600` on the release `.app` bundle, macOS, four pets out (squirrel, budgie,
+  gecko, cat), all moving normally: CPU mean 2.57%, median 2.0%, p95 6.5%; peak
+  RSS 83.3 MiB. The script counted one process, so WebKit helpers and
+  WindowServer are not in these numbers. That misses the < 0.5% idle and < 2%
+  moving ceilings, and RSS is just over 80 MiB with four pets. There is no
+  earlier measurement of this build to compare with, so it is not known how much
+  of this the sprint added (peer and petting checks are the suspects). A one-pet
+  run and a run of `main` with the same three original pets have not been done.
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":
