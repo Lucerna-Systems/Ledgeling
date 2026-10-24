@@ -13,6 +13,14 @@ const preview = computed(() => props.task.result
   .replace(/[#*_`>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 190) + '…')
 const pending = ref(false)
 const canUndo = computed(() => terminal(props.task.status) && props.task.operations.some(o => ['applied', 'applying', 'undoing'].includes(o.state)))
+/** History only: a finished task whose file changes are not still waiting to be undone. */
+const canDelete = computed(() => !props.inChat && terminal(props.task.status) && !canUndo.value)
+const confirmDelete = ref(false)
+async function remove() {
+  if (!confirmDelete.value) { confirmDelete.value = true; return }
+  confirmDelete.value = false
+  await control('task_delete')
+}
 async function control(command: string, args = {}) {
   pending.value = true
   try { await taskCall(command, { id: props.task.id, ...args }); await refreshTasks() } catch { /* shared error banner */ } finally { pending.value = false }
@@ -67,6 +75,8 @@ async function open(url: string) { try { await taskCall('task_open_url', { url }
       <button v-if="!terminal(task.status)" :disabled="pending || task.status === 'cancelling'" @click="control('task_cancel')">Cancel task</button>
       <button v-if="canUndo" :disabled="pending" @click="control('task_undo')">Undo file changes</button>
       <button v-if="terminal(task.status) && !inChat" @click="emit('followup', task)">Continue chat</button>
+      <button v-if="canDelete" class="text-link danger" :disabled="pending" @click="remove">{{ confirmDelete ? 'Delete for good?' : 'Delete' }}</button>
+      <button v-if="confirmDelete" class="text-link" @click="confirmDelete = false">Keep</button>
     </div>
   </article>
 </template>

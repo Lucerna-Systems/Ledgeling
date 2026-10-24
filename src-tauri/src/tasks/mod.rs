@@ -285,6 +285,27 @@ impl TaskService {
         (self.inner.emit)(task.clone());
         Ok(task)
     }
+    /// Removes a finished task from History. Running tasks must be cancelled
+    /// first, and file changes still applied must be undone first, since the
+    /// task's journal is the only way back.
+    pub fn delete(&self, id: i64) -> Result<(), String> {
+        let store = self.inner.store.lock().unwrap();
+        let task = store.get(id)?;
+        if !matches!(
+            task.status.as_str(),
+            "completed" | "failed" | "cancelled" | "interrupted" | "undone"
+        ) {
+            return Err("Stop this task before deleting it.".into());
+        }
+        if task
+            .operations
+            .iter()
+            .any(|o| matches!(o.state.as_str(), "applied" | "applying" | "undoing"))
+        {
+            return Err("Undo this task's file changes before deleting it.".into());
+        }
+        store.delete(id)
+    }
     pub fn cancel(&self, id: i64) -> Result<(), String> {
         let token = self.inner.controls.lock().unwrap().get(&id).cloned();
         if let Some(c) = token {
@@ -1290,6 +1311,40 @@ mod tests {
             "Downloads cleanup"
         );
         assert!(s.rename(first.id, "").unwrap().title.is_empty());
+    }
+    #[test]
+    fn finished_tasks_delete_but_running_or_reversible_ones_do_not() {
+        let (_d, s) = service();
+        let done = turn(&s, "old", "answer", None);
+        s.delete(done.id).unwrap();
+        assert!(s.list().unwrap().iter().all(|t| t.id != done.id));
+        assert!(s.delete(done.id).is_err());
+
+        let running = turn(&s, "busy", "", None);
+        {
+            let store = s.inner.store.lock().unwrap();
+            let mut t = store.get(running.id).unwrap();
+            t.status = "running".into();
+            store.save(&t).unwrap();
+        }
+        assert!(s.delete(running.id).unwrap_err().contains("Stop"));
+
+        let applied = turn(&s, "moved files", "ok", None);
+        {
+            let store = s.inner.store.lock().unwrap();
+            let mut t = store.get(applied.id).unwrap();
+            t.operations.push(Operation {
+                kind: "move".into(),
+                source: None,
+                destination: "x".into(),
+                content: None,
+                fingerprint: None,
+                result_fingerprint: None,
+                state: "applied".into(),
+            });
+            store.save(&t).unwrap();
+        }
+        assert!(s.delete(applied.id).unwrap_err().contains("Undo"));
     }
     #[test]
     fn unknown_citations_are_rejected() {

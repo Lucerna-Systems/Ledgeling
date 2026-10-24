@@ -51,6 +51,15 @@ pub async fn task_rename(
     state.rename(id, &title)
 }
 #[tauri::command]
+pub async fn task_delete(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+) -> Result<(), String> {
+    main_or_code(&window)?;
+    state.delete(id)
+}
+#[tauri::command]
 pub async fn task_cancel(
     window: WebviewWindow,
     state: State<'_, TaskService>,
