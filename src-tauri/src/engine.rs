@@ -392,7 +392,7 @@ impl Engine {
             .collect();
         let mut pets = std::mem::take(&mut self.pets);
         for pet in &mut pets {
-            if pet.is_held() && held_by_mouse == Some(false) {
+            if (pet.is_held() || pet.is_tended()) && held_by_mouse == Some(false) {
                 pet.release();
             }
             let view = WorldView {
