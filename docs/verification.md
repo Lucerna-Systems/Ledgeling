@@ -567,7 +567,14 @@ The old "83 MiB" figure was the Rust process RSS only, not the process tree.
 Windows and Linux were **not** measured. The destroy grace is now 60 s (it was
 10 minutes while measuring above); see `docs/development.md`.
 
-Not run: close, destroy and reopen of the companion with the 60 s grace in a
-release build (unsent assistant text and page restored from `ui_state.json`).
-The attempt on 2026-10-24 found the screen locked, so it was not verified at
-runtime; only the unit and UI tests cover it.
+Hand-run once on macOS (2026-10-24, release build, synthesized clicks, one pet):
+launch 126.5 MiB with 4 processes (app, GPU, Networking, one WebContent); companion
+opened from the tray 179.5 MiB; after typing an unsent assistant prompt, going to
+Pets and closing it, still 220 MiB 30 s later (hidden, not freed); destroyed about
+65 s after the close, leaving 135 MiB with 4 processes; `ui_state.json` held the
+Pets page and the prompt. Reopening after the destroy restored the Pets page and
+the prompt text; closing and reopening within 12 s reused the same WebContent
+process. Not checked: the Studio draft restore, the prompt's first letter (stored
+and restored as `Draft-xyz-123`, probably the composer capitalising it), and why
+the footprint after destroy (135 MiB) is about 10 MiB above the never-opened
+figure (125 MiB).
