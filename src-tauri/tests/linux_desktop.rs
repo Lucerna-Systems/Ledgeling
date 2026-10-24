@@ -384,7 +384,7 @@ fn wayland_session_uses_the_compositor_it_finds() {
     assert!(ledgeling::platform::layer::supported());
     assert_eq!(std::env::var_os("GDK_BACKEND"), None);
 
-    let mut display = Display::connect();
+    let display = Display::connect();
     platform.set_monitors(vec![display.monitor()]);
     if let Err(error) = platform.enumerate_windows() {
         // No window source: pets use the screen edges.
@@ -402,7 +402,14 @@ fn wayland_session_uses_the_compositor_it_finds() {
     // XWayland is listed by the compositor itself.
     let output = display.monitor().bounds;
     let before = platform.enumerate_windows().unwrap().len();
-    display.open((0, 0, 640, 480), "NORMAL", &[], true);
+    // Ledgeling's own windows are never offered as perches, and the compositor
+    // names this process for any window opened here, so the window comes from
+    // another one: `xev` (from x11-utils) opens a plain window and waits.
+    let mut xev = std::process::Command::new("xev")
+        .args(["-geometry", "640x480+0+0"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("xev is installed with x11-utils");
     let mut seen = Vec::new();
     wait_for("the compositor to list the window", || {
         seen = platform.enumerate_windows().unwrap();
@@ -419,4 +426,6 @@ fn wayland_session_uses_the_compositor_it_finds() {
     if std::env::var_os("SWAYSOCK").is_some() {
         assert!(focused.is_some(), "sway names the new window's process");
     }
+    let _ = xev.kill();
+    let _ = xev.wait();
 }
