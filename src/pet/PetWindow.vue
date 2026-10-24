@@ -96,7 +96,7 @@ onMounted(async () => {
   await subscribe<SpawnPayload>('pet:spawn', payload => atlases.set(payload.petId, payload))
   await subscribe<number>('pet:despawn', despawn)
   await subscribe<Scene>('pet:scene', render)
-  await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null })
+  await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null; caring = false; stopHold() })
   await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicate(value.petId, value.status) })
   await subscribe<string>('pet:sound', source => { void new Audio(source).play().catch(() => {}) })
   // The backend sends spawn payloads before this webview could listen; ask it
@@ -131,8 +131,21 @@ function ask(event: MouseEvent) {
   if (id) void invoke('show_pet_bubble', { petId: Number(id) }).catch(() => {})
 }
 
+/** A press that stays put this long is petting, not a click or a drag. */
+const HOLD_MS = 500
+let holdTimer: ReturnType<typeof setTimeout> | null = null
+let caring = false
+function stopHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null } }
+
 function down(event: PointerEvent) {
   if (event.button !== 0) return
+  stopHold()
+  holdTimer = setTimeout(() => {
+    holdTimer = null
+    if (!dragging || nativeDragging) return
+    caring = true
+    act('pet')
+  }, HOLD_MS)
   dragging = true
   pressedAt = event.timeStamp
   pressedX = event.clientX; pressedY = event.clientY
@@ -148,6 +161,8 @@ function move(event: PointerEvent) {
   report([event.clientX, event.clientY])
   if (!dragging || nativeDragging || !dragPet || event.shiftKey) return
   if (Math.hypot(event.clientX - pressedX, event.clientY - pressedY) < 12) return
+  if (caring) return
+  stopHold()
   nativeDragging = true
   // Where the native drag is unavailable the pet simply follows the cursor;
   // it is tried once per press, not on every move.
@@ -157,8 +172,11 @@ function up(event: PointerEvent) {
   if (!dragging) return
   dragging = false
   nativeDragging = false
+  stopHold()
   act('release')
-  if (event.timeStamp - pressedAt < 250) act('click')
+  const wasCaring = caring
+  caring = false
+  if (!wasCaring && event.timeStamp - pressedAt < 250) act('click')
 }
 </script>
 
