@@ -175,6 +175,9 @@ The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
 (pixels to the nearest other pet; infinite when there is none),
 `affection` (0 to 1, grows when the pet is petted and clicked, cools a little
 during long absences), `days_together`, `is_dragging`.
+`hour` is the local hour, 0–23. The engine also tires every pet late at night
+(23:00–05:00) and perks it up in the morning (06:00–10:00), so `energy < 0.25`
+rules already make pets sleepy at night; add `hour` rules for more.
 Anything else is an error that tells you so, with the alternatives listed.
 
 **Reactions** let events interrupt whatever the pet was doing:

@@ -1073,3 +1073,42 @@ fn a_relocate_request_travels_to_another_surface_instead_of_hopping() {
         budgie.position
     );
 }
+
+// ------------------------------------------------------------- time of day
+
+fn energy_after_a_moment_at(hour: f64) -> f64 {
+    let world = World::new(&[win(1, 200., 300., 400., 300.)]);
+    let mut pet = Pet::new(1, pack("budgie-classic"), Point::new(300., 200.));
+    pet.energy = 0.5;
+    let mut events = Vec::new();
+    let signals = Signals {
+        hour,
+        ..Signals::default()
+    };
+    // Short enough that the pack's own hour rules have not changed its state.
+    for _ in 0..50 {
+        pet.tick(0.1, &world.view(), signals, &mut events);
+    }
+    pet.energy
+}
+
+#[test]
+fn pets_tire_at_night_and_perk_up_in_the_morning() {
+    let night = energy_after_a_moment_at(2.);
+    let morning = energy_after_a_moment_at(8.);
+    let afternoon = energy_after_a_moment_at(14.);
+    assert!(night < afternoon, "night {night} afternoon {afternoon}");
+    assert!(
+        morning > afternoon,
+        "morning {morning} afternoon {afternoon}"
+    );
+}
+
+#[test]
+fn circadian_drift_covers_the_clock_without_gaps() {
+    assert!(circadian_drift(23.) < 0. && circadian_drift(0.) < 0. && circadian_drift(4.) < 0.);
+    assert_eq!(circadian_drift(5.), 0.);
+    assert!(circadian_drift(6.) > 0. && circadian_drift(9.) > 0.);
+    assert_eq!(circadian_drift(12.), 0.);
+    assert_eq!(circadian_drift(22.), 0.);
+}

@@ -51,7 +51,9 @@
           { "to": "doze", "weight": 4, "when": "energy < 0.25" },
           { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
           { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
-          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" }
+          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" },
+          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
+          { "to": "sing", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
       },
       "visit": {
