@@ -79,6 +79,7 @@ const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 
 async function restoreAndWatch() {
   const ready = await companionReady()
   const ui = ready.ui
+  restoredPage = typeof ui?.page === 'string'
   if (ui) {
     if (typeof ui.prompt === 'string') promptDraft.value = ui.prompt
     const studio = ui.studio ? restoreDraft(ui.studio) : null
@@ -98,6 +99,8 @@ async function restoreAndWatch() {
   }))
 }
 let stopPersist = () => {}
+/** The saved (or first-run) page was applied, so the first-run watch below must not override it. */
+let restoredPage = false
 
 const waiting = computed(() => tasks.value.filter(task => task.status === 'waiting').length)
 function followup(task: Task) {
@@ -120,7 +123,7 @@ const quiet = computed(() => !pets.value.length || !!settings.value?.paused || !
 // A brand-new user's first launch opens on Pets, once, where the tip waits.
 let openedFirstRun = false
 watch(snapshot, value => {
-  if (value?.firstRun && !openedFirstRun) { openedFirstRun = true; page.value = 'pets' }
+  if (value?.firstRun && !openedFirstRun && !restoredPage) { openedFirstRun = true; page.value = 'pets' }
 })
 onMounted(() => {
   stop = start()

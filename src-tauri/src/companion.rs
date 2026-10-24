@@ -35,6 +35,8 @@ struct Inner {
     pending: Vec<(String, Value)>,
     hidden_since: Option<Instant>,
     ui: Option<String>,
+    /// A first run opens the companion on Pets once, whatever was saved.
+    first_run: bool,
 }
 
 pub struct CompanionState {
@@ -52,6 +54,28 @@ impl CompanionState {
             dir: config_dir.to_path_buf(),
         }
     }
+}
+
+/// The UI state handed to a freshly loaded companion. On a first run the page
+/// is forced to Pets (once) and the saved state, if any, is kept otherwise.
+pub fn ready_ui(first_run: bool, saved: Option<Value>) -> Option<Value> {
+    if !first_run {
+        return saved;
+    }
+    let mut ui = match saved {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    ui.insert("page".into(), Value::String("pets".into()));
+    Some(Value::Object(ui))
+}
+
+/// First launch: open the companion on Pets, creating it now.
+pub fn open_for_first_run(app: &tauri::AppHandle) {
+    if let Some(state) = state(app) {
+        lock(&state).first_run = true;
+    }
+    show(app);
 }
 
 /// Persist the frontend's UI state blob. Must be a JSON object of sane size.
@@ -233,10 +257,11 @@ pub fn companion_ready(
         .into_iter()
         .map(|(event, payload)| Pending { event, payload })
         .collect();
-    let ui = inner
+    let saved = inner
         .ui
         .as_deref()
         .and_then(|t| serde_json::from_str(t).ok());
+    let ui = ready_ui(std::mem::take(&mut inner.first_run), saved);
     Ok(Ready { ui, pending })
 }
 
@@ -320,6 +345,17 @@ mod tests {
         assert_eq!(load_ui(dir.path()).as_deref(), Some(json));
         std::fs::write(dir.path().join(UI_FILE), "garbage").unwrap();
         assert_eq!(load_ui(dir.path()), None);
+    }
+
+    #[test]
+    fn first_run_opens_on_pets_and_overrides_saved_page() {
+        let saved: Value = serde_json::from_str(r#"{"page":"studio","prompt":"hi"}"#).unwrap();
+        let ui = ready_ui(true, Some(saved.clone())).unwrap();
+        assert_eq!(ui["page"], "pets");
+        assert_eq!(ui["prompt"], "hi");
+        assert_eq!(ready_ui(true, None).unwrap()["page"], "pets");
+        assert_eq!(ready_ui(false, Some(saved.clone())), Some(saved));
+        assert_eq!(ready_ui(false, None), None);
     }
 
     #[test]

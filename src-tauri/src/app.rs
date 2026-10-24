@@ -903,7 +903,11 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             #[cfg(feature = "coding")]
             app.manage::<crate::coding::SharedCoding>(Default::default());
             setup_tray(app, developer)?;
-            // The companion window is created on demand (see `companion`).
+            // The companion window is created on demand (see `companion`);
+            // only a first run opens it at launch, on the Pets page.
+            if first_run {
+                crate::companion::open_for_first_run(app.handle());
+            }
             // A server orphaned by a previous crash would still hold the model.
             crate::tasks::apple::reap_stale();
             // The dashboard is opened explicitly from the tray or Connections.
