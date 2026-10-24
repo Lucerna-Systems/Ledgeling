@@ -1173,6 +1173,45 @@ mod tests {
         assert_eq!(recovered.status, "interrupted");
         assert!(recovered.approval.is_none());
     }
+    #[test]
+    fn restart_settles_a_cancelling_task_as_cancelled() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("tasks.sqlite");
+        let store = Store::open(&path).unwrap();
+        let mk = |status: &str| Task {
+            id: 0,
+            request: TaskRequest::default(),
+            connection: Connection::default(),
+            status: status.into(),
+            progress: String::new(),
+            result: String::new(),
+            error: None,
+            approval: None,
+            operations: vec![],
+            sources: vec![],
+            created_at: 0,
+            pet: None,
+            title: String::new(),
+        };
+        let cancelling = store.insert(mk("cancelling")).unwrap();
+        let failed = store
+            .insert(Task {
+                error: Some("boom".into()),
+                ..mk("failed")
+            })
+            .unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let c = store.get(cancelling.id).unwrap();
+        assert_eq!(c.status, "cancelled");
+        assert!(c.approval.is_none());
+        assert!(c.progress.contains("No work was resumed"));
+        let f = store.get(failed.id).unwrap();
+        assert_eq!(
+            (f.status.as_str(), f.error.as_deref()),
+            ("failed", Some("boom"))
+        );
+    }
     fn turn(s: &TaskService, prompt: &str, result: &str, parent: Option<i64>) -> Task {
         s.inner
             .store
