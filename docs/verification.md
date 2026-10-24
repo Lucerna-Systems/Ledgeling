@@ -174,6 +174,84 @@ nothing in this section applies to release or pre-alpha builds, which leave it o
 - Not run against any real model, so how well each provider follows the JSON
   format is unknown, and it has not been run in the real app.
 
+## Linux on Wayland: layer-shell overlay and compositor window sources (2026-10-24)
+
+On Wayland the overlay is now a `wlr-layer-shell` surface (through
+gtk-layer-shell) wherever the compositor offers that protocol: COSMIC, KDE
+Plasma, sway, Hyprland, niri and most others apart from GNOME. Before, it was
+always pushed through XWayland. The overlay's input region is the pets' sprite
+boxes, so the compositor routes the pointer to the overlay only over a pet,
+and the overlay reports the position itself (`pet_pointer`). This fixes
+hovering and grabbing pets over native Wayland windows. The bubble is a layer
+surface too, placed by margins. GNOME has no layer-shell and keeps the XWayland
+route. The diagnostics line now says which overlay is in use
+(`"overlay": "wayland-layer"` or `"window"`).
+
+Wayland has no common protocol for seeing other apps' windows, so each
+compositor that offers one has its own source (`platform/linux/sources`):
+
+| Compositor | Source | Windows | Focused app | Fullscreen |
+|---|---|---|---|---|
+| COSMIC | `zcosmic_toplevel_info_v1` v2+ with `ext_foreign_toplevel_list_v1` and `ext_workspace_v1` | yes | app id | yes |
+| Hyprland | `$XDG_RUNTIME_DIR/hypr/<sig>/.socket.sock`: `j/clients`, `j/monitors` | yes | process name | yes |
+| sway | `SWAYSOCK`, `GET_TREE` | yes | process name | yes |
+| niri | `NIRI_SOCKET`: `Windows`, `Workspaces`, `Outputs` | tiles in view | process name | no |
+| anything else | none | screen edges | not reported | XWayland apps only |
+
+No compositor reports stacking order, so windows are ordered by focus
+recency, with floating windows above tiled ones. The COSMIC protocol XML is
+vendored under `src-tauri/protocols/`. Its notice is permissive, unlike the
+GPL-3.0 `cosmic-protocols` crate, which is not used.
+
+**Window titles.** `ext_foreign_toplevel_list_v1` pushes every window's title,
+and the IPC replies include titles too. There is no way to opt out of
+receiving them. Each source matches the title event and drops it, or leaves
+the field out of what it parses. A new privacy test fails if any non-test
+line in these sources mentions a title other than as an empty match arm. With
+the user's agreement, the focused window's app id stands in for the process
+name where there is no process id (COSMIC). It is mapped to a category and
+dropped, as the process name is elsewhere.
+
+What has run:
+
+- **By hand on Pop!_OS 24.04, COSMIC, one 1920×1080 screen at 100%**
+  (debug build, 2026-10-24): the layer overlay drew the pets transparently
+  above every window. Clicks around a pet reached the window underneath. A
+  pet could be clicked, dragged, and right-clicked for the bubble, which
+  opened next to it and took typing. With the COSMIC source, pets perched on
+  window edges and moved with a window when it was dragged. They ignored
+  windows that were covered or on another workspace. A scan took about
+  0.2 ms. COSMIC's geometry includes its server-side title bar (a 640×480 X
+  window was reported as 640×516), which is the edge a pet should stand on.
+- The live Wayland test (`wayland_session_uses_the_compositor_it_finds`)
+  passed against that COSMIC session: idle time, layer-shell detection, and
+  an XWayland window it opened being listed by COSMIC.
+- Unit tests: the shared Wayland model (ordering, filtering, scaling,
+  fullscreen, app-id names), the input boxes, and the Hyprland, sway and niri
+  parsers against fixtures. **The fixtures were written from each
+  compositor's documented format, not recorded from a running compositor.**
+- In CI, `scripts/linux-display-tests.sh` now runs the Wayland test under
+  headless sway twice: without `SWAYSOCK` (screen edges) and with it, where
+  sway's IPC must list an XWayland window. This had not run in CI when this
+  entry was written.
+
+What has not run:
+
+- Hyprland, niri, a real sway desktop, KDE Plasma, and any other layer-shell
+  compositor. They should get the layer overlay, but only COSMIC has been
+  seen.
+- GNOME on Wayland since this change (it should behave as before, through
+  XWayland), and window sources for KDE (would need a KWin script) and GNOME
+  (would need a Shell extension). Both still use the screen edges.
+- Fractional scaling or more than one monitor on Wayland. Compositor layouts
+  are converted with the pet screen's scale only.
+- The overlay covers panels and docks (`exclusive_zone -1`), and the work area
+  GTK reports on Wayland is the whole screen. A pet's floor can therefore sit
+  over a dock rather than above it.
+- Transparent margins inside a sprite's box catch clicks on the layer overlay,
+  because the input region is made of rectangles and not the sprite's alpha.
+- CPU and RAM against the budget, packaging, and any soak.
+
 ## Linux adapter (2026-09-24)
 
 `platform/linux/` replaces the stub for Linux. On X11 it reads
@@ -535,9 +613,10 @@ Stated plainly, because these are the difference between "built" and "shipped":
   target, and its path matching and cleanup are unit-tested, but it has **not
   been run on Windows at all**: whether Explorer accepts the drop, reports the
   file, and the pet keeps following the cursor during the drag are all untried.
-- **Linux on a real desktop.** The adapter and the app have run only under
-  virtual display servers in CI; see the Linux adapter section above for
-  exactly what that covered.
+- **Linux beyond one COSMIC desktop.** The Wayland overlay and the COSMIC
+  window source have run by hand on one Pop!_OS COSMIC machine. X11 desktops,
+  GNOME, KDE, Hyprland, sway and niri have run only in CI or not at all; see
+  the two Linux sections above for exactly what was covered.
 - **Multi-monitor on real hardware, post-fix.** The engine remains
   multi-monitor-capable and the timeline tests prove it, but the shipped
   product is single-screen by design. The fixed build has not been run by hand

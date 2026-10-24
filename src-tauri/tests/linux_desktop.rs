@@ -360,16 +360,12 @@ fn x11_adapter_sees_the_desktop_as_a_person_does() {
 
 #[test]
 #[ignore = "needs a live Wayland compositor"]
-fn wayland_session_degrades_to_screen_edges() {
+fn wayland_session_uses_the_compositor_it_finds() {
     assert!(
         std::env::var_os("WAYLAND_DISPLAY").is_some(),
         "run this inside a Wayland session"
     );
     let platform = NativePlatform::default();
-    let error = platform.enumerate_windows().unwrap_err();
-    eprintln!("enumerate: {error}");
-    assert!(error.contains("Wayland"));
-    assert_eq!(platform.foreground_process().unwrap(), None);
 
     // A compositor with ext-idle-notify (or GNOME's idle monitor) reports idle
     // time; a headless one has no input at all, so it goes idle at once.
@@ -381,10 +377,55 @@ fn wayland_session_degrades_to_screen_edges() {
     eprintln!("idle: {idle:.1} s, then {later:.1} s");
     assert!(later >= 1., "idle time grows while nothing happens");
 
-    if std::env::var_os("DISPLAY").is_some() {
-        std::env::remove_var("GDK_BACKEND");
-        ledgeling::platform::prepare_process();
-        assert_eq!(std::env::var("GDK_BACKEND").as_deref(), Ok("x11"));
-        eprintln!("cursor via XWayland: {:?}", platform.cursor());
+    // sway offers layer-shell, so the overlay stays a native Wayland surface
+    // rather than being steered to XWayland.
+    std::env::remove_var("GDK_BACKEND");
+    ledgeling::platform::prepare_process();
+    assert!(ledgeling::platform::layer::supported());
+    assert_eq!(std::env::var_os("GDK_BACKEND"), None);
+
+    let display = Display::connect();
+    platform.set_monitors(vec![display.monitor()]);
+    if let Err(error) = platform.enumerate_windows() {
+        // No window source: pets use the screen edges.
+        eprintln!("enumerate: {error}");
+        assert!(
+            std::env::var_os("SWAYSOCK").is_none(),
+            "sway's socket was given"
+        );
+        assert!(error.contains("Wayland"));
+        assert_eq!(platform.foreground_process().unwrap(), None);
+        return;
     }
+
+    // With a window source (sway's IPC in CI), a window opened through
+    // XWayland is listed by the compositor itself.
+    let output = display.monitor().bounds;
+    let before = platform.enumerate_windows().unwrap().len();
+    // Ledgeling's own windows are never offered as perches, and the compositor
+    // names this process for any window opened here, so the window comes from
+    // another one: `xev` (from x11-utils) opens a plain window and waits.
+    let mut xev = std::process::Command::new("xev")
+        .args(["-geometry", "640x480+0+0"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("xev is installed with x11-utils");
+    let mut seen = Vec::new();
+    wait_for("the compositor to list the window", || {
+        seen = platform.enumerate_windows().unwrap();
+        seen.len() > before
+    });
+    eprintln!("windows: {seen:?}");
+    // Newly opened and focused, so frontmost; at least its own size, since
+    // a tiling compositor may stretch it.
+    let window = &seen[0];
+    assert!(window.rect.width >= 600. && window.rect.height >= 400.);
+    assert!(output.contains(window.rect.center()));
+    let focused = platform.foreground_process().unwrap();
+    eprintln!("foreground: {focused:?}");
+    if std::env::var_os("SWAYSOCK").is_some() {
+        assert!(focused.is_some(), "sway names the new window's process");
+    }
+    let _ = xev.kill();
+    let _ = xev.wait();
 }

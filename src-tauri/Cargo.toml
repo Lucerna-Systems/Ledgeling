@@ -48,8 +48,13 @@ coding = ["dep:notify", "dep:ignore"]
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["screensaver", "res"] }
 wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+# Client code for the COSMIC protocols vendored in protocols/.
+wayland-scanner = "0.31"
 dbus = "0.9"
+# The overlay as a Wayland layer surface. The versions follow Tauri's own GTK.
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 
 [dev-dependencies]
 tempfile = "3"

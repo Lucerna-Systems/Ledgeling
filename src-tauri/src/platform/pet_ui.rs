@@ -213,6 +213,18 @@ fn bubble_window(app: &tauri::AppHandle) -> Option<WebviewWindow> {
 /// Move and size the window. Position lands before size, as for the overlay:
 /// logical sizes are converted with the window's current screen's scale.
 fn apply(window: &WebviewWindow, placement: Placement) {
+    #[cfg(target_os = "linux")]
+    if super::layer::active() {
+        let Placement {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } = placement;
+        super::layer::place_bubble(window, x, y, width, height);
+        return;
+    }
     let _ = window.set_position(tauri::LogicalPosition::new(placement.x, placement.y));
     let _ = window.set_size(tauri::LogicalSize::new(placement.width, placement.height));
 }
@@ -355,6 +367,14 @@ fn ensure_bubble(app: &tauri::AppHandle) -> Option<WebviewWindow> {
     // As with the overlay, GTK would otherwise draw the app menu inside it.
     #[cfg(target_os = "linux")]
     let _ = window.remove_menu();
+    // Next to a layer overlay, an ordinary Wayland window would open wherever
+    // the compositor puts it, and below the pets.
+    #[cfg(target_os = "linux")]
+    if super::layer::active() {
+        if let Err(error) = super::layer::attach_bubble(&window) {
+            eprintln!("Ledgeling could not make a layer bubble: {error}");
+        }
+    }
     let handle = app.clone();
     window.on_window_event(move |event| {
         // Clicking anywhere else dismisses the bubble, as a popover would —
@@ -780,6 +800,12 @@ pub fn click_through(window: &tauri::WebviewWindow, click_through: bool) -> taur
     #[cfg(target_os = "windows")]
     if let Ok(handle) = window.hwnd() {
         super::windows::set_click_through(handle.0 as isize, click_through);
+        return Ok(());
+    }
+    // A layer overlay's input region already follows the pets; toggling the
+    // whole window would replace it.
+    #[cfg(target_os = "linux")]
+    if super::layer::active() {
         return Ok(());
     }
     window.set_ignore_cursor_events(click_through)
