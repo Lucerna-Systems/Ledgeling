@@ -66,6 +66,7 @@ climb → move → idle        land  → idle        sleep → idle
 jump  → move → idle        happy → idle        alert → idle
 fall  → move → idle        takeoff → move → idle
 busy  → preen → idle       attention → alert → happy → idle
+dizzy → alert → idle       petted → happy → idle
 ```
 
 So a two-picture pack is a complete pet. Adding more art only ever makes it better.
@@ -182,6 +183,29 @@ Anything else is an error that tells you so, with the alternatives listed.
 
 `cooldown` is seconds, and it is how you keep a pet from becoming annoying. Use it
 generously on anything to do with nudging.
+
+**Picking up, throwing and petting.** Three events come from the pointer:
+
+- `thrown` — the user let go of the pet while moving the pointer fast, so it flies.
+  A pack with no `thrown` reaction gets plain `released` instead, as it always did.
+- `landed_hard` — a thrown pet came down fast. Pair it with a `dizzy` clip.
+- `petted` — the pointer was rubbed back and forth over the pet. Pair it with a
+  `petted` clip (eyes closed, a heart) and a short state:
+
+```json
+"states": {
+  "dizzy": { "clip": "dizzy", "duration": [2, 3], "transitions": [{ "to": "perch" }] },
+  "enjoy": { "clip": "petted", "duration": [2, 4], "transitions": [{ "to": "perch" }] }
+},
+"reactions": [
+  { "on": "thrown", "goto": "dizzy", "priority": 90 },
+  { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+  { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
+]
+```
+
+Packs without a `behavior` block get these states and reactions for free; both
+clips are optional and fall back to `alert`/`happy`, then `idle`.
 
 ---
 

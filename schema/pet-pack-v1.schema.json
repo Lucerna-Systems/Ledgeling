@@ -79,7 +79,7 @@
     "animations": {
       "type": "object",
       "minProperties": 1,
-      "description": "No clip is required, but at least one is needed. idle and move stand in for each other, and every other clip falls back down a chain to them. Known clips: climb, jump, fall, land, takeoff, sleep, alert, happy, grabbed, preen, greet, plus busy (this pet is working on a task) and attention (its task is waiting for your answer).",
+      "description": "No clip is required, but at least one is needed. idle and move stand in for each other, and every other clip falls back down a chain to them. Known clips: climb, jump, fall, land, takeoff, sleep, alert, happy, grabbed, preen, greet, dizzy (after a throw or hard landing), petted (while stroked), plus busy (this pet is working on a task) and attention (its task is waiting for your answer).",
       "additionalProperties": {
         "type": "object",
         "required": ["file", "frames"],
@@ -157,7 +157,8 @@
             "enum": [
               "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
               "cursor_nearby", "user_idle_long", "user_returned", "long_session",
-              "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy"
+              "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy",
+              "thrown", "landed_hard", "petted"
             ]
           },
           "goto": { "type": "string" },

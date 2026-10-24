@@ -23,7 +23,7 @@ const checking = ref('')
 const scenarios = [
   'surface_lost', 'surface_moved_fast', 'grabbed', 'released', 'clicked', 'cursor_nearby',
   'user_idle_long', 'user_returned', 'long_session', 'break_taken', 'app_category_changed',
-  'hour_changed', 'startup', 'low_energy',
+  'hour_changed', 'startup', 'low_energy', 'thrown', 'landed_hard', 'petted',
 ]
 
 onMounted(() => { void call('set_lab', { active: true }); void refreshPacks() })

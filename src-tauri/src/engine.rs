@@ -3,7 +3,7 @@
 //! replaying a window-layout timeline through a mock platform.
 use crate::{
     awareness::{Awareness, AwarenessSummary},
-    packs::{loader, manifest::Event, LocomotionClass, Pack},
+    packs::{loader, LocomotionClass, Pack},
     pet::{fsm::Rng, spawn_point, Pet, WorldView},
     platform::Platform,
     settings::{PetSetting, Settings},
@@ -323,7 +323,7 @@ impl Engine {
         if self.pending_welcome && !self.surfaces.is_empty() {
             self.welcome();
         }
-        let mut events = self.awareness.tick(dt, platform);
+        let events = self.awareness.tick(dt, platform);
         if self.awareness.nudge.tier() >= 2 {
             self.attention = self.windows.first().map(|w| w.id);
         } else {
@@ -337,7 +337,6 @@ impl Engine {
         for pet in &mut pets {
             if pet.is_held() && held_by_mouse == Some(false) {
                 pet.release();
-                events.push(Event::Released);
             }
             let view = WorldView {
                 surfaces: &self.surfaces,

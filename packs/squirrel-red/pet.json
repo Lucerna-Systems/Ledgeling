@@ -31,7 +31,9 @@
     "land": { "file": "sprites/land.png", "frames": 3, "fps": 16, "loop": false },
     "sleep": { "file": "sprites/sleep.png", "frames": 2, "fps": 2 },
     "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
-    "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false }
+    "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
+    "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
   },
   "behavior": {
     "initial": "rest",
@@ -84,6 +86,16 @@
         "clip": "alert",
         "duration": [0.5, 0.5],
         "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "dizzy": {
+        "clip": "dizzy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "rest", "weight": 1 }]
+      },
+      "enjoy": {
+        "clip": "petted",
+        "duration": [2, 4],
+        "transitions": [{ "to": "rest", "weight": 1 }]
       }
     }
   },
@@ -95,7 +107,10 @@
     { "on": "long_session", "goto": "fret", "priority": 50, "cooldown": 900 },
     { "on": "break_taken", "goto": "greet", "priority": 40, "cooldown": 300 },
     { "on": "user_idle_long", "goto": "doze", "priority": 30 },
-    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 }
+    { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
+    { "on": "thrown", "goto": "dizzy", "priority": 90 },
+    { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+    { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
   ],
   "personality": {
     "activity": 0.9,

@@ -413,6 +413,14 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   the squirrel was seen standing on the top edge of the frontmost window. The
   fall and greeting animation were not watched frame by frame; settings.json was
   restored afterwards.
+- **Phase 2, pick up, throw, pet.** fmt, clippy, `npm test` (246 lib, 14
+  timeline) and `npm run test:ui` (139) green. Hand-run once on macOS with
+  synthesized mouse events (a small Swift CGEvent script, not a real hand): the
+  squirrel was grabbed at the screen edge and let go while the pointer moved
+  fast; it was seen released and on the floor about 1,200 px to the left, which
+  fits a throw, but its dizzy clip was not caught in a screenshot. Petting was
+  tried the same way and **not** confirmed by eye (the pets had wandered off the
+  spot aimed at); it is covered by unit tests only. Budgie not hand-tried.
 
 ## Not verified
 

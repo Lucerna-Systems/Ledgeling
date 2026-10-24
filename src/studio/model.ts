@@ -31,6 +31,8 @@ export const clips: ClipInfo[] = [
   { name: 'greet', label: 'Greet', blurb: 'Saying hello when you come back.', fallback: 'happy', group: 'moods' },
   { name: 'preen', label: 'Preen', blurb: 'Tidying itself up.', fallback: 'idle', group: 'moods' },
   { name: 'grabbed', label: 'Grabbed', blurb: 'Being carried by the pointer.', fallback: 'idle', group: 'moods' },
+  { name: 'dizzy', label: 'Dizzy', blurb: 'Seeing stars after being thrown or landing hard.', fallback: 'alert', group: 'moods' },
+  { name: 'petted', label: 'Petted', blurb: 'Enjoying being stroked with the pointer.', fallback: 'happy', group: 'moods' },
   { name: 'busy', label: 'Busy', blurb: 'Working on a task for you.', fallback: 'preen', group: 'assistant' },
   { name: 'attention', label: 'Needs you', blurb: 'Waiting for your answer on a task.', fallback: 'alert', group: 'assistant' },
 ]
@@ -51,6 +53,9 @@ export const events = [
   { value: 'clicked', label: 'you click it' },
   { value: 'grabbed', label: 'you pick it up' },
   { value: 'released', label: 'you let it go' },
+  { value: 'thrown', label: 'you throw it' },
+  { value: 'landed_hard', label: 'it lands hard after a throw' },
+  { value: 'petted', label: 'you rub the pointer over it' },
   { value: 'cursor_nearby', label: 'the pointer comes close' },
   { value: 'user_idle_long', label: 'you step away for a while' },
   { value: 'user_returned', label: 'you come back' },

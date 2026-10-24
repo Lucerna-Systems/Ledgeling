@@ -200,6 +200,8 @@ pub const CLIP_FALLBACKS: &[(&str, &[&str])] = &[
     ("grabbed", &["idle"]),
     ("preen", &["idle"]),
     ("greet", &["happy", "idle"]),
+    ("dizzy", &["alert", "idle"]),
+    ("petted", &["happy", "idle"]),
     // Assistant clips: what the pet plays while a task of its own is running,
     // and while that task is waiting for the user to answer something.
     // Not `move`: a walk cycle playing on a pet standing still reads as a bug.
@@ -292,9 +294,12 @@ pub enum Event {
     HourChanged,
     Startup,
     LowEnergy,
+    Thrown,
+    LandedHard,
+    Petted,
 }
 impl Event {
-    pub const ALL: [Event; 14] = [
+    pub const ALL: [Event; 17] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
@@ -309,6 +314,9 @@ impl Event {
         Event::HourChanged,
         Event::Startup,
         Event::LowEnergy,
+        Event::Thrown,
+        Event::LandedHard,
+        Event::Petted,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -326,6 +334,9 @@ impl Event {
             Event::HourChanged => "hour_changed",
             Event::Startup => "startup",
             Event::LowEnergy => "low_energy",
+            Event::Thrown => "thrown",
+            Event::LandedHard => "landed_hard",
+            Event::Petted => "petted",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
@@ -335,8 +346,12 @@ impl Event {
     pub fn default_priority(self) -> i32 {
         match self {
             Event::SurfaceLost | Event::SurfaceMovedFast => 100,
-            Event::Grabbed | Event::Released | Event::Clicked => 90,
-            Event::UserReturned | Event::CursorNearby => 60,
+            Event::Grabbed
+            | Event::Released
+            | Event::Clicked
+            | Event::Thrown
+            | Event::LandedHard => 90,
+            Event::UserReturned | Event::CursorNearby | Event::Petted => 60,
             Event::LongSession | Event::BreakTaken => 50,
             _ => 30,
         }
@@ -1355,6 +1370,24 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             }],
         },
     );
+    // The throw and petting reactions every pet gets; a pack without the
+    // clips plays alert/happy/idle instead.
+    for (name, clip, duration) in [("dizzy", "dizzy", (2., 3.)), ("enjoy", "petted", (2., 4.))] {
+        states.insert(
+            name.to_string(),
+            State {
+                clip: clip.into(),
+                duration,
+                action: None,
+                sound: None,
+                transitions: vec![Transition {
+                    to: settle.to_string(),
+                    weight: 1.,
+                    when: None,
+                }],
+            },
+        );
+    }
     Behavior {
         initial: settle.to_string(),
         idle_wander_chance: 0.3,
@@ -1370,6 +1403,9 @@ pub fn default_reactions(behavior: &Behavior) -> Vec<Reaction> {
         (Event::UserReturned, "greet", 60, 60.),
         (Event::Clicked, "greet", 90, 2.),
         (Event::UserIdleLong, "doze", 30, 0.),
+        (Event::Thrown, "dizzy", 90, 0.),
+        (Event::LandedHard, "dizzy", 90, 0.),
+        (Event::Petted, "enjoy", 60, 3.),
     ]
     .into_iter()
     .filter(|(_, goto, _, _)| behavior.states.contains_key(*goto))

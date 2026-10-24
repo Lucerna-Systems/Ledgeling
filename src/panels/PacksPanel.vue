@@ -87,7 +87,7 @@ async function exportPack(id: string) {
 
 <template>
   <div v-if="tipVisible" class="tip-card" role="note">
-    <p><strong>Meet your pet.</strong> Pick it up and throw it.</p>
+    <p><strong>Meet your pet.</strong> Pick it up and throw it. Rub the pointer back and forth over it to pet it.</p>
     <button class="icon-button" aria-label="Dismiss tip" @click="dismissTip"><X :size="14" /></button>
   </div>
   <div class="sticky-top">

@@ -24,6 +24,7 @@ it('shows the first-run tip until it is dismissed, then saves that', async () =>
   const wrapper = mount(PacksPanel)
   await flushPromises()
   expect(wrapper.find('.tip-card').text()).toContain('Meet your pet')
+  expect(wrapper.find('.tip-card').text()).toContain('pet it')
   await wrapper.get('[aria-label="Dismiss tip"]').trigger('click')
   await flushPromises()
   expect(api.invoke).toHaveBeenCalledWith('set_settings', { settings: { ...settings, tipsDismissed: true } })

@@ -404,7 +404,10 @@ fn a_third_species_needs_no_code_only_two_strips_and_a_manifest() {
     // The gecko is the format's acceptance test: vertical edges only, no jump,
     // rotated flat to the glass, and nothing the engine had to learn.
     let gecko = loader::load(&repo_pack("gecko-glass"), true).unwrap();
-    assert_eq!(gecko.manifest.animations.len(), 2);
+    // Two required strips; dizzy and petted are optional extras.
+    assert!(gecko.manifest.animations.contains_key("idle"));
+    assert!(gecko.manifest.animations.contains_key("move"));
+    assert_eq!(gecko.manifest.animations.len(), 4);
     assert_eq!(
         gecko.manifest.locomotion.surfaces,
         vec![SurfaceKind::WindowLeft, SurfaceKind::WindowRight]
@@ -609,5 +612,79 @@ mod studio_saves {
         .is_err());
         assert!(!root.join(".studio-staging").exists());
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+// ------------------------------------------------------------ throw and petting
+
+#[test]
+fn thrown_landed_hard_and_petted_parse_as_reaction_events() {
+    for event in ["thrown", "landed_hard", "petted"] {
+        let text = MINIMAL.replace(
+            "\"animations\"",
+            &format!(
+                r#""behavior": {{
+    "initial": "perch",
+    "states": {{ "perch": {{ "transitions": [] }}, "wobble": {{ "transitions": [] }} }}
+  }},
+  "reactions": [{{ "on": "{event}", "goto": "wobble" }}],
+  "animations""#
+            ),
+        );
+        let (manifest, report) = parse(&text);
+        assert!(!report.has_errors(), "{event}: {}", report.text());
+        assert_eq!(manifest.unwrap().reactions[0].on.as_str(), event);
+    }
+}
+
+#[test]
+fn dizzy_and_petted_fall_back_to_what_the_pack_has() {
+    let (manifest, _) = parse(MINIMAL);
+    let mut manifest = manifest.unwrap();
+    assert_eq!(manifest.resolve_clip("dizzy"), "idle");
+    assert_eq!(manifest.resolve_clip("petted"), "idle");
+    let clip = manifest.animations["idle"].clone();
+    manifest.animations.insert("alert".into(), clip.clone());
+    assert_eq!(manifest.resolve_clip("dizzy"), "alert");
+    manifest.animations.insert("happy".into(), clip);
+    assert_eq!(manifest.resolve_clip("petted"), "happy");
+}
+
+#[test]
+fn a_pack_with_no_behavior_still_reacts_to_throws_and_petting() {
+    let (manifest, _) = parse(MINIMAL);
+    let manifest = manifest.unwrap();
+    let defaults = manifest::default_reactions(&manifest.behavior);
+    for event in ["thrown", "landed_hard", "petted"] {
+        assert!(
+            defaults.iter().any(|r| r.on.as_str() == event),
+            "default reactions include {event}"
+        );
+    }
+}
+
+#[test]
+fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+        let pack = loader::load(&repo_pack(name), true).unwrap();
+        for event in ["thrown", "landed_hard", "petted"] {
+            assert!(
+                pack.manifest
+                    .reactions
+                    .iter()
+                    .any(|r| r.on.as_str() == event),
+                "{name} reacts to {event}"
+            );
+        }
+        assert!(pack.strips.contains_key("dizzy"), "{name} draws dizzy");
+        assert!(pack.strips.contains_key("petted"), "{name} draws petted");
+        assert!(
+            pack.report
+                .diagnostics
+                .iter()
+                .all(|d| d.tier != Tier::Error && d.tier != Tier::Warning),
+            "{name}: {}",
+            pack.report.text()
+        );
     }
 }

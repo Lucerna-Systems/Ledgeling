@@ -200,6 +200,60 @@ def gecko_move(d, i):
     gecko_body(d, sway=(0, 1, 0, -1)[i], foot=(0, 1, 0, 1)[i])
 
 
+# ----------------------------------------- shared: dizzy and petted overlays
+STAR_ORBIT = ((-4, 0), (0, -2), (4, 0), (0, 2))
+
+
+def stars(d, cx, cy, i, color='#f2c94c'):
+    """Two stars circling a head at (cx, cy): the thrown-and-landed look."""
+    for k in range(2):
+        dx, dy = STAR_ORBIT[(i + 2 * k) % 4]
+        x, y = cx + dx, cy + dy
+        d.point((x, y), fill=color)
+        d.point((x - 1, y), fill=color)
+        d.point((x + 1, y), fill=color)
+        d.point((x, y - 1), fill=color)
+        d.point((x, y + 1), fill=color)
+
+
+def hearts(d, cx, cy, i, color='#e0607e'):
+    """A small heart that rises and fades over four frames."""
+    y = cy - i
+    for x, dy in ((-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1), (0, 2)):
+        if i < 3 or (x + dy) % 2 == 0:
+            d.point((cx + x, y + dy), fill=color)
+
+
+def budgie_dizzy(d, i):
+    budgie_body(d, bob=(0, 1, 0, 1)[i], head=1)
+    stars(d, 15, 3, i)
+
+
+def budgie_petted(d, i):
+    budgie_body(d, bob=(0, -1, 0, -1)[i], head=(0, 1, 2, 1)[i], eye_open=False)
+    hearts(d, 20, 5, i)
+
+
+def squirrel_dizzy(d, i):
+    squirrel_body(d, tail=(1, 2, 1, 0)[i])
+    stars(d, 18, 2, i)
+
+
+def squirrel_petted(d, i):
+    squirrel_body(d, tail=(1, 2, 3, 2)[i], eye_open=False)
+    hearts(d, 21, 3, i)
+
+
+def gecko_dizzy(d, i):
+    gecko_body(d, sway=(0, 1, 0, -1)[i])
+    stars(d, 19, 8, i)
+
+
+def gecko_petted(d, i):
+    gecko_body(d, sway=(0, 0, 1, 0)[i], eye_open=False)
+    hearts(d, 20, 8, i)
+
+
 # ---------------------------------------------------------------- preview
 def preview(pack, draw_frame, background):
     im = Image.new('RGBA', (128, 128), background)
@@ -217,11 +271,14 @@ def preview(pack, draw_frame, background):
 CLIPS = {
     'budgie-classic': dict(idle=(4, budgie_idle), move=(6, budgie_move), land=(3, budgie_land),
                            takeoff=(3, budgie_takeoff), preen=(4, budgie_preen), sleep=(2, budgie_sleep),
-                           happy=(6, budgie_happy), alert=(3, budgie_alert)),
+                           happy=(6, budgie_happy), alert=(3, budgie_alert),
+                           dizzy=(4, budgie_dizzy), petted=(4, budgie_petted)),
     'squirrel-red': dict(idle=(4, squirrel_idle), move=(6, squirrel_move), climb=(6, squirrel_climb),
                          jump=(4, squirrel_jump), fall=(2, squirrel_fall), land=(3, squirrel_land),
-                         sleep=(2, squirrel_sleep), alert=(3, squirrel_alert), happy=(6, squirrel_happy)),
-    'gecko-glass': dict(idle=(4, gecko_idle), move=(4, gecko_move)),
+                         sleep=(2, squirrel_sleep), alert=(3, squirrel_alert), happy=(6, squirrel_happy),
+                         dizzy=(4, squirrel_dizzy), petted=(4, squirrel_petted)),
+    'gecko-glass': dict(idle=(4, gecko_idle), move=(4, gecko_move),
+                        dizzy=(4, gecko_dizzy), petted=(4, gecko_petted)),
 }
 BACKDROP = {'budgie-classic': '#e9eedd', 'squirrel-red': '#f0e6da', 'gecko-glass': '#dee9e2'}
 

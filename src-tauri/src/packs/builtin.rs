@@ -32,6 +32,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/budgie-classic/sprites/happy.png"),
             ),
             (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/budgie-classic/sprites/petted.png"),
+            ),
+            (
                 "sprites/idle.png",
                 include_bytes!("../../../packs/budgie-classic/sprites/idle.png"),
             ),
@@ -89,6 +97,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
                 include_bytes!("../../../packs/squirrel-red/sprites/happy.png"),
             ),
             (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/squirrel-red/sprites/petted.png"),
+            ),
+            (
                 "sprites/idle.png",
                 include_bytes!("../../../packs/squirrel-red/sprites/idle.png"),
             ),
@@ -124,6 +140,14 @@ pub const BUILTIN: &[BuiltinPack] = &[
             (
                 "preview.png",
                 include_bytes!("../../../packs/gecko-glass/preview.png"),
+            ),
+            (
+                "sprites/dizzy.png",
+                include_bytes!("../../../packs/gecko-glass/sprites/dizzy.png"),
+            ),
+            (
+                "sprites/petted.png",
+                include_bytes!("../../../packs/gecko-glass/sprites/petted.png"),
             ),
             (
                 "sprites/idle.png",
