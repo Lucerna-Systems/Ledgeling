@@ -67,6 +67,7 @@ jump  → move → idle        happy → idle        alert → idle
 fall  → move → idle        takeoff → move → idle
 busy  → preen → idle       attention → alert → happy → idle
 dizzy → alert → idle       petted → happy → idle
+stretch → idle
 ```
 
 So a two-picture pack is a complete pet. Adding more art only ever makes it better.

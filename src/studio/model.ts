@@ -31,6 +31,7 @@ export const clips: ClipInfo[] = [
   { name: 'greet', label: 'Greet', blurb: 'Saying hello when you come back.', fallback: 'happy', group: 'moods' },
   { name: 'preen', label: 'Preen', blurb: 'Tidying itself up.', fallback: 'idle', group: 'moods' },
   { name: 'grabbed', label: 'Grabbed', blurb: 'Being carried by the pointer.', fallback: 'idle', group: 'moods' },
+  { name: 'stretch', label: 'Stretch', blurb: 'A long stretch, after a nap or when you come back.', fallback: 'idle', group: 'moods' },
   { name: 'dizzy', label: 'Dizzy', blurb: 'Seeing stars after being thrown or landing hard.', fallback: 'alert', group: 'moods' },
   { name: 'petted', label: 'Petted', blurb: 'Enjoying being stroked with the pointer.', fallback: 'happy', group: 'moods' },
   { name: 'busy', label: 'Busy', blurb: 'Working on a task for you.', fallback: 'preen', group: 'assistant' },

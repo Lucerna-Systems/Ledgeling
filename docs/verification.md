@@ -421,6 +421,17 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   fits a throw, but its dizzy clip was not caught in a screenshot. Petting was
   tried the same way and **not** confirmed by eye (the pets had wandered off the
   spot aimed at); it is covered by unit tests only. Budgie not hand-tried.
+- **Phase 3, the cat.** fmt, clippy, `npm test` (248 lib, 15 timeline) and
+  `npm run test:ui` (139) green. The cat loads from the embedded files with no
+  errors or warnings, is written into an empty packs folder, and in a replayed
+  layout hops a 100 px gap between two windows but never crosses a 200 px one.
+  The same replay on the squirrel found a bug already on `main`: a pet walking
+  to a window edge to hop was declared "surface lost" there and stayed frozen in
+  `startled` for good; fixed in `Pet::ride` with a regression test. Hand run:
+  the app was launched once with the cat and squirrel in settings and the cat
+  folder was written into the packs directory, but the Mac session was locked
+  so the screen captured black; **the cat was not watched on screen**, and
+  nobody has seen it hop, nap or be flung by hand.
 
 ## Not verified
 

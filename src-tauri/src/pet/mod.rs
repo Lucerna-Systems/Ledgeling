@@ -521,7 +521,17 @@ impl Pet {
             Some(index) => {
                 let surface = &view.surfaces[index];
                 let half = self.half_width(view.scale);
-                if !surface.fits(perch.t, half) {
+                // A pet walking a route legitimately stands at the very end of
+                // a surface: that is where it takes off for the next window, or
+                // where it lands from one. Requiring clearance there would call
+                // the surface lost the moment it got to the launch point and
+                // freeze it at the edge for good.
+                let fits = if self.motion == Motion::Walking && self.plan.is_some() {
+                    surface.contains_t(perch.t)
+                } else {
+                    surface.fits(perch.t, half)
+                };
+                if !fits {
                     // The perch shrank under the pet: find somewhere that fits.
                     events.push(Event::SurfaceLost);
                     self.lose_surface(view);

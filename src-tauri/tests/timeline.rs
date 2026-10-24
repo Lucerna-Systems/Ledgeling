@@ -40,7 +40,7 @@ fn win(id: u64, x: f64, y: f64, w: f64, h: f64) -> WindowInfo {
 fn packs() -> HashMap<String, Arc<ledgeling::packs::Pack>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packs");
     let mut packs = HashMap::new();
-    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
         let pack = loader::load(&root.join(name), true)
             .unwrap_or_else(|report| panic!("{name}:\n{}", report.text()));
         packs.insert(pack.manifest.id.clone(), Arc::new(pack));
@@ -401,4 +401,70 @@ fn engine_with_saved_pet() -> (Engine, MockPlatform) {
     let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
     engine.spawn("com.perch.squirrel-red").unwrap();
     (engine, platform)
+}
+
+/// A and B are 100 px apart (hoppable); C is 200 px beyond B (not). All three
+/// sit far above the floor, so the pet cannot drop to it and walk round.
+/// Returns whether it ever stood on B; a hopper must also never reach C.
+fn hop_between_windows(pack: &str, hopper: bool) -> bool {
+    let (mut engine, platform) = engine(
+        monitors(),
+        vec![vec![
+            win(1, 100., 300., 400., 200.),
+            win(2, 600., 300., 400., 200.),
+            win(3, 1200., 300., 300., 200.),
+        ]],
+    );
+    run(&mut engine, &platform, 1.);
+    engine.spawn(pack).unwrap();
+    let top = engine
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == ledgeling::world::SurfaceKind::WindowTop)
+        .expect("window A has a visible top");
+    engine.pets[0].perch = Some(ledgeling::pet::pathfind::Perch {
+        key: top.key(),
+        t: top.midpoint_t(),
+    });
+    engine.pets[0].position = top.point(top.midpoint_t());
+    let mut on_b = false;
+    for _ in 0..(900 * 60) {
+        engine.tick(1. / 60., &platform);
+        let Some(perch) = engine.pets[0].perch else {
+            continue;
+        };
+        if hopper {
+            assert_eq!(
+                perch.key.kind,
+                ledgeling::world::SurfaceKind::WindowTop,
+                "{pack} only stands on window tops here"
+            );
+        }
+        // A climber can walk down a window's side to the floor and round, so
+        // only the hopper is held to the gap.
+        assert!(
+            !hopper || perch.key.owner != 3,
+            "{pack} crossed the 200 px gap to the third window"
+        );
+        on_b |= perch.key.owner == 2;
+    }
+    on_b
+}
+
+#[test]
+fn the_cat_only_perches_on_standable_surfaces_and_never_hops_a_gap_wider_than_140() {
+    assert!(
+        hop_between_windows("com.perch.cat-tabby", true),
+        "the cat hopped the 100 px gap to the second window"
+    );
+}
+
+#[test]
+fn a_pet_walking_to_a_window_edge_to_hop_is_not_frozen_there() {
+    // Regression: the walk reached the edge, where the pet has no clearance,
+    // was told its surface was lost, and stayed in `startled` for good.
+    assert!(
+        hop_between_windows("com.perch.squirrel-red", false),
+        "the squirrel hopped to the second window"
+    );
 }

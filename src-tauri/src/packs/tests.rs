@@ -372,7 +372,7 @@ fn omitting_behavior_yields_a_sensible_default_per_class() {
 
 #[test]
 fn the_bundled_packs_load_without_errors() {
-    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
         let pack = loader::load(&repo_pack(name), true)
             .unwrap_or_else(|report| panic!("{name} should load:\n{}", report.text()));
         assert!(!pack.strips.is_empty());
@@ -665,7 +665,7 @@ fn a_pack_with_no_behavior_still_reacts_to_throws_and_petting() {
 
 #[test]
 fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
-    for name in ["budgie-classic", "squirrel-red", "gecko-glass"] {
+    for name in ["budgie-classic", "squirrel-red", "gecko-glass", "cat-tabby"] {
         let pack = loader::load(&repo_pack(name), true).unwrap();
         for event in ["thrown", "landed_hard", "petted"] {
             assert!(
@@ -687,4 +687,40 @@ fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
             pack.report.text()
         );
     }
+}
+
+// ----------------------------------------------------------------------- the cat
+
+#[test]
+fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warnings() {
+    assert_eq!(super::builtin::BUILTIN.len(), 4);
+    let root = std::env::temp_dir().join(format!("perch-builtin-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let written = super::builtin::restore(&root, &[]).unwrap();
+    assert!(written.contains(&"cat-tabby".to_string()), "{written:?}");
+    assert!(root.join("cat-tabby/pet.json").is_file());
+    let listings = loader::scan(&root);
+    assert_eq!(listings.len(), 4);
+    for listing in listings {
+        assert!(listing.summary.loadable, "{}", listing.summary.name);
+        assert_eq!(listing.summary.errors, 0, "{}", listing.report.text());
+        assert_eq!(listing.summary.warnings, 0, "{}", listing.report.text());
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_cat_is_a_hopper_that_stays_on_floors_and_hops_140() {
+    let cat = loader::load(&repo_pack("cat-tabby"), true).unwrap();
+    assert_eq!(cat.manifest.name, "Miso the Cat");
+    assert_eq!(cat.manifest.locomotion.class, LocomotionClass::Hopper);
+    assert_eq!(cat.manifest.locomotion.jump.max_gap, 140.);
+    assert_eq!(cat.manifest.locomotion.jump.arc_height, 60.);
+    for kind in cat.manifest.locomotion.surfaces.iter() {
+        assert_eq!(kind.normal().y, -1., "{kind:?} is somewhere to stand");
+    }
+    // `stretch` is optional: a pack without it plays idle.
+    assert_eq!(cat.manifest.resolve_clip("stretch"), "stretch");
+    let (bare, _) = parse(MINIMAL);
+    assert_eq!(bare.unwrap().resolve_clip("stretch"), "idle");
 }

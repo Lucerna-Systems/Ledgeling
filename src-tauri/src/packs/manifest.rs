@@ -200,6 +200,7 @@ pub const CLIP_FALLBACKS: &[(&str, &[&str])] = &[
     ("grabbed", &["idle"]),
     ("preen", &["idle"]),
     ("greet", &["happy", "idle"]),
+    ("stretch", &["idle"]),
     ("dizzy", &["alert", "idle"]),
     ("petted", &["happy", "idle"]),
     // Assistant clips: what the pet plays while a task of its own is running,
