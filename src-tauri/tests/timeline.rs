@@ -419,6 +419,17 @@ fn a_first_run_drops_one_pet_onto_the_frontmost_window_and_never_again() {
 }
 
 #[test]
+fn a_first_run_asks_to_be_saved_once_so_a_kill_cannot_replay_it() {
+    let (mut engine, platform) = engine(monitors(), vec![vec![win(1, 300., 400., 600., 300.)]]);
+    engine.request_welcome();
+    assert!(!engine.take_settings_changed(), "nothing to save yet");
+    run(&mut engine, &platform, 0.1);
+    assert!(engine.settings.welcomed);
+    assert!(engine.take_settings_changed(), "the welcome must be saved");
+    assert!(!engine.take_settings_changed(), "and only once");
+}
+
+#[test]
 fn the_welcome_waits_for_a_window_to_land_on() {
     let (mut engine, platform) = engine(monitors(), vec![vec![]]);
     engine.request_welcome();
