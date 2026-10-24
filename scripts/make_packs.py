@@ -200,6 +200,164 @@ def gecko_move(d, i):
     gecko_body(d, sway=(0, 1, 0, -1)[i], foot=(0, 1, 0, 1)[i])
 
 
+# ----------------------------------------- shared: dizzy and petted overlays
+STAR_ORBIT = ((-4, 0), (0, -2), (4, 0), (0, 2))
+
+
+def stars(d, cx, cy, i, color='#f2c94c'):
+    """Two stars circling a head at (cx, cy): the thrown-and-landed look."""
+    for k in range(2):
+        dx, dy = STAR_ORBIT[(i + 2 * k) % 4]
+        x, y = cx + dx, cy + dy
+        d.point((x, y), fill=color)
+        d.point((x - 1, y), fill=color)
+        d.point((x + 1, y), fill=color)
+        d.point((x, y - 1), fill=color)
+        d.point((x, y + 1), fill=color)
+
+
+def hearts(d, cx, cy, i, color='#e0607e'):
+    """A small heart that rises and fades over four frames."""
+    y = cy - i
+    for x, dy in ((-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1), (0, 2)):
+        if i < 3 or (x + dy) % 2 == 0:
+            d.point((cx + x, y + dy), fill=color)
+
+
+def budgie_dizzy(d, i):
+    budgie_body(d, bob=(0, 1, 0, 1)[i], head=1)
+    stars(d, 15, 3, i)
+
+
+def budgie_petted(d, i):
+    budgie_body(d, bob=(0, -1, 0, -1)[i], head=(0, 1, 2, 1)[i], eye_open=False)
+    hearts(d, 20, 5, i)
+
+
+def squirrel_dizzy(d, i):
+    squirrel_body(d, tail=(1, 2, 1, 0)[i])
+    stars(d, 18, 2, i)
+
+
+def squirrel_petted(d, i):
+    squirrel_body(d, tail=(1, 2, 3, 2)[i], eye_open=False)
+    hearts(d, 21, 3, i)
+
+
+def gecko_dizzy(d, i):
+    gecko_body(d, sway=(0, 1, 0, -1)[i])
+    stars(d, 19, 8, i)
+
+
+def gecko_petted(d, i):
+    gecko_body(d, sway=(0, 0, 1, 0)[i], eye_open=False)
+    hearts(d, 20, 8, i)
+
+
+# ------------------------------------------------------------------ cat
+CAT = dict(ink='#2b2118', body='#d9944a', stripe='#a8642a', belly='#f3dcc0',
+           ear='#e8a0a0', eye='#20140f', nose='#e08a8a')
+
+
+def cat_body(d, bob=0, tail=0, legs=(0, 0, 0, 0), eye_open=True, head=0, ears=0, stretch=0):
+    """A tabby facing right. `tail` lifts the tail, `legs` lowers (+) or raises
+    (-) each foot, `head` drops the head, `stretch` lowers the front end."""
+    c = CAT
+    o = lambda pts: [(x, y + bob) for x, y in pts]
+    tail_pts = o([(5, 15), (2, 14 - tail), (2, 10 - tail), (4, 7 - tail)])
+    d.line(tail_pts, fill=c['ink'], width=3)
+    d.line(tail_pts, fill=c['body'], width=1)
+    d.polygon(o([(5, 12), (9, 10), (15, 10 + stretch), (18, 12 + stretch), (18, 17), (16, 18), (7, 18), (5, 16)]), fill=c['ink'])
+    d.polygon(o([(6, 12), (9, 11), (15, 11 + stretch), (17, 13 + stretch), (17, 16), (15, 17), (7, 17), (6, 15)]), fill=c['body'])
+    d.line(o([(8, 16), (15, 16)]), fill=c['belly'])
+    for x in (8, 11, 14):
+        d.line(o([(x, 11), (x, 13)]), fill=c['stripe'])
+    h = head + stretch
+    d.polygon(o([(15, 6 + h), (18, 5 + h), (21, 6 + h), (22, 9 + h), (20, 12 + h), (16, 12 + h), (14, 9 + h)]), fill=c['ink'])
+    d.polygon(o([(16, 7 + h), (18, 6 + h), (21, 7 + h), (21, 9 + h), (20, 11 + h), (16, 11 + h), (15, 9 + h)]), fill=c['body'])
+    d.polygon(o([(15, 6 + h), (15, 2 + h - ears), (18, 5 + h)]), fill=c['ink'])
+    d.polygon(o([(19, 5 + h), (21, 2 + h - ears), (22, 7 + h)]), fill=c['ink'])
+    d.point((16, 5 + h + bob - ears), fill=c['ear'])
+    d.point((21, 5 + h + bob - ears), fill=c['ear'])
+    if eye_open:
+        d.rectangle(o([(18, 8 + h), (19, 9 + h)]), fill=c['eye'])
+        d.point((19, 8 + h + bob), fill='#ffffff')
+    else:
+        d.line(o([(18, 9 + h), (19, 9 + h)]), fill=c['eye'])
+    d.point((21, 10 + h + bob), fill=c['nose'])
+    for x, off in zip((7, 9, 14, 16), legs):
+        d.rectangle((x, 18 + bob, x + 1, max(18 + bob, 20 + off + bob)), fill=c['ink'])
+
+
+def cat_idle(d, i):
+    cat_body(d, tail=(0, 1, 2, 1)[i], eye_open=i != 3)
+
+
+def cat_move(d, i):
+    a, b = (1, -1), (-1, 1)
+    pair = ((0, 0, 0, 0), (-1, 1, 1, -1), (0, 0, 0, 0), (1, -1, -1, 1), (0, 0, 0, 0), (-1, 1, 1, -1))[i]
+    cat_body(d, bob=(0, -1, 0, -1, 0, -1)[i], tail=1, legs=pair)
+
+
+def cat_jump(d, i):
+    cat_body(d, bob=(1, -1, -2, -1)[i], tail=(0, 2, 3, 2)[i],
+             legs=((1, 1, 1, 1), (-1, -1, 1, 1), (-2, -2, 0, 0), (0, 0, -1, -1))[i], stretch=(0, 0, -1, 0)[i])
+
+
+def cat_fall(d, i):
+    cat_body(d, bob=-1, tail=(3, 4)[i], legs=((-2, -2, -2, -2), (-1, -1, -1, -1))[i], ears=1)
+
+
+def cat_land(d, i):
+    cat_body(d, bob=(1, 1, 0)[i], tail=(0, 1, 1)[i], legs=(0, 0, 0, 0))
+
+
+def cat_sleep(d, i):
+    c = CAT
+    b = i
+    d.polygon([(3, 15 + b), (7, 11 + b), (16, 11 + b), (20, 15 + b), (20, 19), (3, 19)], fill=c['ink'])
+    d.polygon([(4, 16 + b), (7, 12 + b), (16, 12 + b), (19, 15 + b), (19, 18), (4, 18)], fill=c['body'])
+    for x in (8, 11, 14):
+        d.line((x, 12 + b, x, 14 + b), fill=c['stripe'])
+    d.polygon([(14, 14 + b), (19, 14 + b), (20, 17), (15, 18)], fill=c['ink'])
+    d.polygon([(15, 15 + b), (18, 15 + b), (19, 17), (16, 17)], fill=c['body'])
+    d.line((16, 16, 18, 16), fill=c['eye'])
+    d.line((4, 18, 12, 18), fill=c['stripe'])
+    if i == 1:
+        d.text((18, 6), 'z', fill=c['stripe'])
+
+
+def cat_alert(d, i):
+    cat_body(d, tail=(2, 3, 3)[i], head=(0, -1, -1)[i], ears=(0, 1, 1)[i])
+    if i == 2:
+        d.line((22, 1, 22, 3), fill=CAT['ink'])
+
+
+def cat_happy(d, i):
+    cat_body(d, bob=(0, -2, -3, -2, 0, 0)[i], tail=(2, 3, 4, 3, 2, 2)[i], eye_open=i in (0, 4, 5),
+             legs=((0, 0, 0, 0), (-1, -1, 0, 0), (-2, -2, 0, 0), (-1, -1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))[i])
+
+
+def cat_preen(d, i):
+    cat_body(d, head=(0, 2, 3, 2)[i], eye_open=i == 0, legs=(0, 0, (0, -2, -3, -2)[i], 0))
+
+
+def cat_stretch(d, i):
+    s = (0, 2, 3, 2)[i]
+    cat_body(d, stretch=s, tail=(1, 3, 4, 3)[i], legs=(0, 0, -1 if s else 0, -1 if s else 0),
+             eye_open=i == 0, ears=0)
+
+
+def cat_dizzy(d, i):
+    cat_body(d, tail=(0, 1, 0, 1)[i], head=1)
+    stars(d, 18, 3, i)
+
+
+def cat_petted(d, i):
+    cat_body(d, tail=(1, 2, 3, 2)[i], eye_open=False, legs=((0, 0, 0, 0), (0, 0, -1, 0), (0, 0, 0, 0), (0, 0, 0, -1))[i])
+    hearts(d, 21, 3, i)
+
+
 # ---------------------------------------------------------------- preview
 def preview(pack, draw_frame, background):
     im = Image.new('RGBA', (128, 128), background)
@@ -217,13 +375,19 @@ def preview(pack, draw_frame, background):
 CLIPS = {
     'budgie-classic': dict(idle=(4, budgie_idle), move=(6, budgie_move), land=(3, budgie_land),
                            takeoff=(3, budgie_takeoff), preen=(4, budgie_preen), sleep=(2, budgie_sleep),
-                           happy=(6, budgie_happy), alert=(3, budgie_alert)),
+                           happy=(6, budgie_happy), alert=(3, budgie_alert),
+                           dizzy=(4, budgie_dizzy), petted=(4, budgie_petted)),
     'squirrel-red': dict(idle=(4, squirrel_idle), move=(6, squirrel_move), climb=(6, squirrel_climb),
                          jump=(4, squirrel_jump), fall=(2, squirrel_fall), land=(3, squirrel_land),
-                         sleep=(2, squirrel_sleep), alert=(3, squirrel_alert), happy=(6, squirrel_happy)),
-    'gecko-glass': dict(idle=(4, gecko_idle), move=(4, gecko_move)),
+                         sleep=(2, squirrel_sleep), alert=(3, squirrel_alert), happy=(6, squirrel_happy),
+                         dizzy=(4, squirrel_dizzy), petted=(4, squirrel_petted)),
+    'cat-tabby': dict(idle=(4, cat_idle), move=(6, cat_move), jump=(4, cat_jump), fall=(2, cat_fall),
+                      land=(3, cat_land), sleep=(2, cat_sleep), alert=(3, cat_alert), happy=(6, cat_happy),
+                      preen=(4, cat_preen), dizzy=(4, cat_dizzy), petted=(4, cat_petted), stretch=(4, cat_stretch)),
+    'gecko-glass': dict(idle=(4, gecko_idle), move=(4, gecko_move),
+                        dizzy=(4, gecko_dizzy), petted=(4, gecko_petted)),
 }
-BACKDROP = {'budgie-classic': '#e9eedd', 'squirrel-red': '#f0e6da', 'gecko-glass': '#dee9e2'}
+BACKDROP = {'budgie-classic': '#e9eedd', 'squirrel-red': '#f0e6da', 'gecko-glass': '#dee9e2', 'cat-tabby': '#e6e2ee'}
 
 if __name__ == '__main__':
     for pack, clips in CLIPS.items():

@@ -35,7 +35,8 @@ export const ACCENT_PRESETS: AccentPreset[] = [
 ]
 
 export const DEFAULT_ACCENT = ACCENT_PRESETS[0].base
-const CACHE_KEY = 'perch:appearance'
+const CACHE_KEY = 'ledgeling:appearance'
+const LEGACY_CACHE_KEY = 'perch:appearance'
 
 export function presetFor(accent: string): AccentPreset | undefined {
   const normalised = accent.toLowerCase()
@@ -140,7 +141,7 @@ export function applyTheme(theme: ThemeMode, accent: string) {
  *  settings — the pet bubble — follow the companion this way. */
 export function applyCachedTheme() {
   try {
-    const cached = localStorage.getItem(CACHE_KEY)
+    const cached = localStorage.getItem(CACHE_KEY) ?? localStorage.getItem(LEGACY_CACHE_KEY)
     if (cached) {
       const { theme, accent } = JSON.parse(cached) as { theme: ThemeMode; accent: string }
       applyTheme(theme, accent)

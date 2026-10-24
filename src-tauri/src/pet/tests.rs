@@ -41,7 +41,11 @@ impl World {
         World { surfaces, graph }
     }
     fn view(&self) -> WorldView<'_> {
+        self.view_with(&[])
+    }
+    fn view_with<'a>(&'a self, peers: &'a [Peer]) -> WorldView<'a> {
         WorldView {
+            peers,
             surfaces: &self.surfaces,
             graph: &self.graph,
             bounds: Rect::new(0., 0., 1600., 1000.),
@@ -575,4 +579,474 @@ fn a_task_outranks_the_bubble_and_survives_it_closing() {
     pet.work(None);
     step(&mut pet, &world, 120.);
     assert_eq!(pet.attend(), None);
+}
+
+// ------------------------------------------------------- throwing and petting
+
+fn tick_with_cursor(pet: &mut Pet, world: &World, cursor: Option<Point>, events: &mut Vec<Event>) {
+    let mut view = world.view();
+    view.cursor = cursor;
+    pet.tick(1. / 60., &view, Signals::default(), events);
+}
+
+/// Drag the held pet from `start` at `speed` logical px/s along `direction`
+/// for `ticks` frames, then let go.
+fn fling(pet: &mut Pet, world: &World, start: Point, direction: (f64, f64), speed: f64) {
+    pet.grab();
+    let mut events = Vec::new();
+    let mut at = start;
+    for _ in 0..8 {
+        at = Point::new(
+            at.x + direction.0 * speed / 60.,
+            at.y + direction.1 * speed / 60.,
+        );
+        tick_with_cursor(pet, world, Some(at), &mut events);
+    }
+    pet.release();
+}
+
+fn ground() -> World {
+    World::new(&[win(1, 100., 700., 1400., 100.)])
+}
+
+/// Tick until the fall ends and stop on that tick, so the position is where
+/// the pet landed.
+fn land(pet: &mut Pet, world: &World) {
+    let mut events = Vec::new();
+    for _ in 0..600 {
+        pet.tick(1. / 60., &world.view(), Signals::default(), &mut events);
+        if pet.motion != Motion::Falling {
+            return;
+        }
+    }
+    panic!("never landed");
+}
+
+fn collect(pet: &mut Pet, world: &World, seconds: f64) -> Vec<Event> {
+    let mut events = Vec::new();
+    let mut elapsed = 0.;
+    while elapsed < seconds {
+        elapsed += 1. / 60.;
+        pet.tick(1. / 60., &world.view(), Signals::default(), &mut events);
+    }
+    events
+}
+
+#[test]
+fn a_pet_thrown_to_the_right_lands_to_the_right() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    fling(&mut pet, &world, Point::new(500., 300.), (1., 0.), 900.);
+    let released_at = pet.position;
+    land(&mut pet, &world);
+    assert!(
+        pet.position.x > released_at.x + 100.,
+        "it travelled with the throw: {:?} from {:?}",
+        pet.position,
+        released_at
+    );
+    assert!((pet.position.y - 700.).abs() < 2., "{:?}", pet.position);
+}
+
+#[test]
+fn a_flung_pet_bounces_off_the_edges_and_never_leaves_the_world() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(1500., 300.));
+    fling(&mut pet, &world, Point::new(1500., 300.), (1., 0.), 3000.);
+    let mut events = Vec::new();
+    for _ in 0..600 {
+        pet.tick(1. / 60., &world.view(), Signals::default(), &mut events);
+        assert!(
+            (0.0..=1600.).contains(&pet.position.x) && (0.0..=1000.).contains(&pet.position.y),
+            "left the world at {:?}",
+            pet.position
+        );
+    }
+}
+
+#[test]
+fn throw_speed_is_clamped() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    fling(&mut pet, &world, Point::new(500., 300.), (1., -1.), 90_000.);
+    match pet.arc {
+        Arc_::Fall { vx, vy } => {
+            assert!(vx.abs() <= MAX_THROW + 0.001, "vx {vx}");
+            assert!(vy.abs() <= MAX_THROW + 0.001, "vy {vy}");
+        }
+        _ => panic!("a released pet falls"),
+    }
+}
+
+#[test]
+fn a_slow_release_is_released_and_a_fast_one_is_thrown() {
+    let world = ground();
+    let mut slow = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    fling(&mut slow, &world, Point::new(500., 300.), (1., 0.), 100.);
+    assert!(slow.pending.contains(&Event::Released));
+    assert!(!slow.pending.contains(&Event::Thrown));
+    let mut fast = Pet::new(2, pack("squirrel-red"), Point::new(500., 300.));
+    fling(&mut fast, &world, Point::new(500., 300.), (1., 0.), 1500.);
+    assert!(fast.pending.contains(&Event::Thrown));
+    assert!(!fast.pending.contains(&Event::Released));
+}
+
+#[test]
+fn a_pack_without_a_thrown_reaction_still_gets_released() {
+    let world = ground();
+    let mut old = (*pack("squirrel-red")).clone();
+    old.manifest.reactions.retain(|r| r.on != Event::Thrown);
+    let mut pet = Pet::new(1, Arc::new(old), Point::new(500., 300.));
+    fling(&mut pet, &world, Point::new(500., 300.), (1., 0.), 1500.);
+    assert!(pet.pending.contains(&Event::Released));
+    assert!(!pet.pending.contains(&Event::Thrown));
+}
+
+#[test]
+fn releasing_the_pet_directly_emits_released() {
+    // The app's pointer path calls `release` itself, not the engine's tick.
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 300.));
+    pet.grab();
+    pet.release();
+    assert_eq!(pet.pending, vec![Event::Released]);
+}
+
+#[test]
+fn a_hard_landing_after_a_throw_emits_landed_hard_and_a_gentle_drop_does_not() {
+    let world = ground();
+    let mut hard = Pet::new(1, pack("squirrel-red"), Point::new(500., 100.));
+    fling(&mut hard, &world, Point::new(500., 100.), (0., 1.), 1500.);
+    land(&mut hard, &world);
+    collect(&mut hard, &world, 0.1);
+    assert_eq!(hard.state(), "dizzy", "a hard landing reaches the pack");
+
+    let mut gentle = Pet::new(2, pack("squirrel-red"), Point::new(500., 660.));
+    gentle.grab();
+    gentle.release();
+    land(&mut gentle, &world);
+    collect(&mut gentle, &world, 0.1);
+    assert_ne!(gentle.state(), "dizzy");
+    assert!(gentle.perch.is_some());
+}
+
+#[test]
+fn a_fall_the_user_did_not_cause_is_not_a_hard_landing() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(500., 0.));
+    land(&mut pet, &world);
+    collect(&mut pet, &world, 0.1);
+    assert!(pet.perch.is_some());
+    assert_ne!(pet.state(), "dizzy");
+}
+
+#[test]
+fn a_thrown_pet_lands_on_a_surface_crossed_diagonally() {
+    // From just left of a window's edge, a fast diagonal throw crosses its
+    // top edge only partway along the step.
+    let world = World::new(&[win(1, 400., 500., 300., 200.)]);
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(395., 490.));
+    pet.arc = Arc_::Fall { vx: 600., vy: 600. };
+    pet.motion = Motion::Falling;
+    land(&mut pet, &world);
+    assert!(pet.perch.is_some(), "it landed on the window top");
+    assert!((pet.position.y - 500.).abs() < 1.);
+}
+
+fn rub(pet: &mut Pet, world: &World, xs: &[f64], y: f64, dt: f64) -> Vec<Event> {
+    let mut events = Vec::new();
+    for &x in xs {
+        let mut view = world.view();
+        view.cursor = Some(Point::new(x, y));
+        pet.tick(dt, &view, Signals::default(), &mut events);
+    }
+    events
+}
+
+/// How many pettings a rub caused, read from mood: each one adds 0.08 and the
+/// behavior machine consumes the event itself.
+fn rub_count(pet: &mut Pet, world: &World, xs: &[f64], y: f64, dt: f64) -> usize {
+    let before = pet.mood;
+    rub(pet, world, xs, y, dt);
+    ((pet.mood - before) / 0.08).round() as usize
+}
+
+fn settled_pet() -> (Pet, World) {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    settle(&mut pet, &world, 20.);
+    // Pinned in place, as when its bubble is open, so the pointer stays on it.
+    pet.listen(true);
+    (pet, world)
+}
+
+const ZIG: [f64; 5] = [-10., 10., -10., 10., -10.];
+
+fn zig(pet: &Pet) -> Vec<f64> {
+    ZIG.iter().map(|dx| pet.position.x + dx).collect()
+}
+
+#[test]
+fn rubbing_back_and_forth_over_the_pet_pets_it_once() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let (xs, y) = (zig(&pet), pet.position.y - 20.);
+    assert_eq!(rub_count(&mut pet, &world, &xs, y, 0.1), 1);
+    assert_eq!(pet.state(), "enjoy", "the pack's reaction ran");
+}
+
+#[test]
+fn a_single_sweep_across_the_pet_is_not_petting() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let x = pet.position.x;
+    let y = pet.position.y - 20.;
+    let sweep: Vec<f64> = (0..8).map(|i| x - 20. + i as f64 * 6.).collect();
+    assert_eq!(rub_count(&mut pet, &world, &sweep, y, 0.05), 0);
+}
+
+#[test]
+fn rubbing_beside_the_pet_is_not_petting() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let xs: Vec<f64> = ZIG.iter().map(|dx| pet.position.x + 200. + dx).collect();
+    let y = pet.position.y - 20.;
+    assert_eq!(rub_count(&mut pet, &world, &xs, y, 0.1), 0);
+}
+
+#[test]
+fn a_second_rub_inside_the_cooldown_does_nothing() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let (xs, y) = (zig(&pet), pet.position.y - 20.);
+    assert_eq!(rub_count(&mut pet, &world, &xs, y, 0.05), 1);
+    assert_eq!(rub_count(&mut pet, &world, &xs, y, 0.05), 0, "inside 2 s");
+    collect(&mut pet, &world, 3.);
+    pet.mood = 0.5;
+    assert_eq!(
+        rub_count(&mut pet, &world, &xs, y, 0.05),
+        1,
+        "after the cooldown"
+    );
+}
+
+// ------------------------------------------------------------------ other pets
+
+fn tick_with_peers(pet: &mut Pet, world: &World, peers: &[Peer]) -> Signals {
+    let mut events = Vec::new();
+    pet.tick(
+        1. / 60.,
+        &world.view_with(peers),
+        Signals::default(),
+        &mut events,
+    )
+}
+
+fn peer_at(id: u64, x: f64, y: f64) -> Peer {
+    Peer {
+        id,
+        position: Point::new(x, y),
+        perch: None,
+    }
+}
+
+/// Run `ticks` frames with the peer at `x`, counting how often the pet newly
+/// notices it (the flag flips from not-near to near exactly when the event fires).
+fn notices(pet: &mut Pet, world: &World, own: Peer, other_x: f64, ticks: usize) -> usize {
+    let mut fired = 0;
+    for _ in 0..ticks {
+        let before = pet.was_near_pet;
+        let peers = [own, peer_at(2, other_x, own.position.y)];
+        tick_with_peers(pet, world, &peers);
+        if !before && pet.was_near_pet {
+            fired += 1;
+        }
+    }
+    fired
+}
+
+fn pinned_pet() -> (Pet, World, Peer) {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(true);
+    let own = peer_at(1, pet.position.x, pet.position.y);
+    (pet, world, own)
+}
+
+#[test]
+fn a_pet_alone_has_infinite_pet_distance_and_notices_no_one() {
+    let (mut pet, world, own) = pinned_pet();
+    let signals = tick_with_peers(&mut pet, &world, &[own]);
+    assert!(signals.pet_distance.is_infinite(), "its own id is ignored");
+    let signals = tick_with_peers(&mut pet, &world, &[]);
+    assert!(signals.pet_distance.is_infinite());
+    assert!(!pet.was_near_pet);
+}
+
+#[test]
+fn pet_distance_is_logical_pixels_to_the_nearest_other_pet() {
+    let (mut pet, world, own) = pinned_pet();
+    let peers = [
+        own,
+        peer_at(2, own.position.x + 300., own.position.y),
+        peer_at(3, own.position.x - 500., own.position.y),
+    ];
+    let signals = tick_with_peers(&mut pet, &world, &peers);
+    assert!(
+        (signals.pet_distance - 300.).abs() < 1e-6,
+        "{}",
+        signals.pet_distance
+    );
+}
+
+#[test]
+fn two_pets_within_140_notice_once_and_again_only_after_parting_past_200() {
+    let (mut pet, world, own) = pinned_pet();
+    let x = own.position.x;
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 30),
+        1,
+        "close: one event"
+    );
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 120),
+        0,
+        "staying close: no repeats"
+    );
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 170., 30),
+        0,
+        "inside the 200 px hysteresis band"
+    );
+    assert_eq!(notices(&mut pet, &world, own, x + 250., 30), 0, "parted");
+    assert_eq!(
+        notices(&mut pet, &world, own, x + 100., 5),
+        1,
+        "back again: fires again"
+    );
+}
+
+#[test]
+fn noticing_another_pet_reaches_the_pack_as_a_greeting() {
+    let (mut pet, world, own) = pinned_pet();
+    notices(&mut pet, &world, own, own.position.x + 100., 5);
+    assert_eq!(pet.state(), "greet");
+}
+
+fn peer_on(world: &World, owner: u64, t: f64) -> Peer {
+    let surface = world
+        .surfaces
+        .iter()
+        .find(|s| s.owner == owner && s.kind == crate::world::SurfaceKind::WindowTop)
+        .expect("a window top");
+    Peer {
+        id: 2,
+        position: surface.point(t),
+        perch: Some(Perch {
+            key: surface.key(),
+            t,
+        }),
+    }
+}
+
+#[test]
+fn move_toward_pet_brings_a_walker_beside_its_peer_on_the_same_window() {
+    let world = World::new(&[win(1, 100., 600., 1000., 200.)]);
+    let mut pet = Pet::new(1, pack("cat-tabby"), Point::new(150., 600.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    let peers = [peer_on(&world, 1, 0.9)];
+    pet.start_action(Action::MoveTowardPet, &world.view_with(&peers));
+    assert_eq!(pet.motion, Motion::Walking);
+    let mut events = Vec::new();
+    for _ in 0..(30 * 60) {
+        pet.tick(
+            1. / 60.,
+            &world.view_with(&peers),
+            Signals::default(),
+            &mut events,
+        );
+        if pet.motion != Motion::Walking {
+            break;
+        }
+    }
+    let gap = pet.position.distance(peers[0].position);
+    assert!(gap < 120., "ended {gap} px from its peer");
+    assert!(gap > 20., "beside it, not on top of it");
+}
+
+#[test]
+fn move_toward_pet_does_not_hop_a_gap_wider_than_the_pack_allows_and_still_finishes() {
+    // The cat hops 140 px; its peer is 300 px away across empty air, and the
+    // windows are far above the floor, so there is no way round.
+    let world = World::new(&[
+        win(1, 100., 300., 400., 200.),
+        win(2, 800., 300., 400., 200.),
+    ]);
+    let mut pet = Pet::new(1, pack("cat-tabby"), Point::new(300., 300.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    let peers = [peer_on(&world, 2, 0.5)];
+    pet.action_done = false;
+    pet.start_action(Action::MoveTowardPet, &world.view_with(&peers));
+    assert!(
+        pet.action_done,
+        "the action completes at once instead of hanging"
+    );
+    assert_ne!(pet.motion, Motion::Jumping);
+    assert_ne!(pet.motion, Motion::Walking);
+}
+
+#[test]
+fn move_toward_pet_with_no_peer_finishes_at_once() {
+    let world = ground();
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    settle(&mut pet, &world, 20.);
+    pet.listen(false);
+    pet.action_done = false;
+    pet.start_action(Action::MoveTowardPet, &world.view());
+    assert!(pet.action_done);
+    assert_ne!(pet.motion, Motion::Walking);
+}
+
+#[test]
+fn petting_raises_affection_and_it_clamps_at_one() {
+    let (mut pet, world) = settled_pet();
+    pet.mood = 0.5;
+    let before = pet.bond.affection;
+    let (xs, y) = (zig(&pet), pet.position.y - 20.);
+    rub(&mut pet, &world, &xs, y, 0.1);
+    assert!((pet.bond.affection - before - 0.02).abs() < 1e-9);
+    pet.bond.affection = 0.995;
+    pet.click();
+    pet.click();
+    assert_eq!(pet.bond.affection, 1.);
+}
+
+#[test]
+fn a_later_day_adds_one_day_and_one_new_day_event() {
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 24).unwrap();
+    pet.bond = crate::pet::Bond::new(day);
+    pet.roll_day(day);
+    assert_eq!(pet.bond.days, 1);
+    assert!(pet.pending.is_empty());
+    let next = day.succ_opt().unwrap();
+    pet.roll_day(next);
+    pet.roll_day(next);
+    assert_eq!(pet.bond.days, 2);
+    assert_eq!(
+        pet.pending.iter().filter(|e| **e == Event::NewDay).count(),
+        1
+    );
+}
+
+#[test]
+fn a_pet_shows_the_name_it_was_given() {
+    let mut pet = Pet::new(1, pack("squirrel-red"), Point::new(600., 700.));
+    let pack_name = pet.display_name().to_string();
+    pet.bond.name = Some("Biscuit".into());
+    assert_eq!(pet.display_name(), "Biscuit");
+    pet.bond.name = None;
+    assert_eq!(pet.display_name(), pack_name);
 }

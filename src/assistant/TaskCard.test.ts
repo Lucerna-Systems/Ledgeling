@@ -62,7 +62,7 @@ it('keeps long responses compact until expanded and renders Markdown on expansio
   const wrapper = mount(TaskCard, { props: { task } })
   expect(wrapper.find('.markdown-body').exists()).toBe(false)
   await wrapper.findAll('button').find(button => button.text() === 'Read full response')!.trigger('click')
-  expect(wrapper.get('.markdown-body strong').text()).toBe('A useful response')
+  await vi.waitFor(() => expect(wrapper.get('.markdown-body strong').text()).toBe('A useful response'))
   await wrapper.findAll('button').find(button => button.text() === 'Collapse response')!.trigger('click')
   expect(wrapper.find('.markdown-body').exists()).toBe(false)
 })

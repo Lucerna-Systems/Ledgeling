@@ -113,7 +113,7 @@ fn no_screen_capture_keystroke_or_clipboard_api_is_referenced() {
         for api in FORBIDDEN {
             assert!(
                 !text.contains(api),
-                "{} references `{api}`, which Perch must never call",
+                "{} references `{api}`, which Ledgeling must never call",
                 path.display()
             );
         }

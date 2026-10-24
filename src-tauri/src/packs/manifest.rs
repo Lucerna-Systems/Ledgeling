@@ -200,6 +200,9 @@ pub const CLIP_FALLBACKS: &[(&str, &[&str])] = &[
     ("grabbed", &["idle"]),
     ("preen", &["idle"]),
     ("greet", &["happy", "idle"]),
+    ("stretch", &["idle"]),
+    ("dizzy", &["alert", "idle"]),
+    ("petted", &["happy", "idle"]),
     // Assistant clips: what the pet plays while a task of its own is running,
     // and while that task is waiting for the user to answer something.
     // Not `move`: a walk cycle playing on a pet standing still reads as a bug.
@@ -224,15 +227,17 @@ pub enum Action {
     FleeFromCursor,
     PatrolCurrentSurface,
     ReturnToHomeSurface,
+    MoveTowardPet,
 }
 impl Action {
-    pub const ALL: [Action; 6] = [
+    pub const ALL: [Action; 7] = [
         Action::MoveToRandomSurface,
         Action::MoveToNearestSurface,
         Action::MoveTowardCursor,
         Action::FleeFromCursor,
         Action::PatrolCurrentSurface,
         Action::ReturnToHomeSurface,
+        Action::MoveTowardPet,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -242,6 +247,7 @@ impl Action {
             Action::FleeFromCursor => "flee_from_cursor",
             Action::PatrolCurrentSurface => "patrol_current_surface",
             Action::ReturnToHomeSurface => "return_to_home_surface",
+            Action::MoveTowardPet => "move_toward_pet",
         }
     }
     fn parse(name: &str) -> Option<Action> {
@@ -292,9 +298,14 @@ pub enum Event {
     HourChanged,
     Startup,
     LowEnergy,
+    Thrown,
+    LandedHard,
+    Petted,
+    PetNearby,
+    NewDay,
 }
 impl Event {
-    pub const ALL: [Event; 14] = [
+    pub const ALL: [Event; 19] = [
         Event::SurfaceLost,
         Event::SurfaceMovedFast,
         Event::Grabbed,
@@ -309,6 +320,11 @@ impl Event {
         Event::HourChanged,
         Event::Startup,
         Event::LowEnergy,
+        Event::Thrown,
+        Event::LandedHard,
+        Event::Petted,
+        Event::PetNearby,
+        Event::NewDay,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -326,6 +342,11 @@ impl Event {
             Event::HourChanged => "hour_changed",
             Event::Startup => "startup",
             Event::LowEnergy => "low_energy",
+            Event::Thrown => "thrown",
+            Event::LandedHard => "landed_hard",
+            Event::Petted => "petted",
+            Event::PetNearby => "pet_nearby",
+            Event::NewDay => "new_day",
         }
     }
     pub fn parse(name: &str) -> Option<Event> {
@@ -335,9 +356,13 @@ impl Event {
     pub fn default_priority(self) -> i32 {
         match self {
             Event::SurfaceLost | Event::SurfaceMovedFast => 100,
-            Event::Grabbed | Event::Released | Event::Clicked => 90,
-            Event::UserReturned | Event::CursorNearby => 60,
-            Event::LongSession | Event::BreakTaken => 50,
+            Event::Grabbed
+            | Event::Released
+            | Event::Clicked
+            | Event::Thrown
+            | Event::LandedHard => 90,
+            Event::UserReturned | Event::CursorNearby | Event::Petted | Event::PetNearby => 60,
+            Event::LongSession | Event::BreakTaken | Event::NewDay => 50,
             _ => 30,
         }
     }
@@ -408,7 +433,14 @@ impl Manifest {
                 }
             }
         }
-        "idle"
+        // Idle and move cover for each other, and a pack with neither still
+        // plays whatever it does have rather than failing to load.
+        for candidate in ["idle", "move"] {
+            if self.animations.contains_key(candidate) {
+                return candidate;
+            }
+        }
+        self.animations.keys().next().map_or("idle", String::as_str)
     }
     pub fn animation(&self, wanted: &str) -> Option<&Animation> {
         self.animations.get(self.resolve_clip(wanted))
@@ -806,7 +838,7 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
             MANIFEST_FILE,
             "animations",
             "The animations block is missing.",
-            "At minimum, provide `idle` and `move` sprite strips.",
+            "Provide at least one sprite strip, e.g. `idle`.",
         ));
         return animations;
     };
@@ -893,13 +925,22 @@ fn read_animations(root: &Map<String, Value>, report: &mut Report) -> BTreeMap<S
             },
         );
     }
-    for required in ["idle", "move"] {
-        if !animations.contains_key(required) {
-            report.push(Diagnostic::error(
+    if animations.is_empty() {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "animations",
+            "The pack has no animations.",
+            "Provide at least one sprite strip, e.g. `idle`; every other clip falls back to it.",
+        ));
+    }
+    // Idle and move are not required: each stands in for the other.
+    for (clip, other) in [("idle", "move"), ("move", "idle")] {
+        if !animations.contains_key(clip) && animations.contains_key(other) {
+            report.push(Diagnostic::info(
                 MANIFEST_FILE,
-                format!("animations.{required}"),
-                format!("The required `{required}` animation is missing."),
-                "Every pack needs `idle` and `move`; all other clips fall back to these.",
+                format!("animations.{clip}"),
+                format!("No `{clip}` animation, so this pet plays `{other}` instead."),
+                format!("Add an `animations.{clip}` clip to give it its own look."),
             ));
         }
     }
@@ -1266,6 +1307,16 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
                     weight: 5.,
                     when: Condition::parse("idle_seconds > 240").ok(),
                 },
+                Transition {
+                    to: "visit".into(),
+                    weight: 1.,
+                    when: Condition::parse("pet_distance < 1500").ok(),
+                },
+                Transition {
+                    to: "doze".into(),
+                    weight: 4.,
+                    when: Condition::parse("pet_distance < 120 && energy < 0.4").ok(),
+                },
             ],
         },
     );
@@ -1275,6 +1326,20 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             clip: "move".into(),
             duration: (0., 0.),
             action: Some(Action::MoveToRandomSurface),
+            sound: None,
+            transitions: vec![Transition {
+                to: settle.to_string(),
+                weight: 1.,
+                when: None,
+            }],
+        },
+    );
+    states.insert(
+        "visit".to_string(),
+        State {
+            clip: "move".into(),
+            duration: (0., 0.),
+            action: Some(Action::MoveTowardPet),
             sound: None,
             transitions: vec![Transition {
                 to: settle.to_string(),
@@ -1339,6 +1404,24 @@ pub fn default_behavior(class: LocomotionClass) -> Behavior {
             }],
         },
     );
+    // The throw and petting reactions every pet gets; a pack without the
+    // clips plays alert/happy/idle instead.
+    for (name, clip, duration) in [("dizzy", "dizzy", (2., 3.)), ("enjoy", "petted", (2., 4.))] {
+        states.insert(
+            name.to_string(),
+            State {
+                clip: clip.into(),
+                duration,
+                action: None,
+                sound: None,
+                transitions: vec![Transition {
+                    to: settle.to_string(),
+                    weight: 1.,
+                    when: None,
+                }],
+            },
+        );
+    }
     Behavior {
         initial: settle.to_string(),
         idle_wander_chance: 0.3,
@@ -1354,6 +1437,11 @@ pub fn default_reactions(behavior: &Behavior) -> Vec<Reaction> {
         (Event::UserReturned, "greet", 60, 60.),
         (Event::Clicked, "greet", 90, 2.),
         (Event::UserIdleLong, "doze", 30, 0.),
+        (Event::Thrown, "dizzy", 90, 0.),
+        (Event::LandedHard, "dizzy", 90, 0.),
+        (Event::Petted, "enjoy", 60, 3.),
+        (Event::PetNearby, "greet", 50, 120.),
+        (Event::NewDay, "greet", 50, 600.),
     ]
     .into_iter()
     .filter(|(_, goto, _, _)| behavior.states.contains_key(*goto))

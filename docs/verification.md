@@ -382,6 +382,102 @@ display servers.
   and the note is gone. The replug half — picking the external again — is
   still engine-test-only.
 
+## Terminal mode (2026-10-10)
+
+Built, unit-tested and exercised in part. **Not driven by hand on macOS inside
+the bubble, nor at all on Windows or Linux.**
+
+- Rust: 226 library tests (agent event parsing, the tracker following a file as it
+  grows, command wrapping, pet folders surviving a restart), 7 privacy, clippy
+  clean with and without the `coding` feature. Frontend: 135 tests, `vue-tsc`
+  clean, production build splits xterm out of the main bundle.
+- **Claude Code hooks, run for real:** with Claude Code 2.1.296,
+  `claude -p … --settings <file>` fired `SessionStart`, `UserPromptSubmit`,
+  `Stop` and `SessionEnd` through `ledgeling --agent-event`, and the recorded lines
+  carried only the fields we keep. **Not observed:** `PreToolUse`/`PostToolUse`
+  and `Notification` payloads (the `notification_type` and `message` fields are
+  read as documented, not seen), and an interactive session.
+- **Not verified:** typing into xterm inside the non-activating bubble panel on
+  macOS, the wider bubble's placement, the terminal's focus and Escape handling
+  there, and the pop-out window. Agent events on Windows are untested (the hook
+  runs the app's own binary, so it should work, but it has not been run).
+
+## Pet sprint (2026-10-24)
+
+Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`
+136 passing. All hand runs below are macOS, one machine, run once.
+
+- **Phase 1, the first minute.** fmt, clippy, `npm test` (229 lib, 14 timeline)
+  and `npm run test:ui` (139) green. Hand-run once on macOS: settings.json moved
+  aside, `npm run tauri dev`; the companion opened on Pets with the tip card and
+  the squirrel was seen standing on the top edge of the frontmost window. The
+  fall and greeting animation were not watched frame by frame; settings.json was
+  restored afterwards.
+- **Phase 2, pick up, throw, pet.** fmt, clippy, `npm test` (246 lib, 14
+  timeline) and `npm run test:ui` (139) green. Hand-run once on macOS with
+  synthesized mouse events (a small Swift CGEvent script, not a real hand): the
+  squirrel was grabbed at the screen edge and let go while the pointer moved
+  fast; it was seen released and on the floor about 1,200 px to the left, which
+  fits a throw, but its dizzy clip was not caught in a screenshot. Petting was
+  tried the same way and **not** confirmed by eye (the pets had wandered off the
+  spot aimed at); it is covered by unit tests only. Budgie not hand-tried.
+- **Phase 3, the cat.** fmt, clippy, `npm test` (248 lib, 15 timeline) and
+  `npm run test:ui` (139) green. The cat loads from the embedded files with no
+  errors or warnings, is written into an empty packs folder, and in a replayed
+  layout hops a 100 px gap between two windows but never crosses a 200 px one.
+  The same replay on the squirrel found a bug already on `main`: a pet walking
+  to a window edge to hop was declared "surface lost" there and stayed frozen in
+  `startled` for good; fixed in `Pet::ride` with a regression test. Hand run:
+  the app was launched once with the cat and squirrel in settings and the cat
+  folder was written into the packs directory, but the Mac session was locked
+  so the screen captured black. A second launch later, with the screen
+  unlocked, showed Miso standing on screen as a tabby cat (one screenshot); the
+  hop, nap and fling were **not** watched by hand.
+- **Phase 4, pets noticing each other.** fmt, clippy, `npm test` (258 lib, 18
+  timeline; the `tasks::apple` port test failed once and passed on re-run, it
+  is unrelated) and `npm run test:ui` (139) green. Unit tests cover
+  `pet_distance` (infinite alone, own id ignored), `pet_nearby` hysteresis
+  (140 px in, 200 px out), `move_toward_pet` (a cat reaches its peer on one
+  window, does not hop a gap wider than 140 px and finishes at once, finishes at
+  once with no peer), and two pets greeting through the engine. Hand run: the
+  squirrel and cat were launched together once; no screenshot caught them
+  greeting or visiting, so the pet-to-pet behaviour is **not** hand-verified.
+
+- **Phase 5, remembering you.** fmt, clippy, `npm test` (263 lib, 19 timeline, 7
+  privacy) and `npm run test:ui` (140) pass. Hand-run once on macOS (2026-10-24)
+  with a seeded settings file: the Pets page showed the cat's name, "Together 5
+  days" and an affection meter near 60%, and `settings.json` held the same bond
+  after quitting. Not confirmed: a second launch reading it back by eye, the
+  meter fill measured, a real midnight rollover, and the affectionate behaviors
+  seen playing. Those are covered by unit and timeline tests only.
+
+- **Phase 6, Studio.** fmt, clippy, `npm test` (266 lib, 19 timeline, 7 privacy)
+  and `npm run test:ui` (144) pass. Covered by tests only: opening each bundled
+  pack and a saved 48 px pack with pixels intact, the plain-words refusal of
+  other sizes, `draftFromPack` reproducing the squirrel's states, reactions and
+  frame counts, template copies getting a new id, and Export after save. Hand-run
+  once on macOS (2026-10-24, clicks synthesized, screenshots viewed): the
+  Start-from dropdown listed the four bundled pets; Miso loaded as "Copy of Miso
+  the Cat" with its sprites; Save showed Export .petpack, which wrote a
+  `.petpack`; and the saved copy's menu offered Edit in Studio, which reopened
+  it with its frames. Not checked: re-importing the exported file, or a
+  hand-drawn edit round trip. The live preview was not changed (Play/Pause
+  already existed).
+
+- **Performance, end of sprint (2026-10-24): over budget.** `scripts/benchmark.py
+  600` on the release `.app` bundle, macOS, four pets out (squirrel, budgie,
+  gecko, cat), all moving normally: CPU mean 2.57%, median 2.0%, p95 6.5%; peak
+  RSS 83.3 MiB. The script counted one process, so WebKit helpers and
+  WindowServer are not in these numbers. That misses the < 0.5% idle and < 2%
+  moving ceilings, and RSS is just over 80 MiB with four pets. There is no
+  earlier measurement of this build, so `main` was measured the same way (300 s
+  each, same three pets): `main` CPU mean 1.98%, median 1.8%, p95 2.7%, peak RSS
+  83.8 MiB; this branch 1.93%, 1.9%, 2.8%, 84.1 MiB. The sprint adds nothing
+  measurable; **both are about 2% and over the idle ceiling, a gap that was
+  already there and is not closed.** One pet on this branch: mean 2.34%, p95 6.2%,
+  82.8 MiB (RSS over 80 MiB with one pet too). A single screenshot per run showed
+  pets on screen; movement was not confirmed from it.
+
 ## Not verified
 
 Stated plainly, because these are the difference between "built" and "shipped":
@@ -445,3 +541,40 @@ Stated plainly, because these are the difference between "built" and "shipped":
 - **A non-programmer following the authoring guide.** `docs/pack-authoring.md` is
   written for that test and has not been given to an actual non-programmer.
 - **Public release.** Nothing has been published anywhere.
+
+## 2026-10-24 memory measurement (macOS)
+
+Physical footprint per process from `python3 scripts/benchmark.py`
+(`footprint_by_process`), release build, macOS, one pet idle. Each figure is a
+single 90 s run; noise is about ±1 MiB. The process-tree finder launches with
+`open -n`, so the WebKit helpers are attributed to the app through their
+responsible pid.
+
+| Case | Total MiB | Breakdown |
+|---|---|---|
+| Before (companion hidden at launch) | 171.4 | app 24.0, GPU 63.5, WebContent 35.6 + 43.1, Networking 5.2 |
+| After lazy companion (no companion window) | 124.6-125.4 | app ~19, GPU ~60, overlay WebContent ~40, Networking ~5 |
+| Companion open | 177.3 (+52.7) | |
+| Companion hidden after close | 206.8 | held until the window is destroyed |
+| Zero-pet floor | 74.5 | WebKit floor for the transparent overlay |
+
+Variants tried on the overlay, none of which helps: a small overlay box leaves
+the GPU process unchanged (60.0 MiB) and only drops WebContent by about 20 MiB;
+a 1x1 background-image costs the same as the sprite (GPU 60.0 vs 61.1); CSS and
+canvas drawing variants made no difference.
+
+The old "83 MiB" figure was the Rust process RSS only, not the process tree.
+Windows and Linux were **not** measured. The destroy grace is now 60 s (it was
+10 minutes while measuring above); see `docs/development.md`.
+
+Hand-run once on macOS (2026-10-24, release build, synthesized clicks, one pet):
+launch 126.5 MiB with 4 processes (app, GPU, Networking, one WebContent); companion
+opened from the tray 179.5 MiB; after typing an unsent assistant prompt, going to
+Pets and closing it, still 220 MiB 30 s later (hidden, not freed); destroyed about
+65 s after the close, leaving 135 MiB with 4 processes; `ui_state.json` held the
+Pets page and the prompt. Reopening after the destroy restored the Pets page and
+the prompt text; closing and reopening within 12 s reused the same WebContent
+process. Not checked: the Studio draft restore, the prompt's first letter (stored
+and restored as `Draft-xyz-123`, probably the composer capitalising it), and why
+the footprint after destroy (135 MiB) is about 10 MiB above the never-opened
+figure (125 MiB).
