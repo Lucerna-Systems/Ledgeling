@@ -11,6 +11,7 @@ pub mod coding;
 pub mod companion;
 pub mod engine;
 pub mod migrate;
+pub mod net;
 pub mod packs;
 pub mod pet;
 pub mod platform;

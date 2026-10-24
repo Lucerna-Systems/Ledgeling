@@ -493,6 +493,45 @@ the bubble, nor at all on Windows or Linux.**
   there, and the pop-out window. Agent events on Windows are untested (the hook
   runs the app's own binary, so it should work, but it has not been run).
 
+## Pack hardening for a gallery (2026-10-24)
+
+Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
+
+- **Run:** `cargo test` in `src-tauri` (274 lib tests plus the integration
+  suites, all passing, 15 of them new in `packs::tests::hardening`), `cargo fmt
+  --check`. They cover: archive entry-count, per-file and total-size limits with
+  oversized data, traversal and stray entries, symlink entries, a PNG over the
+  size limit refused from its header, behaviour and text bounds, semver ordering,
+  update and downgrade, a refused install leaving the installed pack intact,
+  byte-identical exports with the same SHA-256 after modification times change,
+  each publish rule failing on its own, the four bundled pets passing the publish
+  check, a snapshot of the event, signal, action and class names, and the JSON
+  schema carrying the same limits as the code.
+- **Online gate and contract (same branch).** `cargo test`: 286 lib tests and 10
+  privacy tests passing; `vitest run` 164 passing; `vue-tsc --noEmit` clean. New
+  tests cover: every scope off by default and an offline request opening no
+  connection (checked against a local server), a scope reaching only its own
+  hosts, a redirect off the list not followed, a response over the cap failing,
+  switching a scope off stopping a download in flight, analytics refusing
+  session-only consent, only remembered choices surviving a restart and a damaged
+  consent file meaning off, a marketplace download installing and recording its
+  source, a wrong hash installing nothing, an offline or error-status download
+  being refused with its own code. `privacy.rs` now also checks that the HTTP
+  client lives in one file, that `send` checks consent first, and that consent is
+  not in `Settings`. **Not run:** the marketplace host names are `.invalid`
+  placeholders, so nothing here has contacted a real server and TLS, real
+  redirects and a real marketplace were never exercised; no Vue UI uses
+  `net_set`, `gallery_install` or the new commands yet; the commands were not
+  driven from the running app.
+- **Not run:** `cargo clippy --all-targets -D warnings` is red on four
+  pre-existing lints outside `packs` (`platform/handoff.rs`, `settings.rs`,
+  `tasks/mod.rs` twice); none are in the pack code. The new commands
+  `update_pack` and `validate_pack_for_publish` have no UI yet, so they have
+  only been exercised through the Rust tests. A mid-copy I/O failure during
+  install was not simulated; only the validation-failure and refused-update paths
+  are tested. The schema is checked against the limits constants but no JSON
+  Schema validator runs over the bundled packs.
+
 ## Pet sprint (2026-10-24)
 
 Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`

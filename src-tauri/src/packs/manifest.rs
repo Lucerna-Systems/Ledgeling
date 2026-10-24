@@ -564,7 +564,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
         ],
         report,
     );
-    Some(Manifest {
+    let manifest = Manifest {
         format,
         id,
         name,
@@ -580,7 +580,120 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
         custom_actions,
         reactions,
         personality,
-    })
+    };
+    check_bounds(&manifest, report);
+    Some(manifest)
+}
+
+/// A three-number semantic version, `major.minor.patch`. Ordered, so installs
+/// can tell an update from a downgrade without a dependency.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Version(pub u32, pub u32, pub u32);
+
+impl Version {
+    pub fn parse(text: &str) -> Option<Version> {
+        let mut parts = text.split('.');
+        let mut next = || parts.next()?.parse::<u32>().ok();
+        let version = Version(next()?, next()?, next()?);
+        parts.next().is_none().then_some(version)
+    }
+}
+
+/// Ceilings from `limits`: a pack can satisfy the grammar and still be
+/// expensive to hold or run, so size and fan-out are validated as well.
+fn check_bounds(manifest: &Manifest, report: &mut Report) {
+    use super::limits::*;
+    let too_long = |path: &str, text: &str, max: usize, report: &mut Report| {
+        let chars = text.chars().count();
+        if chars > max {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                path,
+                format!("The text is {chars} characters long."),
+                format!("Keep it to {max} characters or fewer."),
+            ));
+        }
+    };
+    too_long("id", &manifest.id, MAX_NAME_CHARS, report);
+    too_long("name", &manifest.name, MAX_NAME_CHARS, report);
+    too_long("author", &manifest.author, MAX_NAME_CHARS, report);
+    too_long("version", &manifest.version, MAX_NAME_CHARS, report);
+    too_long(
+        "description",
+        &manifest.description,
+        MAX_DESCRIPTION_CHARS,
+        report,
+    );
+    too_long("license", &manifest.license, MAX_LICENSE_CHARS, report);
+    if manifest.tags.len() > MAX_TAGS {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "tags",
+            format!("The pack has {} tags.", manifest.tags.len()),
+            format!("Use at most {MAX_TAGS} tags."),
+        ));
+    }
+    for (i, tag) in manifest.tags.iter().enumerate() {
+        too_long(&format!("tags[{i}]"), tag, MAX_TAG_CHARS, report);
+    }
+    if manifest.animations.len() > MAX_ANIMATIONS {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "animations",
+            format!(
+                "The pack declares {} animations.",
+                manifest.animations.len()
+            ),
+            format!("Use at most {MAX_ANIMATIONS} animations."),
+        ));
+    }
+    for (name, animation) in &manifest.animations {
+        if animation.frames > MAX_FRAMES {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                format!("animations.{name}.frames"),
+                format!("Found {} frames.", animation.frames),
+                format!("A clip may have at most {MAX_FRAMES} frames."),
+            ));
+        }
+        if animation.fps > MAX_FPS {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                format!("animations.{name}.fps"),
+                format!("Found {} frames per second.", animation.fps),
+                format!("Use {MAX_FPS} or fewer frames per second."),
+            ));
+        }
+    }
+    if manifest.behavior.states.len() > MAX_STATES {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "behavior.states",
+            format!(
+                "The pack declares {} states.",
+                manifest.behavior.states.len()
+            ),
+            format!("Use at most {MAX_STATES} states."),
+        ));
+    }
+    for (name, state) in &manifest.behavior.states {
+        if state.transitions.len() > MAX_TRANSITIONS_PER_STATE {
+            report.push(Diagnostic::error(
+                MANIFEST_FILE,
+                format!("behavior.states.{name}.transitions"),
+                format!("The state has {} transitions.", state.transitions.len()),
+                format!("Use at most {MAX_TRANSITIONS_PER_STATE} transitions per state."),
+            ));
+        }
+    }
+    if manifest.reactions.len() > MAX_REACTIONS {
+        report.push(Diagnostic::error(
+            MANIFEST_FILE,
+            "reactions",
+            format!("The pack declares {} reactions.", manifest.reactions.len()),
+            format!("Use at most {MAX_REACTIONS} reactions."),
+        ));
+    }
 }
 
 /// serde's own message is developer-facing; this is the author-facing version.

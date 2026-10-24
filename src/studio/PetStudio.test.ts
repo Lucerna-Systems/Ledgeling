@@ -18,7 +18,7 @@ globalThis.ImageData ??= class { constructor(public data: Uint8ClampedArray, pub
 beforeEach(() => {
   api.invoke.mockReset().mockImplementation(async (command: string) => {
     if (command === 'list_packs') return []
-    if (command === 'export_pack') return '/packs/ember.petpack'
+    if (command === 'export_pack') return { path: '/packs/ember.petpack', sha256: 'a'.repeat(64) }
     if (command === 'task_list') return []
     if (command === 'task_connections') return { active: { kind: 'none', model: '', endpoint: '', executable: '' }, searchEnabled: false, ollamaThinking: false, perPet: {}, providers: {} }
     if (command === 'task_provider_terms') return {}

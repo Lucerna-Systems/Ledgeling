@@ -32,8 +32,8 @@ async function startFrom(event: Event) {
 }
 async function exportSaved() {
   if (!saved.value) return
-  const path = await call<string>('export_pack', { id: saved.value.id }, false)
-  if (path) exported.value = path
+  const result = await call<{ path: string; sha256: string }>('export_pack', { id: saved.value.id }, false)
+  if (result) exported.value = result.path
 }
 
 /** The gallery picture: the first idle frame, enlarged on a soft backdrop. */

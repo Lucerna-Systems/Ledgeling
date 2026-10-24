@@ -189,3 +189,47 @@ export interface Snapshot {
   /** True on a brand-new user's first launch: open on the Pets page once. */
   firstRun: boolean
 }
+
+// ---- Contract with the Rust backend: packs, installs and online features ----
+
+/** What `export_pack` returns: where the `.petpack` is, and its SHA-256. */
+export interface ExportResult {
+  path: string
+  sha256: string
+}
+
+/**
+ * Sent by `install_pack`, `update_pack`, `gallery_install` and (as the network
+ * codes) the marketplace. Switch on `code`, never on `message`.
+ */
+export type InstallErrorCode =
+  | 'unreadable_archive' | 'archive_limit' | 'not_allowed' | 'no_manifest'
+  | 'invalid_pack' | 'already_installed' | 'not_installed' | 'not_newer'
+  | 'bundled' | 'hash_mismatch' | 'io'
+  | 'offline' | 'refused' | 'failed' | 'too_large' | 'cancelled' | 'http_status'
+
+export interface InstallError {
+  code: InstallErrorCode
+  message: string
+}
+
+export type NetScope = 'marketplace' | 'analytics'
+export type NetMode = 'off' | 'session' | 'remembered'
+
+/** One optional online feature, from `net_status`. Everything starts `off`. */
+export interface NetScopeStatus {
+  scope: NetScope
+  label: string
+  description: string
+  hosts: string[]
+  mode: NetMode
+  /** Cannot be granted for one session; only until switched off. */
+  alwaysRemembered: boolean
+}
+
+/** Where a marketplace-installed pack came from, from `pack_sources`. */
+export interface PackSource {
+  galleryId: string
+  version: string
+  sha256: string
+}

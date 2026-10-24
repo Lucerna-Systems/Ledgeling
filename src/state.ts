@@ -7,6 +7,8 @@ import type { PackListing, Report, Settings, Snapshot } from './types'
 export const native = isTauri()
 export const snapshot = ref<Snapshot | null>(null)
 export const error = ref('')
+/** The stable `code` of the last command error, when Rust sent one. */
+export const errorCode = ref('')
 export const busy = ref(false)
 export const packs = ref<PackListing[]>([])
 
@@ -44,10 +46,17 @@ export async function call<T>(command: string, args: Record<string, unknown> = {
   revision++
   busy.value = true
   error.value = ''
+  errorCode.value = ''
   try {
     return await invoke<T>(command, args)
   } catch (e) {
-    error.value = String(e)
+    // Rust sends plain text, or `{ code, message }` for install and network errors.
+    if (e && typeof e === 'object' && 'message' in e) {
+      error.value = String((e as { message: unknown }).message)
+      if ('code' in e) errorCode.value = String((e as { code: unknown }).code)
+    } else {
+      error.value = String(e)
+    }
     return undefined
   } finally {
     busy.value = --pending > 0
