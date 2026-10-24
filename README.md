@@ -1,6 +1,6 @@
 # Ledgeling
 
-A little company for your desktop. A bird, a squirrel or a gecko lives on the
+A little company for your desktop. A bird, a squirrel, a gecko or a cat lives on the
 edges of your open windows, notices roughly how your session is going, and never
 sends anything anywhere.
 
@@ -18,10 +18,12 @@ npm run tauri dev
 ```
 
 The companion window opens and a transparent overlay appears on each display.
-Your first pet is a budgie; open **Pets** to bring out the squirrel or the
-gecko as well.
+On a first launch a squirrel drops onto the window you are looking at; open
+**Pets** to bring out the budgie, the gecko or the cat as well.
 
-- **Drag** a pet to pick it up; let go and it finds its way back.
+- **Drag** a pet to pick it up; let go and it finds its way back. Fling it and it
+  arcs through the air, bounces off the screen edge and lands a little dizzy.
+- **Rub** the pointer back and forth over a pet to pet it.
 - **Click** a pet to say hello.
 - **Home** shows who is out, with pause, hide and a three-step pace control.
 - **Pets** brings pets out and sends them home, filters them by status, movement,
@@ -79,8 +81,9 @@ Everything in milestones M0–M4 that is code:
   machine with a non-Turing-complete condition grammar, `.petpack` install and
   export, a pack browser, scaffolding, live reload, a debug overlay and scenario
   buttons.
-- **Three species, no engine changes between them.** Budgie (flier, window tops),
-  squirrel (climber, everything, leaps 180 px), gecko (climber, window sides only,
+- **Four species, no engine changes between them.** Budgie (flier, window tops),
+  squirrel (climber, everything, leaps 180 px), cat (hopper, window tops and the
+  floor, hops 140 px), gecko (climber, window sides only,
   two sprite strips and under forty lines of JSON — the format's own acceptance
   test).
 - **Awareness.** Idle detection, process-name→category mapping with a 5 s
@@ -127,7 +130,7 @@ sends pointer events back; it never decides where a pet is.
 | `src-tauri/src/engine.rs` | The headless core: no Tauri, no windows, fully testable |
 | `src-tauri/src/app.rs` | Tauri wiring: windows, commands, menus, the update loop |
 | `src/` | The companion UI and the overlay renderer |
-| `packs/` | The three bundled first-party packs |
+| `packs/` | The four bundled first-party packs |
 | `schema/` | The published JSON Schema for `pet.json` |
 
 Coordinates are physical pixels in virtual-desktop space throughout, converted to

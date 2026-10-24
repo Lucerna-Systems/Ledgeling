@@ -239,8 +239,14 @@ suggests:
 ## 7. Deliberately deferred (unchanged)
 
 Nothing here enters the repo until M4 ships publicly: macOS/Linux parity
-beyond what exists, pets noticing each other, more species (cat, moth, bat,
-frog), sound design pass, pet actions, meeting detection,
+beyond what exists, more species (moth, bat, frog), sound design pass, pet actions, meeting detection,
 notification interception, pack marketplace. (The AI layer was on this list
 and was pulled forward early — see §5. Linux platform support was pulled
 forward too, packaging excepted.)
+
+**Pulled forward on 2026-10-24 at the user's direction** (the pet sprint, branch
+`feature/pet-sprint`): pets noticing each other, and more species (the cat).
+The same sprint added a first-run welcome, throwing and petting, a per-pet bond
+(name, days together, affection) and Studio templates with export. What has
+actually been hand-run is recorded in
+[`docs/verification.md`](../docs/verification.md).

@@ -99,3 +99,16 @@ it('restores sidebar state from legacy perch:sidebar key if ledgeling:sidebar is
   expect(wrapper.get('.sidebar-shell').classes()).toContain('collapsed')
   wrapper.unmount()
 })
+
+it('opens on Pets once when the backend reports a first run', async () => {
+  const wrapper = mount(Companion)
+  snapshot.value = { settings: { paused: false, hidden: false, speedScale: 1 }, notes: [], packs: [], pets: [], perchCount: 0, firstRun: true } as unknown as Snapshot
+  await Promise.resolve()
+  expect(wrapper.get('nav button[aria-current="page"]').text()).toBe('Pets')
+  await wrapper.findAll('nav button').find(button => button.text() === 'History')!.trigger('click')
+  snapshot.value = { ...snapshot.value } as Snapshot
+  await Promise.resolve()
+  expect(wrapper.get('nav button[aria-current="page"]').text()).toBe('History')
+  wrapper.unmount()
+  snapshot.value = null
+})
