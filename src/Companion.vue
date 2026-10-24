@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import AssistantPanel from './assistant/AssistantPanel.vue'
-import HistoryPanel from './assistant/HistoryPanel.vue'
-import ProvidersPanel from './assistant/ProvidersPanel.vue'
 import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
 import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
 import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
 import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
-import PacksPanel from './panels/PacksPanel.vue'
-import SettingsPanel from './panels/SettingsPanel.vue'
-import LabPanel from './panels/LabPanel.vue'
-import AwarenessPanel from './panels/AwarenessPanel.vue'
-import DesktopPanel from './panels/DesktopPanel.vue'
-import PetStudio from './studio/PetStudio.vue'
+import PageLoading from './components/PageLoading.vue'
 import { syncAppIcon } from './appIcon'
 import { companionReady, startPersist, type UiState } from './uiState'
 import { draft } from './studio/state'
 import { restoreDraft, serializeDraft } from './studio/state'
 import { promptDraft } from './assistant/state'
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSidebar } from './sidebar'
+
+// Pages other than the default Assistant load on first visit; Vue keeps the loaded component, so revisits are instant.
+const lazy = (load: () => Promise<{ default: object }>) => defineAsyncComponent({ loader: load as never, delay: 120, loadingComponent: PageLoading })
+const HistoryPanel = lazy(() => import('./assistant/HistoryPanel.vue'))
+const ProvidersPanel = lazy(() => import('./assistant/ProvidersPanel.vue'))
+const PacksPanel = lazy(() => import('./panels/PacksPanel.vue'))
+const SettingsPanel = lazy(() => import('./panels/SettingsPanel.vue'))
+const LabPanel = lazy(() => import('./panels/LabPanel.vue'))
+const AwarenessPanel = lazy(() => import('./panels/AwarenessPanel.vue'))
+const DesktopPanel = lazy(() => import('./panels/DesktopPanel.vue'))
+const PetStudio = lazy(() => import('./studio/PetStudio.vue'))
 
 type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'lab' | 'studio'
 const nav = [
