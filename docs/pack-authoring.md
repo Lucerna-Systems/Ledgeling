@@ -185,6 +185,22 @@ during long absences), `days_together`, `is_dragging`.
 rules already make pets sleepy at night; add `hour` rules for more.
 Anything else is an error that tells you so, with the alternatives listed.
 
+**Custom actions and pet types.** The built-in actions can be given your own
+names and speeds in a top-level `actions` block, and states use them like any
+other action:
+
+```json
+"actions": { "scurry": { "base": "patrol_current_surface", "speed": 2.5 } },
+"behavior": { "states": { "run": { "clip": "move", "action": "scurry" } } }
+```
+
+`base` is one of the built-in actions; `speed` (0.1–5, default 1) multiplies
+movement speed while that state runs. Likewise `"locomotion": { "class":
+"walker", "type": "slitherer" }` gives your pet its own type name. The class still
+picks the traversal rules, and `surfaces`, `speed`, `jump`, `gravity` and
+`air_style` reshape it; `type` is the label. Both stay data — no new movement
+code runs.
+
 **Reactions** let events interrupt whatever the pet was doing:
 
 ```json
