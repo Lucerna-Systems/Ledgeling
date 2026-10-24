@@ -11,6 +11,8 @@ export interface BubbleShow {
   folder: string
   /** Developer tools are on, so the bubble offers coding mode. */
   developer?: boolean
+  /** First run: the bubble opens as the tour until it is finished or skipped. */
+  tour?: boolean
   tailX: number | null
   tailUp: boolean
 }
@@ -157,3 +159,10 @@ export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)
   return parts.length > 2 ? `…${path.includes('\\') ? '\\' : '/'}${parts.slice(-2).join(path.includes('\\') ? '\\' : '/')}` : path
 }
+
+/** The first-run tour, one card per thing to try. The pet says it in its own voice. */
+export const TOUR = [
+  { title: 'Hi, I live on your windows', text: 'Drag me anywhere and I will hang on where you let go. I climb and perch on window edges by myself.' },
+  { title: 'Click me for a chat', text: 'Right-click me to open this bubble. Actions like sorting or finding files, and questions, start here.' },
+  { title: 'Hand me a folder', text: 'Choose a folder here, or drag me onto one in your file manager where that is supported. I only work in the folder you give me.' },
+] as const
