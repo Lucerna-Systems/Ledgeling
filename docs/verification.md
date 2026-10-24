@@ -470,9 +470,13 @@ Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:u
   RSS 83.3 MiB. The script counted one process, so WebKit helpers and
   WindowServer are not in these numbers. That misses the < 0.5% idle and < 2%
   moving ceilings, and RSS is just over 80 MiB with four pets. There is no
-  earlier measurement of this build to compare with, so it is not known how much
-  of this the sprint added (peer and petting checks are the suspects). A one-pet
-  run and a run of `main` with the same three original pets have not been done.
+  earlier measurement of this build, so `main` was measured the same way (300 s
+  each, same three pets): `main` CPU mean 1.98%, median 1.8%, p95 2.7%, peak RSS
+  83.8 MiB; this branch 1.93%, 1.9%, 2.8%, 84.1 MiB. The sprint adds nothing
+  measurable; **both are about 2% and over the idle ceiling, a gap that was
+  already there and is not closed.** One pet on this branch: mean 2.34%, p95 6.2%,
+  82.8 MiB (RSS over 80 MiB with one pet too). A single screenshot per run showed
+  pets on screen; movement was not confirmed from it.
 
 ## Not verified
 
