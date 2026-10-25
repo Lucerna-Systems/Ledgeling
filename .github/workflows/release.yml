@@ -10,8 +10,8 @@ on:
 
 permissions:
   contents: write
-  # Read-only: lets `plan` see whether verify already passed on this commit.
-  checks: read
+  # Read-only: lets `plan` and verify look at earlier Release runs.
+  actions: read
 
 defaults:
   run:
@@ -58,25 +58,24 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Planned $version"
       # An alpha promotes a commit that already went through the release on
-      # main, so repeating the whole matrix proves nothing new. Skip it only
-      # when verify has passed on all three platforms for this exact commit;
+      # main (verify included), so repeating it proves nothing new. Skip it
+      # only when the Release run for this exact commit on main succeeded;
       # anything else (a hotfix pushed straight to prod, a failed or missing
-      # run) still runs it. Pushes to main always verify: the PR that merged
-      # may have been tested against an older main.
+      # run) still verifies. Pushes to main always go through verify, which
+      # decides for itself what changed since the last good run.
       - id: verified
         if: ${{ github.ref_name == 'prod' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          passed=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-            --jq '[.check_runs[] | select(.name | test("verify \\((macos|ubuntu|windows)-latest\\)"))] as $v | if ([$v[] | select(.conclusion != "success")] | length) > 0 then 0 else [$v[].name | capture("verify \\((?<os>macos|ubuntu|windows)-latest\\)").os] | unique | length end' \
-            || echo 0)
-          if [ "$passed" = 3 ]; then
+          passed=$(gh run list --workflow release.yml --branch main --commit "$GITHUB_SHA" \
+            --status success --json databaseId --jq length || echo 0)
+          if [ "${passed:-0}" -ge 1 ]; then
             echo "verified=true" >> "$GITHUB_OUTPUT"
-            echo "Verify already passed on macOS, Ubuntu and Windows for $GITHUB_SHA; skipping it."
+            echo "The Release run for $GITHUB_SHA on main succeeded; skipping verify."
           else
             echo "verified=false" >> "$GITHUB_OUTPUT"
-            echo "Verify has not passed on all platforms for $GITHUB_SHA ($passed of 3); running it."
+            echo "No successful Release run on main for $GITHUB_SHA; running verify."
           fi
 
   verify:

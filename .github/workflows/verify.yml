@@ -1,10 +1,21 @@
 name: Verify
 
 # Runs on every PR into main or prod, and as the gate in front of every release.
+#
+# It only does the work a change needs. `changes` compares the commit with the
+# last Release run that succeeded (the last known-good state) and decides:
+#   - Rust, packs, schema or sidecar changed -> the three-platform matrix
+#   - only Vue/TypeScript changed            -> type-check, build, unit tests
+#   - only docs changed                      -> nothing
+# Unknown files run everything. `verify-result` is the one check to require.
 on:
   pull_request:
     branches: [main, prod]
   workflow_call:
+
+permissions:
+  contents: read
+  actions: read
 
 defaults:
   run:
@@ -26,7 +37,37 @@ jobs:
           echo "::error::PRs into prod must come from main, not ${{ github.head_ref }}."
           exit 1
 
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.changes.outputs.rust }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Find the last good run
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A PR is compared with where it will land; a release with its own branch.
+          BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          # The commit of the last release run that succeeded on this branch.
+          # Empty (so everything runs) when there is none or the lookup fails.
+          sha=$(gh run list --workflow release.yml --branch "$BRANCH" --status success \
+            --limit 1 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || true)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - id: changes
+        run: node scripts/ci-changes.mjs "${{ steps.base.outputs.sha }}"
+
+  # The three-platform matrix: only when Rust, packs, schema or the sidecar changed.
   verify:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -69,3 +110,40 @@ jobs:
         if: runner.os == 'Linux'
         run: scripts/linux-display-tests.sh
       - run: npm run test:ui
+
+  # Vue or TypeScript changed but Rust did not: one platform is enough, since
+  # the frontend is the same everywhere. (When Rust changed, the matrix above
+  # already ran these.)
+  frontend:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' && needs.changes.outputs.rust != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Type-check and build, then the unit tests.
+      - run: npm run build
+      - run: npm run test:ui
+
+  # One stable name to require in branch protection: it passes when every job
+  # that was needed passed, and when a job was skipped because nothing it covers
+  # changed.
+  verify-result:
+    needs: [source-branch, changes, verify, frontend]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::A verify job finished as '$result'."; exit 1 ;;
+            esac
+          done

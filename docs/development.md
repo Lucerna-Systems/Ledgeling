@@ -77,6 +77,36 @@ To change the base version, bump `version` in `src-tauri/tauri.conf.json`,
 Release artifacts are a macOS DMG for Apple Silicon and one for Intel, a
 Windows x64 NSIS installer, and `SHA256SUMS.txt`. None of them are signed yet.
 
+## What CI runs
+
+The Verify workflow (every PR, and in front of every release) only does the work
+a change needs. Its `changes` job compares the commit with the **last Release run
+that succeeded** on the target branch, which is the last known-good state, and
+looks at which folders differ:
+
+| Changed | Runs |
+|---|---|
+| `src-tauri/`, `packs/`, `schema/`, `sidecar/`, the sidecar or display-test scripts | The three-platform matrix (format, clippy, build, Rust tests, frontend tests) |
+| `src/`, `scripts/`, `index.html`, `vite.config.ts`, `tsconfig.json` only | Type-check, build and unit tests, on one platform |
+| `package.json`, `package-lock.json`, `.github/workflows/verify.yml` | Both |
+| `docs/`, `planning_files/`, `*.md`, `.env.example`, `release.yml` only | Nothing |
+| Any file it does not recognise (a new `server/` folder, say) | Everything |
+
+Everything also runs when there is no earlier successful run, or when that run's
+commit is no longer in the history. Because the comparison is with the last
+*good* run, a red `main` is never hidden: the next change re-runs whatever the
+failed commit touched.
+
+Require the single check **`verify-result`** in branch protection (Settings →
+Branches). It passes when every job that was needed passed, and when a job was
+skipped because nothing it covers changed; requiring the individual matrix jobs
+would hang whenever they are skipped. To teach CI about a new folder, edit
+`scripts/ci-changes.mjs` and its test.
+
+On a push to `prod`, the whole of verify is skipped when the Release run for that
+exact commit on `main` already succeeded, since an alpha is a promotion of a
+tested commit. A hotfix pushed straight to `prod` still verifies.
+
 ## Online server addresses
 
 Online features (the pet marketplace, anonymous statistics) can only reach the
