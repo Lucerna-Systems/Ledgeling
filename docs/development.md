@@ -104,11 +104,52 @@ production. The Environments are created for you on first use; add protection
 rules there if alphas should need approval. Tests and the Verify workflow set
 none, so they run with every online feature unavailable.
 
-**Locally.** Set them for the build you run, for example
-`LEDGELING_MARKETPLACE_HOSTS=localhost npm run tauri dev`. Cargo rebuilds when
-they change. The host must still be https (the gate never allows plain http
-outside the test build), so a local server needs a certificate your machine
-trusts.
+**Locally.** Put them in `.env` (see below) and run `npm run dev:app`. Cargo
+rebuilds when they change. The host must still be https (the gate never allows
+plain http outside the test build), so a local server needs a certificate your
+machine trusts.
+
+## Environment variables and secrets
+
+Three kinds of value, kept apart on purpose:
+
+| Kind | Example | Local | CI | Reaches the app? |
+|---|---|---|---|---|
+| Public build settings | `LEDGELING_MARKETPLACE_HOSTS` | `.env` | Environment **variables** | Yes, compiled in |
+| Developer and test settings | `LEDGELING_TEST_ANTHROPIC_MODEL` | `.env` | Environment variables, only on the step that needs them | No |
+| Secrets (none yet) | an API token for a script | `.env` | Environment **secrets**, only on the step that needs them | **Never** |
+
+**Never compile a secret into the app.** A value read at build time is baked into
+the binary and can be read back out of it. `src-tauri/tests/privacy.rs` fails if
+anything but the two public host lists is read at compile time. The app keeps its
+own users' keys in the operating system keychain, not in any file.
+
+**Local flow.**
+
+1. `cp .env.example .env` and fill in what you need. `.env` is git-ignored, along
+   with `.env.*`; only `.env.example` is tracked.
+2. `npm run dev:app` runs `tauri dev` and `npm run build:app` runs `tauri build`
+   with `.env` loaded. `npm run env -- <command>` does the same for anything else,
+   such as `npm run env -- python3 scripts/benchmark.py`.
+3. A variable already set in your shell wins over `.env`. Empty values are
+   skipped. The loader prints variable names, never values.
+4. Each worktree has its own `.env`. To share one, point at it:
+   `LEDGELING_ENV_FILE=~/ledgeling.env npm run dev:app`.
+
+**Adding a secret later.**
+
+1. Add the name to `.env.example` under **Secrets**, with a comment saying what
+   needs it. Never a real value.
+2. Put the real value in your own `.env`.
+3. In CI, add it as an **environment secret** (Settings → Environments, or a
+   repository secret if every channel shares it) and pass it with
+   `env: NAME: ${{ secrets.NAME }}` on the one step that uses it, as the itch job
+   does for `BUTLER_API_KEY`. Not at the workflow or job level.
+4. Read it at run time (`std::env::var`, `process.env`, `os.environ`), never with
+   `option_env!`.
+
+Rotate a secret that was ever pasted into a chat, a log or a commit; git history
+keeps it even after a revert.
 
 ## itch.io
 

@@ -536,6 +536,16 @@ Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
   are tested. The schema is checked against the limits constants but no JSON
   Schema validator runs over the bundled packs.
 
+## Local .env flow (2026-10-25)
+
+`scripts/with-env.mjs` (4 vitest tests: parsing, shell precedence, no values
+printed, exit code passed through) and a `privacy.rs` test that fails when
+anything other than the two public host lists is read at compile time (checked
+once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
+`.gitignore` was checked with `git check-ignore`. **Not run:** the loader on
+Windows by hand (CI runs its tests there); `npm run dev:app` and
+`npm run build:app` were not launched.
+
 ## Pet sprint (2026-10-24)
 
 Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`
