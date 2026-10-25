@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { parse, pick } from './with-env.mjs'
+import { parse, pick, spec } from './with-env.mjs'
 
 const script = fileURLToPath(new URL('./with-env.mjs', import.meta.url))
 
@@ -42,4 +42,15 @@ it('passes the command exit code through and explains a missing file', () => {
   })
   expect(run.status).toBe(3)
   expect(run.stderr).toContain('No .env file')
+})
+
+it('starts real programs directly and shell shims through a shell, quoting arguments', () => {
+  expect(spec('npm', ['run', 'dev'], 'linux')).toEqual({ command: 'npm', args: ['run', 'dev'], shell: false })
+  expect(spec('node', ['-e', 'a b'], 'win32')).toEqual({ command: 'node', args: ['-e', 'a b'], shell: false })
+  expect(spec('C:\\tools\\python.EXE', ['x y'], 'win32').shell).toBe(false)
+  expect(spec('tauri', ['build', '--config', 'C:\\a b\\o.json', 'say "hi"'], 'win32')).toEqual({
+    command: 'tauri',
+    args: ['build', '--config', '"C:\\a b\\o.json"', '"say ""hi"""'],
+    shell: true,
+  })
 })

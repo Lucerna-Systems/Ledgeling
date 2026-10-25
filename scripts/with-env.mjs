@@ -42,6 +42,19 @@ export function pick(parsed, env) {
   )
 }
 
+/**
+ * How to start `command` on `platform`. npm, npx and tauri are `.cmd` shims on
+ * Windows, which only a shell can start; a real program (`node`, anything
+ * ending in `.exe`) is started directly so its arguments reach it untouched.
+ * Through the shell, an argument with spaces or quotes is wrapped in quotes.
+ */
+export function spec(command, args, platform = process.platform) {
+  const direct = platform !== 'win32' || command === 'node' || /\.exe$/i.test(command)
+  if (direct) return { command, args, shell: false }
+  const quote = arg => (/[\s"]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg)
+  return { command, args: args.map(quote), shell: true }
+}
+
 function main() {
   const [command, ...args] = process.argv.slice(2)
   if (!command) {
@@ -56,11 +69,11 @@ function main() {
   } else {
     console.error('No .env file; copy .env.example to .env to set variables.')
   }
-  const child = spawn(command, args, {
+  const run = spec(command, args)
+  const child = spawn(run.command, run.args, {
     stdio: 'inherit',
     env: { ...process.env, ...added },
-    // npm and npx are .cmd shims on Windows, which only a shell can start.
-    shell: process.platform === 'win32',
+    shell: run.shell,
   })
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal))
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
