@@ -1,99 +1,163 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import CollectionToolbar from '../components/CollectionToolbar.vue'
-import { Search, Sparkles, FolderPlus, Paperclip, Settings2, ArrowUpRight } from '@lucide/vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { ArrowUp, FolderPlus, Globe, Paperclip, Pencil, Plus, Search, Sparkles, X } from '@lucide/vue'
 import { pets } from '../state'
-import { tasks, taskError, assignedPet, droppedFiles, connections, effectiveConnection, taskCall } from './state'
-import { terminal, type Task, type TaskRequest } from './types'
-import TaskCard from './TaskCard.vue'
-import ConnectionsPanel from './ConnectionsPanel.vue'
+import { activeConversation, conversations, renameConversation, tasks, taskError, assignedPet, droppedFiles, promptDraft, effectiveConnection, livePet, providerReady, taskCall } from './state'
+import { presets, providerLabels, type Task, type TaskRequest } from './types'
+import ChatTurn from './ChatTurn.vue'
+import PetFace from './PetFace.vue'
+import PetPicker from './PetPicker.vue'
 import './assistant.css'
-const historyQuery = ref('')
-const historyFilter = ref('all')
-const historyLimit = ref(10)
-const historyFilters = [
-  { value: 'all', label: 'All tasks' }, { value: 'active', label: 'In progress' },
-  { value: 'waiting', label: 'Needs approval' }, { value: 'completed', label: 'Completed' },
-  { value: 'failed', label: 'Failed' }, { value: 'cancelled', label: 'Cancelled' },
-]
-const filteredTasks = computed(() => tasks.value.filter(task =>
-  (historyFilter.value === 'all' || task.status === historyFilter.value || (historyFilter.value === 'active' && !terminal(task.status))) &&
-  [task.request.prompt, task.result, task.connection.kind].join(' ').toLowerCase().includes(historyQuery.value.trim().toLowerCase())
-).sort((a, b) => b.id - a.id))
-watch([historyQuery, historyFilter], () => { historyLimit.value = 10 })
-const prompt = ref('')
+
+const emit = defineEmits<{ providers: [] }>()
+
+const prompt = promptDraft
 const roots = ref<string[]>([])
 const attachments = ref<string[]>([])
 const preset = ref('')
 // Every gate follows the connection the chosen companion would actually
 // run on — a per-pet override changes the mode and consent rules too.
 const effective = computed(() => effectiveConnection(assignedPet.value))
-const override = computed(() => assignedPet.value !== null && !!connections.value.perPet?.[assignedPet.value])
 const mode = computed(() => !preset.value && ['codex', 'claude'].includes(effective.value.kind) ? 'advanced' : 'standard')
 const needsConnection = computed(() => !preset.value && effective.value.kind === 'none')
-const parent = ref<number | null>(null)
-const allowCloud = ref(false)
+// Consent to send content to a provider is given once, when it is added.
+const termsDue = computed(() => !preset.value && !providerReady(effective.value.kind))
 const allowWeb = ref(false)
 const sending = ref(false)
-const setup = ref(false)
-const remote = computed(() => !['none', 'ollama'].includes(effective.value.kind) && !preset.value)
-const assignedName = computed(() => pets.value.find(p => p.id === assignedPet.value)?.name)
+const provider = computed(() => providerLabels[effective.value.kind] ?? effective.value.kind)
+const activePreset = computed(() => presets.find(p => p.value === preset.value))
+const placeholder = computed(() => activePreset.value?.hint ?? (chat.value ? `Reply to ${chat.value.pet?.name.split(' ')[0] ?? 'your pet'}…` : 'Sort a folder, explain a document, or find something out…'))
+const canSend = computed(() => !sending.value && !needsConnection.value && !termsDue.value && !!prompt.value.trim())
+
 watch(assignedPet, async petId => { if (petId !== null) { try { const folder = await taskCall<string | null>('pet_folder', { petId }); if (folder) roots.value = [folder] } catch { /* shared error */ } } }, { immediate: true })
 watch(droppedFiles, paths => { attachments.value = [...new Set([...attachments.value, ...paths])] })
+
 function shortcut(kind: string) {
   if (kind === 'organise') { preset.value = 'sort_type'; prompt.value = 'Organise my folder' }
   else { preset.value = ''; prompt.value = kind === 'summarise' ? 'Summarise the attached document and extract the key points.' : 'Research '; allowWeb.value = kind === 'research' }
 }
+function pickPreset(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  ;(event.target as HTMLSelectElement).value = ''
+  const chosen = presets.find(p => p.value === value)
+  if (!chosen) return
+  preset.value = chosen.value
+  if (chosen.value.startsWith('sort')) prompt.value = chosen.hint
+}
+function clearPreset() { preset.value = ''; prompt.value = '' }
 async function pick(folders: boolean) {
   try { const selected = await taskCall<string[]>('task_pick', { folders }); if (folders) roots.value = [...new Set([...roots.value, ...selected])]; else attachments.value = [...new Set([...attachments.value, ...selected])] } catch { /* shared error */ }
 }
 async function submit() {
-  if (sending.value || needsConnection.value || !prompt.value.trim() || (remote.value && !allowCloud.value)) return
+  if (!canSend.value) return
   sending.value = true
   try {
-    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: parent.value, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: allowCloud.value, allowWeb: allowWeb.value }
+    const request: TaskRequest = { prompt: prompt.value, roots: roots.value, attachments: attachments.value, preset: preset.value, mode: mode.value, parentId: chat.value?.turns.at(-1)?.id ?? null, petId: assignedPet.value ?? pets.value[0]?.id ?? null, allowCloud: false, allowWeb: allowWeb.value }
     const task = await taskCall<Task>('task_start', { request })
-    tasks.value = [task, ...tasks.value.filter(t => t.id !== task.id)]; prompt.value = ''; parent.value = null
+    tasks.value = [task, ...tasks.value.filter(t => t.id !== task.id)]; prompt.value = ''; attachments.value = []; preset.value = ''
+    if (!chat.value) activeConversation.value = task.id
   } catch { /* shared error */ } finally { sending.value = false }
 }
-function followup(task: Task) { parent.value = task.id; preset.value = ''; roots.value = [...task.request.roots]; attachments.value = [...task.request.attachments]; prompt.value = ''; document.getElementById('task-prompt')?.focus() }
-async function clearOverride() {
-  const petId = assignedPet.value
-  if (petId === null || !connections.value.perPet) return
-  delete connections.value.perPet[petId]
-  try { await taskCall('task_save_connections', { config: connections.value }) } catch { /* shared error */ }
+
+const chat = computed(() => conversations.value.find(c => c.id === activeConversation.value) ?? null)
+const chatPetName = computed(() => chat.value?.pet?.name ?? pets.value.find(p => p.id === chat.value?.petId)?.name ?? 'any pet')
+const renaming = ref(false)
+const titleDraft = ref('')
+const titleField = ref<HTMLInputElement | null>(null)
+watch(activeConversation, () => {
+  const current = chat.value
+  if (!current) return
+  const last = current.turns.at(-1)!
+  assignedPet.value = livePet(current.petId, current.pet)
+  roots.value = [...last.request.roots]
+  attachments.value = []
+  preset.value = ''
+  renaming.value = false
+}, { immediate: true })
+
+const thread = ref<HTMLElement | null>(null)
+watch(() => [activeConversation.value, chat.value?.turns.length, chat.value?.turns.at(-1)?.status], async () => {
+  await nextTick()
+  if (thread.value) thread.value.scrollTop = thread.value.scrollHeight
+}, { immediate: true })
+
+async function startRename() {
+  if (!chat.value) return
+  titleDraft.value = chat.value.title
+  renaming.value = true
+  await nextTick()
+  titleField.value?.select()
 }
+async function commitRename() {
+  if (!renaming.value || !chat.value) return
+  renaming.value = false
+  const title = titleDraft.value.trim()
+  if (title !== chat.value.title) { try { await renameConversation(chat.value.id, title) } catch { /* shared error */ } }
+}
+/** Chats send on Enter like any messenger; Shift+Enter still breaks the line. */
+function sendOnEnter(event: KeyboardEvent) {
+  if (!chat.value || event.isComposing) return
+  event.preventDefault()
+  void submit()
+}
+function short(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path }
+
 </script>
+
 <template>
-  <section class="page-heading"><div><h1>Your assistant</h1><p>A little help with the things on your mind.</p></div><span class="connection-badge"><span class="live-dot" />{{ effective.kind === 'none' ? 'Local actions' : effective.kind }}{{ override ? ' · custom model' : '' }}</span></section>
-  <div v-if="taskError" class="error-banner" role="alert">{{ taskError }}<button aria-label="Dismiss task error" @click="taskError = ''">×</button></div>
-  <section class="task-composer">
-    <div class="composer-top"><label>Companion<select v-model="assignedPet"><option :value="null">Any companion</option><option v-for="pet in pets" :key="pet.id" :value="pet.id">{{ pet.name }}</option></select></label><button :aria-expanded="setup" @click="setup = !setup"><Settings2 :size="15" />{{ setup ? 'Close connections' : 'Connections' }}</button></div>
-    <ConnectionsPanel v-if="setup" />
-    <div class="task-shortcuts"><button @click="shortcut('organise')"><FolderPlus :size="14" /> Organise files</button><button @click="shortcut('summarise')"><Sparkles :size="14" /> Summarise</button><button @click="shortcut('research')"><Search :size="14" /> Research</button></div>
-    <form @submit.prevent="submit">
-      <p v-if="parent" class="followup-note">Following up on task #{{ parent }} <button type="button" @click="parent = null">Clear</button></p>
-      <label for="task-prompt" class="sr-only">Your request</label><textarea id="task-prompt" v-model="prompt" rows="3" maxlength="20000" required placeholder="Sort my folder, explain a document, or find something out…" />
-      <details class="request-options"><summary>Task options <span>{{ preset ? 'Built-in action' : mode === 'advanced' ? 'Agent' : 'Ask AI' }}</span></summary>
-      <div class="composer-options">
-        <label>Action<select v-model="preset"><option value="">Ask AI</option><option value="sort_type">Sort by file type · no AI</option><option value="sort_date">Sort by modified month · no AI</option><option value="rename">Batch rename · request is name prefix</option><option value="find">Find files · request is search text</option><option value="duplicates">Find exact duplicates · no deletion</option></select></label>
-      </div>
-      <p v-if="mode === 'advanced'" class="task-problem">This connection uses an agent. Review command approvals carefully; arbitrary commands cannot always be undone.</p>
-      </details>
-      <div class="task-actions attachments-actions"><button type="button" @click="pick(true)"><FolderPlus :size="15" /> Add folder</button><button type="button" @click="pick(false)"><Paperclip :size="15" /> Attach files</button></div>
-      <ul class="attachment-list"><li v-for="path in roots" :key="path">Folder · {{ path }} <button type="button" :aria-label="`Remove ${path}`" @click="roots = roots.filter(p => p !== path)">×</button></li><li v-for="path in attachments" :key="path">Document · {{ path }} <button type="button" :aria-label="`Remove ${path}`" @click="attachments = attachments.filter(p => p !== path)">×</button></li></ul>
-      <p class="task-meta">{{ preset ? 'Built-in action · runs locally' : `${effective.kind === 'none' ? 'No AI connection' : `${effective.kind}${effective.model ? ` ${effective.model}` : ''}`} · ${remote ? 'selected content is sent to this provider' : 'local processing'}` }}{{ override && assignedName ? ` — ${assignedName} uses its own model ` : '' }}<button v-if="override" class="text-link" @click="clearOverride">Use the default</button></p>
-      <label v-if="remote" class="check-label"><input v-model="allowCloud" type="checkbox"> Allow this provider to access selected content</label>
-      <label v-if="!preset" class="check-label"><input v-model="allowWeb" type="checkbox"> Allow web research</label>
-      <p v-if="needsConnection" class="connection-hint">Choose a built-in action above, or open Connections to add an AI provider.</p>
-      <div class="composer-bottom"><span>Changes are previewed before applying.</span><button class="primary-button" :disabled="sending || needsConnection || !prompt.trim() || (remote && !allowCloud)">{{ sending ? 'Starting…' : 'Send request' }}<ArrowUpRight :size="15" /></button></div>
-    </form>
+  <div class="assistant-page" :class="{ chatting: chat }">
+  <section v-if="chat" class="chat-header">
+    <PetFace :pet="chat.pet" :pet-id="chat.petId" :size="40" />
+    <div class="chat-heading">
+      <input v-if="renaming" ref="titleField" v-model="titleDraft" maxlength="80" aria-label="Conversation name"
+             @keydown.enter.prevent="commitRename" @keydown.esc.prevent="renaming = false" @blur="commitRename">
+      <h1 v-else @dblclick="startRename">{{ chat.title }}</h1>
+      <p>With {{ chatPetName }} · {{ chat.turns.length }} {{ chat.turns.length === 1 ? 'request' : 'requests' }}</p>
+    </div>
+    <button v-if="!renaming" type="button" class="icon-button" aria-label="Rename conversation" @click="startRename"><Pencil :size="15" /></button>
+    <button type="button" class="new-chat-button" @click="activeConversation = null"><Plus :size="15" /> New chat</button>
   </section>
-  <section class="task-history">
-    <div class="section-heading"><h2>Task history <span>{{ tasks.length }}</span></h2></div>
-    <CollectionToolbar v-model:query="historyQuery" v-model:filter="historyFilter" label="Search tasks" :count="filteredTasks.length" :options="historyFilters" />
-    <div v-if="!filteredTasks.length" class="empty-state"><Search :size="26" /><h3>{{ tasks.length ? 'No matching tasks' : 'A fresh start' }}</h3><p>{{ tasks.length ? 'Try a different search or status.' : 'Your requests and results will appear here.' }}</p></div>
-    <TaskCard v-for="task in filteredTasks.slice(0, historyLimit)" :key="task.id" :task="task" @followup="followup" />
-    <button v-if="filteredTasks.length > historyLimit" class="load-more" @click="historyLimit += 10">Show more tasks · {{ filteredTasks.length - historyLimit }} remaining</button>
+  <section v-else class="page-heading">
+    <div><h1>Assistant</h1><p>Pick who helps, then ask for what you need.</p></div>
   </section>
+  <div v-if="taskError" class="error-banner" role="alert">{{ taskError }}<button aria-label="Dismiss task error" @click="taskError = ''"><X :size="15" /></button></div>
+  <div v-if="chat" ref="thread" class="chat-thread" aria-live="polite">
+    <ChatTurn v-for="task in chat.turns" :key="task.id" :task="task" :pet="chat.pet" />
+  </div>
+  <PetPicker v-else @providers="emit('providers')" />
+
+  <form class="task-composer" @submit.prevent="submit">
+    <div v-if="activePreset" class="preset-pill">
+      <Sparkles :size="13" /> {{ activePreset.label }} <span>· runs on this computer, no AI</span>
+      <button type="button" aria-label="Stop using this action" @click="clearPreset"><X :size="13" /></button>
+    </div>
+    <label for="task-prompt" class="sr-only">Your request</label>
+    <textarea id="task-prompt" v-model="prompt" rows="3" maxlength="20000" required :placeholder="placeholder" @keydown.meta.enter="submit" @keydown.ctrl.enter="submit" @keydown.enter.exact="sendOnEnter" />
+    <ul v-if="roots.length || attachments.length" class="attachment-list">
+      <li v-for="path in roots" :key="path" :title="path"><FolderPlus :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="roots = roots.filter(p => p !== path)"><X :size="11" /></button></li>
+      <li v-for="path in attachments" :key="path" :title="path"><Paperclip :size="12" /> {{ short(path) }} <button type="button" :aria-label="`Remove ${path}`" @click="attachments = attachments.filter(p => p !== path)"><X :size="11" /></button></li>
+    </ul>
+    <p v-if="effective.kind === 'apple' && !preset" class="apple-note">Apple Intelligence answers from a look at your folder. It can't change files; use a built-in action or another AI for that.</p>
+    <p v-if="mode === 'advanced'" class="task-problem">This AI can run commands on your computer. You'll approve each step, but some can't be undone.</p>
+    <p v-if="termsDue" class="task-problem">{{ provider }} needs its terms accepted once before it can run. <button type="button" class="text-link" @click="emit('providers')">Open AI providers</button></p>
+    <div class="composer-toolbar">
+      <button type="button" class="tool-button" title="Add a folder" aria-label="Add folder" @click="pick(true)"><FolderPlus :size="16" /></button>
+      <button type="button" class="tool-button" title="Attach files" aria-label="Attach files" @click="pick(false)"><Paperclip :size="16" /></button>
+      <button v-if="!preset" type="button" class="tool-button web-toggle" :aria-pressed="allowWeb" title="Let it search the web" @click="allowWeb = !allowWeb"><Globe :size="16" /> Web</button>
+      <button class="primary-button send-button" :disabled="!canSend" :aria-label="sending ? 'Sending' : 'Send request'"><ArrowUp :size="17" /></button>
+    </div>
+  </form>
+
+  <div v-if="!chat" class="task-shortcuts" aria-label="Suggestions">
+    <button type="button" @click="shortcut('organise')"><FolderPlus :size="14" /> Organise files</button>
+    <button type="button" @click="shortcut('summarise')"><Sparkles :size="14" /> Summarise</button>
+    <button type="button" @click="shortcut('research')"><Search :size="14" /> Research</button>
+    <select class="shortcut-select" aria-label="More actions" value="" @change="pickPreset">
+      <option value="" disabled>More actions…</option>
+      <option v-for="option in presets" :key="option.value" :value="option.value">{{ option.label }}</option>
+    </select>
+  </div>
+
+  <p v-if="needsConnection" class="connection-hint">No AI picked yet. Try <strong>Organise files</strong> or another built-in action, or <button type="button" class="text-link" @click="emit('providers')">set up an AI provider</button> to ask anything.</p>
+  </div>
 </template>

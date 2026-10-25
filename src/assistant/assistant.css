@@ -1,31 +1,68 @@
-.task-composer, .task-card { padding: 18px; margin-bottom: 14px; }
-.task-composer { border-color: var(--line); }
-.composer-top, .composer-bottom, .task-card header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.composer-top { margin-bottom: 14px; }
-.task-composer label, .connections-panel label { display: grid; gap: 6px; font-size: 11px; color: var(--muted); }
-.composer-top > label { display: flex; align-items: center; gap: 10px; }
-.composer-top select { max-width: 220px; }
-.task-composer textarea { display: block; width: 100%; min-height: 98px; resize: vertical; line-height: 1.65; padding: 12px 14px !important; font-size: 13px !important; background: var(--surface) !important; }
-.task-actions, .task-shortcuts, .composer-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
-.app-shell .task-shortcuts button { border-radius: 20px !important; min-height: 29px !important; background: var(--soft) !important; border-color: transparent !important; font-size: 11px !important; padding: 5px 10px !important; }
-.task-shortcuts { margin: 0 0 12px; }
-.task-composer .check-label, .connections-panel .check-label { display: flex; align-items: center; gap: 8px; font-size: 11px; margin: 8px 0; }
-.request-options { margin-top: 12px; }
-.request-options > summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; width: fit-content; font-size: 11px; }
-.request-options > summary::before { content: '›'; font-size: 18px; line-height: 1; }
-.request-options[open] > summary::before { transform: rotate(90deg); }
-.request-options summary span { color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 8px; font-size: 10px; }
-.composer-options label { min-width: 120px; flex: 1; }
-.composer-options select { width: 100%; }
-.attachments-actions { margin: 12px 0; }
-.app-shell .attachments-actions button { font-size: 11px; }
-.composer-bottom { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); }
-.composer-bottom .primary-button { flex-shrink: 0; }
-.connection-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; border: 1px solid var(--line); border-radius: 20px; padding: 5px 10px; background: var(--surface); color: var(--muted); text-transform: capitalize; }
-.task-meta { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; margin: 8px 0 !important; }
-.task-card header { align-items: flex-start; }
-.task-card header strong { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.task-status { font-size: 10px; font-weight: 500; white-space: nowrap; padding: 3px 8px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); text-transform: capitalize; }
+.task-card { padding: 18px 20px; margin-bottom: 12px; }
+.task-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+
+.assistant-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.assistant-page > * { flex-shrink: 0; }
+.assistant-page > .task-composer { flex: 1 1 150px; min-height: 150px; display: flex; flex-direction: column; }
+.assistant-page > .task-composer textarea { flex: 1; min-height: 60px !important; }
+/* Keys & apps is long; it scrolls inside itself so the page never does. */
+/* Composer: one calm box; everything optional hides until it matters. */
+.task-composer { padding: 6px 8px 8px; margin-bottom: 12px; transition: border-color 120ms, box-shadow 120ms; }
+.task-composer:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent), var(--shadow); }
+.app-shell .task-composer textarea { display: block; width: 100%; min-height: 96px; resize: none; border: 0 !important; background: transparent !important; outline: none; padding: 12px 12px 4px !important; font-size: 14.5px !important; line-height: 1.6; }
+.composer-toolbar { display: flex; align-items: center; gap: 2px; padding: 4px 2px 0; }
+.app-shell .tool-button { min-height: 34px !important; padding: 6px 9px !important; border: 0 !important; background: transparent !important; color: var(--muted); border-radius: 10px !important; font-size: 12.5px !important; }
+.app-shell .tool-button:hover { background: var(--soft) !important; color: var(--ink); }
+.app-shell .web-toggle[aria-pressed="true"] { background: var(--accent-soft) !important; color: var(--accent); }
+.app-shell .send-button { margin-left: auto; width: 36px; min-height: 36px !important; padding: 0 !important; border-radius: 50% !important; }
+.preset-pill { display: inline-flex; align-items: center; gap: 6px; margin: 8px 8px 0; padding: 4px 6px 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
+.preset-pill span { font-weight: 400; opacity: .85; }
+.app-shell .preset-pill button { min-height: 22px !important; width: 22px; padding: 0 !important; border: 0 !important; border-radius: 50% !important; background: transparent !important; color: inherit; }
+.followup-note { display: flex; align-items: center; gap: 10px; margin: 8px 12px 0 !important; font-size: 12px; color: var(--muted); }
+.task-composer .check-label { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 8px 0; color: var(--ink); }
+.task-composer .task-problem { margin: 6px 8px; }
+.task-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.app-shell .task-shortcuts button, .app-shell .shortcut-select { border-radius: 999px !important; min-height: 32px !important; background: var(--surface) !important; border: 1px solid var(--line) !important; font-size: 12.5px !important; font-weight: 500 !important; padding: 5px 13px !important; color: var(--muted); }
+.app-shell .shortcut-select { padding-right: 30px !important; }
+.app-shell .task-shortcuts button:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)) !important; color: var(--accent); }
+/* Pet carousel: stories-style, the selected pet centred and enlarged */
+.pet-picker { position: relative; margin: -6px 0 22px; }
+.carousel { position: relative; height: 188px; }
+.carousel-stage { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.app-shell .pet-choice { position: absolute; left: 50%; top: 6px; display: grid; justify-items: center; gap: 1px; width: 128px; padding: 0; border: 0; border-radius: 0; background: transparent; font-weight: 400; transform-origin: 50% 40%; transition: transform 360ms cubic-bezier(.2,.8,.2,1), opacity 300ms; }
+.app-shell .pet-choice:hover { background: transparent; }
+.app-shell .pet-choice:not([aria-checked="true"]):hover { opacity: 1 !important; }
+.choice-ring { display: grid; place-items: center; width: 108px; height: 108px; margin-bottom: 10px; padding: 3px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--line-strong); transition: box-shadow 260ms ease; }
+.pet-choice[aria-checked="true"] .choice-ring { box-shadow: inset 0 0 0 2px var(--accent), 0 8px 24px -6px color-mix(in srgb, var(--accent) 30%, transparent), 0 2px 6px -2px #0000001f; }
+.choice-portrait { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--accent-soft); color: var(--accent); border: 3px solid var(--canvas); }
+.choice-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; transform: scale(1.35); transform-origin: 50% 15%; image-rendering: pixelated; }
+.pet-choice strong { font-size: 14px; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-choice small { font-size: 11.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-choice small.own { color: var(--accent); font-weight: 600; }
+.app-shell .carousel-arrow { position: absolute; z-index: 20; top: 48px; width: 32px; min-height: 32px; padding: 0; border-radius: 50%; box-shadow: var(--shadow); }
+.carousel-arrow.left { left: 4px; }
+.carousel-arrow.right { right: 4px; }
+.app-shell .carousel-arrow:disabled { opacity: 0; pointer-events: none; }
+.pet-choice[aria-checked="true"] small { visibility: hidden; }
+/* The centred pet's model line is the model picker; it sits where that pet's label would be. */
+.model-anchor { position: relative; z-index: 30; display: flex; justify-content: center; align-items: center; gap: 8px; height: 28px; margin: -32px auto 24px; }
+.app-shell .model-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 8px 3px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 550; box-shadow: var(--shadow); }
+.app-shell .model-chip svg { color: var(--muted); transition: transform 160ms; }
+.app-shell .model-chip.open svg { transform: rotate(180deg); }
+.app-shell .model-chip:hover, .app-shell .model-chip.open { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--surface); }
+.app-shell .model-chip.own { color: var(--accent); }
+.model-saved { position: absolute; left: calc(50% + 90px); font-size: 12px; color: var(--status-live); font-weight: 600; }
+.model-popover { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: 300px; display: grid; gap: 12px; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-lift); text-align: left; }
+.model-popover::before { content: ''; position: absolute; top: -6px; left: calc(50% - 6px); width: 11px; height: 11px; background: var(--surface); border-left: 1px solid var(--line); border-top: 1px solid var(--line); transform: rotate(45deg); }
+.popover-field { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
+.model-popover input { width: 100%; }
+.popover-title { margin: 0 !important; font-size: 13px; font-weight: 650; color: var(--ink); }
+.popover-note { margin: -4px 0 0 !important; font-size: 11.5px; color: var(--muted); }
+.model-setup { justify-self: start; }
+.task-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.task-meta { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; margin: 6px 0 !important; }
+.task-card header strong { font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.task-status { font-size: 11px; font-weight: 600; white-space: nowrap; padding: 3px 9px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); text-transform: capitalize; }
 .task-status[data-status=waiting] { background: var(--status-waiting-bg); color: var(--status-waiting-ink); }
 .task-status[data-status=running], .task-status[data-status=queued] { background: var(--status-running-bg); color: var(--status-running-ink); }
 .task-status[data-status=failed], .task-status[data-status=interrupted] { background: var(--status-failed-bg); color: var(--danger); }
@@ -58,33 +95,66 @@
 .operation-list { padding-left: 20px; list-style: decimal; }
 .operation-list li { padding: 8px 0; overflow-wrap: anywhere; }.operation-list span { display: block; font-weight: 600; }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
-.attachment-list li { display: flex; align-items: center; gap: 6px; background: var(--soft); border-radius: 8px; padding: 3px 7px; font-size: 10px; overflow-wrap: anywhere; min-width: 0; }
-.attachment-list li button { min-height: 24px !important; padding: 0 5px !important; }
+.attachment-list { margin: 6px 10px; }
+.attachment-list li { display: flex; align-items: center; gap: 6px; background: var(--soft); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.app-shell .attachment-list li button { min-height: 20px !important; width: 20px; padding: 0 !important; border: 0 !important; border-radius: 50% !important; background: transparent !important; color: var(--muted); }
 .task-sources { list-style: none; padding: 0; margin-top: 14px; }.task-sources small { display: block; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .task-card details { margin-top: 12px; font-size: 11px; overflow-wrap: anywhere; }
-.task-history { margin-top: 26px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .section-heading h2 { margin: 0; font-size: 15px; }.section-heading h2 span { font-size: 11px; font-weight: 500; background: var(--soft); border-radius: 7px; padding: 2px 6px; margin-left: 6px; color: var(--muted); }
-.connections-panel { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 12px 0; font-size: 12px; }
-.connections-panel label { margin: 12px 0; }
-.connections-panel hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
-.connections-panel h4 { font-size: 12px; font-weight: 650; margin: 14px 0 2px; color: var(--ink); }
-.connection-summary { font-size: 11px; color: var(--accent); font-weight: 600; }
-.connection-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 12px 0; }
-.connection-section { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px; }
-.connection-section h4 { margin: 0 0 4px; }
-.detection-note { font-size: 10px; color: var(--muted); margin: 0 0 4px; }
-.provider-status { font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; margin: 10px 0; }
-.apple-terms { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 10px; margin: 8px 0; }
-.apple-terms-text { font-size: 11px; line-height: 1.5; color: var(--muted); white-space: pre-wrap; margin: 8px 0 0; max-height: 190px; overflow-y: auto; font-family: inherit; }
-.per-pet-row { border-top: 1px dashed var(--line); padding: 9px 0 4px; }
-.per-pet-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 11px; }
-.per-pet-summary strong { font-size: 12px; color: var(--ink); }
-.per-pet-summary span { color: var(--muted); flex: 1; min-width: 100px; }
-.per-pet-edit { padding: 4px 0 10px; }
-.load-more { width: 100%; }
+/* AI providers: one row per provider; the open one grows a setup area underneath. */
+.providers-summary { margin: -12px 0 6px !important; color: var(--muted); font-size: 12.5px; }
+.provider-item + .provider-item { border-top: 1px solid var(--line); }
+.provider-item .setting-row { border-bottom: 0; }
+.provider-item .chevron { margin-left: 4px; transition: transform 160ms; }
+.provider-item.open .chevron { transform: rotate(180deg); }
+.provider-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; background: var(--soft); color: var(--muted); }
+.provider-pill[data-tone=added] { background: var(--accent-soft); color: var(--accent); }
+.provider-pill[data-tone=warn] { background: var(--warn-soft); color: var(--ink); }
+.provider-setup { display: grid; gap: 12px; padding: 0 0 18px; font-size: 12.5px; }
+.provider-setup label:not(.check-label) { display: grid; gap: 5px; color: var(--muted); font-size: 12px; max-width: 460px; }
+.provider-setup .check-label { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.provider-setup .text-link { justify-self: start; }
+.provider-status { margin: 0 !important; font-size: 12px; color: var(--muted); background: var(--soft); border-radius: 8px; padding: 8px 10px; }
+.provider-account { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; }
+.provider-account span { color: var(--ink); }
+.provider-terms { display: grid; gap: 8px; }
+.provider-terms h4 { margin: 0; font-size: 12px; font-weight: 650; color: var(--ink); }
+.provider-terms-text { margin: 0; padding: 10px 12px; max-height: 200px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); color: var(--muted); font: inherit; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.terms-accepted { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 !important; color: var(--muted); font-size: 12px; }
+.terms-accepted svg { color: var(--accent); }
+.provider-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.app-shell .provider-actions .text-link.danger { color: var(--danger); }
+.provider-missing, .provider-feedback { margin: 0 !important; font-size: 12px; color: var(--muted); }
+.popover-note.warn { color: var(--ink); }
+.apple-note { margin: 6px 12px 0 !important; font-size: 12px; color: var(--muted); }
+.connection-hint .text-link, .task-problem .text-link { font-size: inherit; }
+.load-more { width: 100%; margin-top: 8px; }
+.history-group .group-title { margin-top: 22px !important; }
 @media (max-width: 760px) {
   .composer-top, .composer-bottom { flex-wrap: wrap; }
   .task-composer, .task-card { padding: 14px; }
   .composer-top > label { flex-wrap: wrap; }
 }
+/* Chat: header, a thread that scrolls on its own, and the composer pinned below. */
+.chat-header { display: flex; align-items: center; gap: 14px; margin: 26px 0 16px; }
+.chat-heading { flex: 1; min-width: 0; }
+.app-shell .chat-heading h1 { font-size: 22px; letter-spacing: -.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.app-shell .chat-heading input { width: 100%; font-size: 20px; font-weight: 700; padding: 2px 8px; margin-left: -9px; }
+.chat-heading p { margin: 2px 0 0 !important; color: var(--muted); font-size: 12.5px; }
+.app-shell .new-chat-button { border-radius: 999px; }
+.assistant-page > .chat-thread { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -8px 12px; padding: 4px 8px 8px; }
+.assistant-page.chatting > .task-composer { flex: 0 0 auto; min-height: 0; }
+.assistant-page.chatting > .task-composer textarea { min-height: 52px !important; max-height: 180px; }
+.chat-turn { display: grid; gap: 10px; margin-bottom: 18px; }
+.chat-bubble.you { justify-self: end; max-width: min(78%, 560px); padding: 10px 14px; border-radius: 18px 18px 4px 18px; background: var(--accent-gradient); color: var(--on-accent); box-shadow: 0 4px 14px -8px var(--accent-glow); }
+.chat-prompt { margin: 0 !important; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.55; }
+.chat-preset { display: flex; align-items: center; gap: 5px; margin: 0 0 4px !important; font-size: 11.5px; font-weight: 600; opacity: .85; }
+.chat-bubble.you .attachment-list { margin-top: 6px; }
+.chat-bubble.you .attachment-list li { background: color-mix(in srgb, #fff 18%, transparent); color: inherit; }
+.chat-reply { display: flex; align-items: flex-start; gap: 10px; max-width: min(92%, 720px); }
+.chat-reply > .pet-face { margin-top: 2px; }
+.task-card.in-chat { flex: 1; min-width: 0; margin: 0; padding: 12px 16px; border-radius: 4px 18px 18px 18px; }
+.task-card.in-chat header { justify-content: flex-start; margin-bottom: 4px; }
+.task-card.in-chat .task-result { margin-top: 4px; }
+.task-card.in-chat .task-actions:empty { display: none; }

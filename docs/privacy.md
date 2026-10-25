@@ -1,8 +1,9 @@
-# What Perch looks at
+# What Ledgeling looks at
 
-Perch runs entirely on your computer. There is no account, no server, and no
-telemetry. Nothing you do in Perch reaches a network, because the program contains
-no code that can reach one.
+Ledgeling runs entirely on your computer. There is no account and nothing is sent
+anywhere by default: every online feature is **off until you switch it on**, and
+you can switch it off again at any time. See [Online features](#online-features)
+below.
 
 ## Collected
 
@@ -13,18 +14,19 @@ no code that can reach one.
 | Position and size of your open windows, and their front-to-back order | This is the floor the pet stands on | Memory only |
 | Mouse pointer position | So the pet can react to your cursor and be picked up | Memory only |
 | How long your current unbroken stretch of work has been | The nudge ladder, and nothing else | Memory only |
-| Your settings, and where each pet was last standing | So it is where you left it after a restart | `settings.json` in Perch's own config folder |
+| Your settings, and where each pet was last standing | So it is where you left it after a restart | `settings.json` in Ledgeling's own config folder |
 
 ## Never collected
 
 - **Window titles.** Not read, not stored, not requested from the operating system
   at any point. Titles routinely contain email subject lines, document names,
   customer names and URLs, and no feature is worth that.
-- **What you type.** Perch knows *that* input happened. It never learns what it was,
+- **What you type.** Ledgeling knows *that* input happened. It never learns what it was,
   and installs no keyboard hook.
 - **Screen contents.** No screenshots, no screen recording permission, ever.
 - **The clipboard, your files, your file paths, your browser history or tabs.**
-- **Anything sent anywhere.** There is no network code in the build.
+- **Anything sent anywhere** unless you have switched on an online feature, and then
+  only what that feature says it sends.
 
 ## How the application category is worked out
 
@@ -35,18 +37,81 @@ no code that can reach one.
    only the category.
 5. Throw the name away.
 
-Step 4's table is yours to edit, on the **Your day** page. The window title is never
+Step 4's table is yours to edit, under **Settings → Advanced → Awareness details**. The window title is never
 part of this sequence.
 
 ## How this is enforced
 
 `src-tauri/tests/privacy.rs` fails the build if any source file references a
 window-title API, a screen-capture API, a keyboard-state API, or anything that can
-open a network connection, and if Perch's permission list grants anything beyond
-local window events. It is checked by a machine on every test run, not by memory.
+open a network connection outside the `net` gate and the assistant's task adapters,
+if more than one file holds an HTTP client, if the gate's `send` does not check your
+consent first, and if Ledgeling's permission list grants anything beyond local
+window events. It is checked by a machine on every test run, not by memory.
+
+## Online features
+
+Each optional online feature is a named **scope**. Today there are two:
+
+- **Pet marketplace.** Browse, download and update pets. Nothing is contacted until
+  you switch it on and press a button in the marketplace. You can allow it for one
+  session (it is off again after Ledgeling quits) or until you switch it off.
+- **Anonymous usage statistics.** Off by default, and only ever on until you switch
+  it off. No statistics are collected or sent yet; the switch exists so that the
+  promise is in place before the feature is.
+
+How it is kept honest:
+
+- Every scope starts off. Only a choice you made to *remember* is written to disk
+  (`net-consent.json`); a missing or damaged file means everything is off.
+- All online requests go through one gate. It refuses a scope that is off before
+  it opens any connection, talks https only, only to that scope's listed servers
+  (fixed when the app is built; a build with none cannot switch the feature on)
+  (a redirect to any other server is not followed), caps how much it will download,
+  and stops a request in progress the moment you switch its scope off.
+- Only the companion window can change these switches; a pet or a page cannot.
+- Downloaded pets are checked against the hash the marketplace published before
+  anything is unpacked, and are held to the pack limits in
+  [pack-authoring.md](pack-authoring.md).
+- Statistics, when they exist, will be a fixed list of events with no free text:
+  never window titles, file names, app names, pet names or anything you type.
+
+## Coding mode (Developer tools)
+
+Coding mode is off unless you turn on **Settings → For developers → Developer
+tools**. When it is on, and only for project folders you add yourself, it:
+
+- reads and writes the files in those projects,
+- runs `git` and the commands you start in its terminals or Run tab, and
+- reads the operating system's list of listening ports (`lsof`/`netstat`) and
+  process parents (`ps`), so it can show which port your dev server opened.
+
+It opens no network connections and never connects to a port.
+
+The **GitHub view** runs your own GitHub CLI (`gh`), which talks to GitHub with
+your sign-in. Ledgeling itself still opens no connection. Nothing is sent until
+you open that view, and then only requests about the repository your worktree
+pushes to and your boards; the branch's pull request is checked every two
+minutes while the window is open after that. Pictures and avatars from GitHub
+are never loaded. The add-on
+installers download software only when you press Install, and they run in a
+terminal where you can watch them. Its state (your project list, which pet works
+in which worktree, and the window position) is kept in `coding/workspaces.json`
+in Ledgeling's config folder. See [coding-mode.md](coding-mode.md).
+
+## Terminals and agent events
+
+A pet's terminal (**Terminal** in its bubble, see [terminal-mode.md](terminal-mode.md))
+runs your own login shell in the folder you gave the pet. It opens no network
+connection of its own. For `claude` only, Ledgeling passes a settings file for
+that run (`--settings`) so Claude Code runs `ledgeling --agent-event` on its
+events. That appends the event name, tool name and notification text to a file in
+Ledgeling's config folder, readable only by you and deleted with the session;
+prompts, file contents and tool input are dropped before anything is written.
+Your own Claude configuration is never edited.
 
 ## Turning it off
 
-The **Your day** page has one switch that disables all of it: no idle polling, no
+**Settings** has one switch, **Notice my day**, that disables all of it: no idle polling, no
 foreground check, no session tracking, no nudges. The pet carries on living on your
 windows exactly as before. It just stops noticing your day.

@@ -3,15 +3,16 @@
 //! replaying a window-layout timeline through a mock platform.
 use crate::{
     awareness::{Awareness, AwarenessSummary},
-    packs::{loader, manifest::Event, LocomotionClass, Pack},
-    pet::{fsm::Rng, spawn_point, Pet, WorldView},
+    packs::{loader, LocomotionClass, Pack},
+    pet::{fsm::Rng, spawn_point, Bond, Peer, Pet, WorldView},
     platform::Platform,
-    settings::{PetSetting, Settings},
+    settings::{clean_name, PetSetting, Settings},
     world::{
         self, virtual_desktop, MonitorInfo, Point, Rect, Surface, SurfaceChange, SurfaceGraph,
         SurfaceTracker, WindowInfo,
     },
 };
+use chrono::NaiveDate;
 use std::{collections::HashMap, sync::Arc};
 
 /// Baseline window poll, bumped for a couple of seconds after any change.
@@ -33,7 +34,7 @@ pub struct Engine {
     pub settings: Settings,
     pub suspended: bool,
     /// False while the screens cannot be read: a locked session or a sleeping
-    /// display. Perch suspends rather than pretending the desktop is empty.
+    /// display. Ledgeling suspends rather than pretending the desktop is empty.
     pub screens_available: bool,
     pub scan_ms: f64,
     pub scan_error: Option<String>,
@@ -49,6 +50,10 @@ pub struct Engine {
     fast_until: f64,
     last_suspend_check: f64,
     rng: Rng,
+    pending_welcome: bool,
+    /// Set when the engine changed something that must reach `settings.json`.
+    settings_changed: bool,
+    today: NaiveDate,
 }
 
 impl Engine {
@@ -77,6 +82,9 @@ impl Engine {
             fast_until: 0.,
             last_suspend_check: f64::NEG_INFINITY,
             rng: Rng::new(0x5EED_1234),
+            pending_welcome: false,
+            settings_changed: false,
+            today: NaiveDate::default(),
         }
     }
 
@@ -158,6 +166,7 @@ impl Engine {
         let id = self.next_id;
         self.next_id += 1;
         let mut pet = Pet::new(id, pack, position);
+        pet.bond = Bond::new(self.today);
         pet.perch = perch;
         pet.home = perch;
         if perch.is_some() {
@@ -165,6 +174,30 @@ impl Engine {
         }
         self.pets.push(pet);
         Ok(id)
+    }
+
+    /// Tell the engine what day it is. Kept out of the pets so bond logic needs
+    /// no clock: a later day than a pet was last seen is one more day together.
+    pub fn set_today(&mut self, day: NaiveDate) {
+        self.today = day;
+        for pet in &mut self.pets {
+            pet.roll_day(day);
+        }
+    }
+
+    pub fn today(&self) -> NaiveDate {
+        self.today
+    }
+
+    /// Rename a pet; an empty name goes back to the pack's own.
+    pub fn rename_pet(&mut self, id: u64, name: &str) -> bool {
+        match self.pets.iter_mut().find(|p| p.id == id) {
+            Some(pet) => {
+                pet.bond.name = clean_name(name);
+                true
+            }
+            None => false,
+        }
     }
 
     /// The bubble opened on one pet; there is only one bubble, so opening it
@@ -206,6 +239,10 @@ impl Engine {
         for setting in wanted {
             match self.spawn(&setting.pack_id) {
                 Ok(id) => {
+                    if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+                        pet.bond = bond_from(&setting, self.today);
+                        pet.roll_day(self.today);
+                    }
                     // A saved spot only applies while it is still on the
                     // screens pets have: coordinates from a disconnected
                     // display would drop the pet outside the world it was
@@ -217,6 +254,13 @@ impl Engine {
                             }
                         }
                     }
+                    // A folder that was moved or deleted since is forgotten
+                    // rather than failing every action the pet is asked for.
+                    if let Some(folder) =
+                        setting.folder.filter(|f| std::path::Path::new(f).is_dir())
+                    {
+                        self.set_pet_folder(id, Some(folder));
+                    }
                 }
                 Err(_) => missing.push(setting.pack_id.clone()),
             }
@@ -227,6 +271,70 @@ impl Engine {
         missing
     }
 
+    /// Ask for the first-run welcome: a pet dropped onto the window the user is
+    /// looking at. Only a fresh install qualifies, and only once.
+    pub fn request_welcome(&mut self) {
+        if !self.settings.welcomed && self.pets.is_empty() {
+            self.pending_welcome = true;
+        }
+    }
+
+    /// Whether a welcome is still waiting for a window to land on.
+    pub fn welcome_pending(&self) -> bool {
+        self.pending_welcome
+    }
+
+    /// Whether the engine changed settings since this was last asked. The app
+    /// saves when it is true, so a first run is remembered even if the app is
+    /// killed before a clean quit.
+    pub fn take_settings_changed(&mut self) -> bool {
+        std::mem::take(&mut self.settings_changed)
+    }
+
+    fn welcome(&mut self) {
+        self.pending_welcome = false;
+        self.settings.welcomed = true;
+        self.settings_changed = true;
+        let preferred = "com.perch.squirrel-red";
+        let pack_id = if self.packs.contains_key(preferred) {
+            Some(preferred.to_string())
+        } else {
+            self.packs.keys().min().cloned()
+        };
+        let Some(id) = pack_id.and_then(|pack| self.spawn(&pack).ok()) else {
+            return;
+        };
+        let bounds = self.bounds();
+        let Some(window) = self.windows.first() else {
+            return;
+        };
+        let x = window
+            .rect
+            .center()
+            .x
+            .clamp(bounds.x, bounds.x + bounds.width);
+        let y = bounds.y;
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.position = Point::new(x, y);
+            pet.drop_in();
+        }
+    }
+
+    /// Gives a pet its default working folder, or takes it away.
+    pub fn set_pet_folder(&mut self, id: u64, folder: Option<String>) {
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
+            pet.folder = folder;
+        }
+    }
+
+    /// Every pet that has a working folder, for the bubble to read.
+    pub fn pet_folders(&self) -> Vec<(u64, String)> {
+        self.pets
+            .iter()
+            .filter_map(|p| p.folder.clone().map(|f| (p.id, f)))
+            .collect()
+    }
+
     pub fn remember_pets(&mut self) {
         self.settings.pets = self
             .pets
@@ -235,6 +343,12 @@ impl Engine {
                 pack_id: pet.pack.manifest.id.clone(),
                 x: pet.position.x.is_finite().then_some(pet.position.x),
                 y: pet.position.y.is_finite().then_some(pet.position.y),
+                folder: pet.folder.clone(),
+                name: pet.bond.name.clone(),
+                met: Some(pet.bond.met.to_string()),
+                last_seen: Some(pet.bond.last_seen.to_string()),
+                days: pet.bond.days,
+                affection: pet.bond.affection,
             })
             .collect();
     }
@@ -254,7 +368,10 @@ impl Engine {
             return;
         }
         self.scan(platform);
-        let mut events = self.awareness.tick(dt, platform);
+        if self.pending_welcome && !self.surfaces.is_empty() {
+            self.welcome();
+        }
+        let events = self.awareness.tick(dt, platform);
         if self.awareness.nudge.tier() >= 2 {
             self.attention = self.windows.first().map(|w| w.id);
         } else {
@@ -264,13 +381,22 @@ impl Engine {
         let base = self.awareness.signals();
         let bounds = self.bounds();
         let held_by_mouse = platform.mouse_down();
+        let peers: Vec<Peer> = self
+            .pets
+            .iter()
+            .map(|pet| Peer {
+                id: pet.id,
+                position: pet.position,
+                perch: pet.perch,
+            })
+            .collect();
         let mut pets = std::mem::take(&mut self.pets);
         for pet in &mut pets {
-            if pet.is_held() && !held_by_mouse {
+            if (pet.is_held() || pet.is_tended()) && held_by_mouse == Some(false) {
                 pet.release();
-                events.push(Event::Released);
             }
             let view = WorldView {
+                peers: &peers,
                 surfaces: &self.surfaces,
                 graph: &self.graph,
                 bounds,
@@ -386,5 +512,23 @@ impl Engine {
 
     pub fn class_of(&self, pack_id: &str) -> Option<LocomotionClass> {
         self.packs.get(pack_id).map(|p| p.manifest.locomotion.class)
+    }
+}
+
+/// A pet's bond as saved. A long absence cools it a little (0.02 a missed day,
+/// at most 0.2) and never resets it.
+fn bond_from(setting: &PetSetting, today: NaiveDate) -> Bond {
+    let parse = |d: &Option<String>| {
+        d.as_deref()
+            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+    };
+    let last_seen = parse(&setting.last_seen).unwrap_or(today);
+    let missed = (today - last_seen).num_days().max(0) as f64;
+    Bond {
+        name: setting.name.clone(),
+        met: parse(&setting.met).unwrap_or(today),
+        last_seen,
+        days: setting.days.max(1),
+        affection: (setting.affection - (missed * 0.02).min(0.2)).max(0.),
     }
 }

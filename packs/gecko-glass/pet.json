@@ -2,9 +2,9 @@
   "format": 1,
   "id": "com.perch.gecko-glass",
   "name": "Glass the Gecko",
-  "author": "Perch",
+  "author": "Ledgeling",
   "version": "1.0.0",
-  "description": "Lives only on the vertical sides of windows, flat against the glass. Two sprite strips and twenty lines of settings.",
+  "description": "Lives only on the vertical sides of windows, flat against the glass. Two sprite strips and a few lines of settings.",
   "license": "CC-BY-4.0",
   "tags": ["reptile", "climber", "quiet"],
   "sprite": {
@@ -23,6 +23,8 @@
   },
   "animations": {
     "idle": { "file": "sprites/idle.png", "frames": 4, "fps": 4 },
-    "move": { "file": "sprites/move.png", "frames": 4, "fps": 10 }
+    "move": { "file": "sprites/move.png", "frames": 4, "fps": 10 },
+    "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
   }
 }

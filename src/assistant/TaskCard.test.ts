@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskCard from './TaskCard.vue'
 import type { Task } from './types'
 const api = vi.hoisted(() => ({ call: vi.fn(), refresh: vi.fn() }))
 vi.mock('./state', () => ({ taskCall: api.call, refreshTasks: api.refresh }))
-const makeTask = (status = 'waiting'): Task => ({ id: 1, request: { prompt: 'Organise files', petId: 2, mode: 'standard', preset: 'sort_type', roots: [], attachments: [], parentId: null, allowCloud: false, allowWeb: false }, connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status, progress: 'Review changes', result: '', error: null, createdAt: 0, operations: [], sources: [], approval: { id: 42, title: 'Review file changes', details: { operations: [{ kind: 'move', source: '/chosen/a.txt', destination: '/chosen/Documents/a.txt', content: null, state: 'planned' }] }, summary: { headline: 'Move 1 file into Documents', items: ['a.txt → Documents/a.txt'], more: 0, note: 'Nothing existing is overwritten.', accept: 'Approve', monospace: false } } })
+const makeTask = (status = 'waiting'): Task => ({ id: 1, request: { prompt: 'Organise files', petId: 2, mode: 'standard', preset: 'sort_type', roots: [], attachments: [], parentId: null, allowCloud: false, allowWeb: false }, connection: { kind: 'none', model: '', endpoint: '', executable: '' }, status, progress: 'Review changes', result: '', error: null, createdAt: 0, pet: null, title: '', operations: [], sources: [], approval: { id: 42, title: 'Review file changes', details: { operations: [{ kind: 'move', source: '/chosen/a.txt', destination: '/chosen/Documents/a.txt', content: null, state: 'planned' }] }, summary: { headline: 'Move 1 file into Documents', items: ['a.txt → Documents/a.txt'], more: 0, note: 'Nothing existing is overwritten.', accept: 'Approve', monospace: false } } })
 describe('task approvals', () => {
   beforeEach(() => { api.call.mockReset().mockResolvedValue(undefined); api.refresh.mockReset().mockResolvedValue(undefined) })
   it('does not execute on render and sends the exact approval identifier', async () => {
@@ -55,6 +55,59 @@ describe('task approvals', () => {
   })
 })
 
+describe('deleting from history', () => {
+  beforeEach(() => { api.call.mockReset().mockResolvedValue(undefined); api.refresh.mockReset().mockResolvedValue(undefined) })
+  const done = (): Task => ({ ...makeTask('completed'), approval: null })
+  const button = (w: ReturnType<typeof mount>, label: string) => w.findAll('button').find(b => b.text() === label)
+  it('asks once more before deleting, and can be backed out of', async () => {
+    const wrapper = mount(TaskCard, { props: { task: done() } })
+    await button(wrapper, 'Delete')!.trigger('click')
+    expect(api.call).not.toHaveBeenCalled()
+    await button(wrapper, 'Keep')!.trigger('click')
+    expect(button(wrapper, 'Delete for good?')).toBeUndefined()
+    await button(wrapper, 'Delete')!.trigger('click')
+    await button(wrapper, 'Delete for good?')!.trigger('click')
+    await flushPromises()
+    expect(api.call).toHaveBeenCalledWith('task_delete', { id: 1 })
+    expect(api.refresh).toHaveBeenCalled()
+  })
+  it('is not offered while running, inside a chat, or while file changes can still be undone', async () => {
+    const running = { ...done(), status: 'running' }
+    expect(button(mount(TaskCard, { props: { task: running } }), 'Delete')).toBeUndefined()
+    expect(button(mount(TaskCard, { props: { task: done(), inChat: true } }), 'Delete')).toBeUndefined()
+    const applied = { ...done(), operations: [{ kind: 'write', source: null, destination: '/a', content: 'x', state: 'applied' }] }
+    expect(button(mount(TaskCard, { props: { task: applied } }), 'Delete')).toBeUndefined()
+  })
+})
+
+describe('stuck stopping', () => {
+  beforeEach(() => { vi.useFakeTimers(); api.call.mockReset().mockResolvedValue(undefined); api.refresh.mockReset().mockResolvedValue(undefined) })
+  afterEach(() => vi.useRealTimers())
+  it('offers Force stop only once Stopping has dragged on, and sends the task id', async () => {
+    const task = makeTask('cancelling'); task.approval = null
+    const wrapper = mount(TaskCard, { props: { task } })
+    const force = () => wrapper.findAll('button').find(b => b.text() === 'Force stop')
+    expect(force()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(force()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(wrapper.text()).toContain('taking longer than expected to stop')
+    await force()!.trigger('click')
+    await flushPromises()
+    expect(api.call).toHaveBeenCalledWith('task_force_stop', { id: 1 })
+    await wrapper.setProps({ task: { ...task, status: 'cancelled' } })
+    expect(force()).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('never offers Force stop for a task that is not stopping', async () => {
+    const task = makeTask('running'); task.approval = null
+    const wrapper = mount(TaskCard, { props: { task } })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.text()).not.toContain('Force stop')
+    wrapper.unmount()
+  })
+})
+
 it('keeps long responses compact until expanded and renders Markdown on expansion', async () => {
   const task = makeTask('completed')
   task.approval = null
@@ -62,7 +115,7 @@ it('keeps long responses compact until expanded and renders Markdown on expansio
   const wrapper = mount(TaskCard, { props: { task } })
   expect(wrapper.find('.markdown-body').exists()).toBe(false)
   await wrapper.findAll('button').find(button => button.text() === 'Read full response')!.trigger('click')
-  expect(wrapper.get('.markdown-body strong').text()).toBe('A useful response')
+  await vi.waitFor(() => expect(wrapper.get('.markdown-body strong').text()).toBe('A useful response'))
   await wrapper.findAll('button').find(button => button.text() === 'Collapse response')!.trigger('click')
   expect(wrapper.find('.markdown-body').exists()).toBe(false)
 })

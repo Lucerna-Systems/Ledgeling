@@ -14,6 +14,9 @@ export interface AccentPreset {
   id: string
   label: string
   base: string
+  /** Second stop of the accent gradient: a neighbouring hue at similar
+   *  lightness, so white text stays readable across the whole fill. */
+  glow: string
   hoverLight: string
   hoverDark: string
   softLight: string
@@ -21,18 +24,19 @@ export interface AccentPreset {
 }
 
 export const ACCENT_PRESETS: AccentPreset[] = [
-  { id: 'moss', label: 'Moss', base: '#31725b', hoverLight: '#245b47', hoverDark: '#3f8f70', softLight: '#e6f2eb', softDark: '#1d2b27' },
-  { id: 'ocean', label: 'Ocean', base: '#2e6da3', hoverLight: '#1f5586', hoverDark: '#4a8ac2', softLight: '#e4eef8', softDark: '#1c2733' },
-  { id: 'plum', label: 'Plum', base: '#70518f', hoverLight: '#593d73', hoverDark: '#8f6ead', softLight: '#f0e9f7', softDark: '#292233' },
-  { id: 'clay', label: 'Clay', base: '#b05a3f', hoverLight: '#93452f', hoverDark: '#c4795f', softLight: '#f8ece6', softDark: '#332622' },
-  { id: 'indigo', label: 'Indigo', base: '#46557b', hoverLight: '#354263', hoverDark: '#61719c', softLight: '#e9ecf5', softDark: '#232838' },
-  { id: 'honey', label: 'Honey', base: '#b08421', hoverLight: '#8f6b17', hoverDark: '#c9a044', softLight: '#f8f0dc', softDark: '#322b1d' },
-  { id: 'rose', label: 'Rose', base: '#ab4a62', hoverLight: '#8c364b', hoverDark: '#c46b80', softLight: '#f8e7ec', softDark: '#342328' },
-  { id: 'teal', label: 'Teal', base: '#1f7a78', hoverLight: '#135f5d', hoverDark: '#2f9d9a', softLight: '#e1f2f1', softDark: '#1a2b2b' },
+  { id: 'iris', label: 'Iris', base: '#5b5bd6', glow: '#8f4fd6', hoverLight: '#4a4ac4', hoverDark: '#7c7cde', softLight: '#ededfa', softDark: '#1f1f33' },
+  { id: 'ocean', label: 'Ocean', base: '#2563d9', glow: '#0a7fb0', hoverLight: '#1f53b6', hoverDark: '#5082e1', softLight: '#ecf1fb', softDark: '#1d2534' },
+  { id: 'violet', label: 'Violet', base: '#7c4ddb', glow: '#b645c2', hoverLight: '#6533c9', hoverDark: '#9671e2', softLight: '#f1edfa', softDark: '#251e34' },
+  { id: 'rose', label: 'Rose', base: '#d2416a', glow: '#c94aa8', hoverLight: '#bb2c55', hoverDark: '#db6788', softLight: '#faedf1', softDark: '#331f24' },
+  { id: 'coral', label: 'Coral', base: '#d23f33', glow: '#d65a1e', hoverLight: '#b43228', hoverDark: '#db655c', softLight: '#faeeed', softDark: '#33201e' },
+  { id: 'amber', label: 'Amber', base: '#d99a1e', glow: '#ecb43c', hoverLight: '#b68119', hoverDark: '#e5b046', softLight: '#fbf6ec', softDark: '#352d1c' },
+  { id: 'teal', label: 'Teal', base: '#0b7f76', glow: '#1586a8', hoverLight: '#096b63', hoverDark: '#20a397', softLight: '#e9f7f6', softDark: '#1b2e2d' },
+  { id: 'graphite', label: 'Graphite', base: '#3c4a63', glow: '#5d6b8c', hoverLight: '#323e53', hoverDark: '#566b8f', softLight: '#f1f3f6', softDark: '#25282d' },
 ]
 
 export const DEFAULT_ACCENT = ACCENT_PRESETS[0].base
-const CACHE_KEY = 'perch:appearance'
+const CACHE_KEY = 'ledgeling:appearance'
+const LEGACY_CACHE_KEY = 'perch:appearance'
 
 export function presetFor(accent: string): AccentPreset | undefined {
   const normalised = accent.toLowerCase()
@@ -67,7 +71,7 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${channel(r)}${channel(g)}${channel(b)}`
 }
 
-export interface AccentVariants { base: string; hover: string; soft: string; onAccent: string }
+export interface AccentVariants { base: string; glow: string; hover: string; soft: string; onAccent: string }
 
 /** Hover and soft-background variants for the resolved mode; tuned presets
  * win, anything else is derived by simple HSL moves. */
@@ -76,6 +80,7 @@ export function accentVariants(accent: string, mode: 'light' | 'dark'): AccentVa
   if (preset) {
     return {
       base: preset.base,
+      glow: preset.glow,
       hover: mode === 'light' ? preset.hoverLight : preset.hoverDark,
       soft: mode === 'light' ? preset.softLight : preset.softDark,
       onAccent: onAccentFor(preset.base),
@@ -86,6 +91,7 @@ export function accentVariants(accent: string, mode: 'light' | 'dark'): AccentVa
   const [, , ll] = hexToHsl(lifted)
   return {
     base: lifted,
+    glow: hslToHex(h + 32, s, ll),
     hover: mode === 'light'
       ? hslToHex(h, s, Math.max(l * 0.82, 0.16))
       : hslToHex(h, s, Math.min(ll + (1 - ll) * 0.22, 0.92)),
@@ -120,8 +126,9 @@ export function applyTheme(theme: ThemeMode, accent: string) {
   const mode: 'light' | 'dark' = theme === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : theme
   const root = document.documentElement
   root.dataset.theme = mode
-  const { base, hover, soft, onAccent } = accentVariants(accent, mode)
+  const { base, glow, hover, soft, onAccent } = accentVariants(accent, mode)
   root.style.setProperty('--accent', base)
+  root.style.setProperty('--accent-2', glow)
   root.style.setProperty('--accent-hover', hover)
   root.style.setProperty('--accent-soft', soft)
   root.style.setProperty('--on-accent', onAccent)
@@ -130,19 +137,25 @@ export function applyTheme(theme: ThemeMode, accent: string) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ theme, accent })) } catch { /* private mode */ }
 }
 
+/** Apply the theme the companion window last stored. Windows that never load
+ *  settings — the pet bubble — follow the companion this way. */
+export function applyCachedTheme() {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY) ?? localStorage.getItem(LEGACY_CACHE_KEY)
+    if (cached) {
+      const { theme, accent } = JSON.parse(cached) as { theme: ThemeMode; accent: string }
+      applyTheme(theme, accent)
+    }
+  } catch { /* fall through to settings-driven application */ }
+}
+
 let started = false
 
 /** Called once from main.ts before mount. */
 export function initTheme() {
   if (started) return
   started = true
-  try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    if (cached) {
-      const { theme, accent } = JSON.parse(cached) as { theme: ThemeMode; accent: string }
-      applyTheme(theme, accent)
-    }
-  } catch { /* fall through to settings-driven application */ }
+  applyCachedTheme()
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (currentTheme() === 'system') applyTheme('system', currentAccent())
   })

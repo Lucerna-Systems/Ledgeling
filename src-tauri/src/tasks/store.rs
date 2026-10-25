@@ -16,9 +16,18 @@ impl Store {
                 task.status.as_str(),
                 "queued" | "running" | "waiting" | "cancelling" | "undoing"
             ) {
-                task.status = "interrupted".into();
                 task.approval = None;
-                task.progress = "Interrupted by restart. No work was automatically resumed. Review the operation journal before undoing.".into();
+                if task.status == "cancelling" {
+                    // The user already asked to stop; honour that rather than
+                    // reporting an interruption they did not cause.
+                    task.status = "cancelled".into();
+                    task.progress =
+                        "Stopped before Ledgeling restarted. No work was resumed.".into();
+                    task.error.get_or_insert_with(|| "Cancelled".into());
+                } else {
+                    task.status = "interrupted".into();
+                    task.progress = "Interrupted by restart. No work was automatically resumed. Review the operation journal before undoing.".into();
+                }
                 store.save(&task)?;
             }
         }
@@ -44,6 +53,12 @@ impl Store {
                     task.id
                 ],
             )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    pub fn delete(&self, id: i64) -> Result<(), String> {
+        self.0
+            .execute("DELETE FROM tasks WHERE id=?1", [id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -73,7 +88,11 @@ impl Store {
                 r.get::<_, String>(0)
             })
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| serde_json::from_str::<Connections>(&s).ok())
+            .map(|mut config| {
+                super::setup::normalize(&mut config);
+                config
+            })
             .unwrap_or_default()
     }
     pub fn set_config(&self, config: &Connections) -> Result<(), String> {

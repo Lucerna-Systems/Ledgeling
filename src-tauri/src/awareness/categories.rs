@@ -71,6 +71,20 @@ impl Default for CategoryMap {
             ("kitty", Code),
             ("ghostty", Code),
             ("wezterm*", Code),
+            ("gnome-terminal-server", Code),
+            ("kgx", Code),
+            ("ptyxis", Code),
+            ("konsole", Code),
+            ("xterm", Code),
+            ("xfce4-terminal", Code),
+            ("tilix", Code),
+            ("terminator", Code),
+            ("foot", Code),
+            // Wayland app ids where they differ from the executable: COSMIC's
+            // terminal and editor, GNOME Console.
+            ("cosmicterm", Code),
+            ("cosmicedit", Code),
+            ("console", Code),
             ("chrome", Browser),
             ("google chrome", Browser),
             ("firefox", Browser),
@@ -81,6 +95,9 @@ impl Default for CategoryMap {
             ("brave*", Browser),
             ("vivaldi", Browser),
             ("opera", Browser),
+            ("chromium*", Browser),
+            ("epiphany", Browser),
+            ("librewolf", Browser),
             ("slack", Comms),
             ("teams", Comms),
             ("microsoft teams", Comms),
@@ -93,6 +110,8 @@ impl Default for CategoryMap {
             ("signal", Comms),
             ("whatsapp", Comms),
             ("telegram", Comms),
+            ("telegram-desktop", Comms),
+            ("evolution", Comms),
             ("photoshop", Creative),
             ("illustrator", Creative),
             ("blender", Creative),
@@ -105,6 +124,9 @@ impl Default for CategoryMap {
             ("sketch", Creative),
             ("inkscape", Creative),
             ("gimp*", Creative),
+            ("krita", Creative),
+            ("kdenlive", Creative),
+            ("darktable", Creative),
             ("vlc", Media),
             ("spotify", Media),
             ("mpv", Media),
@@ -113,11 +135,15 @@ impl Default for CategoryMap {
             ("iina", Media),
             ("plex", Media),
             ("tv", Media),
+            ("totem", Media),
+            ("rhythmbox", Media),
+            ("celluloid", Media),
             ("steam", Game),
             ("steamwebhelper", Game),
             ("epicgameslauncher", Game),
             ("minecraft*", Game),
             ("factorio", Game),
+            ("lutris", Game),
         ];
         Self {
             patterns: defaults
@@ -156,6 +182,17 @@ mod tests {
         assert_eq!(map.categorize("idea64"), AppCategory::Code);
         assert_eq!(map.categorize("Slack"), AppCategory::Comms);
         assert_eq!(map.categorize("something-unheard-of"), AppCategory::Other);
+    }
+    #[test]
+    fn linux_executable_names_map_too() {
+        let map = CategoryMap::default();
+        assert_eq!(map.categorize("gnome-terminal-server"), AppCategory::Code);
+        assert_eq!(map.categorize("chromium-browser"), AppCategory::Browser);
+        assert_eq!(map.categorize("telegram-desktop"), AppCategory::Comms);
+        assert_eq!(map.categorize("krita"), AppCategory::Creative);
+        // Wayland app ids, as wayland_model::app_name shortens them.
+        assert_eq!(map.categorize("cosmicterm"), AppCategory::Code);
+        assert_eq!(map.categorize("nautilus"), AppCategory::Other);
     }
     #[test]
     fn longest_pattern_wins() {

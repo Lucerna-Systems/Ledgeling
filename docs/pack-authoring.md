@@ -1,8 +1,17 @@
 # Making a pet
 
-You need two things: a program that can draw with transparency, and a text editor.
-You do not need to write any code — a pack is data, and there is nowhere in the
-format to put a program even if you wanted to.
+The quickest way is inside Ledgeling: **Pets → Make your own pet** opens the Pet Studio.
+Draw each animation frame by frame, set the behaviours with plain-language blocks
+("When you click it, go to say hi"), and press **Save & bring out**. The Studio
+writes an ordinary pack, the same format this guide describes, and the same
+validator checks it. If you have connected an AI in the Assistant settings, the
+Behaviour tab's **Describe it** box can draft the blocks from a sentence; it only
+fills in the same blocks you could have placed yourself, and **Undo** puts your
+earlier behaviours back.
+
+This guide is the by-hand route. You need two things: a program that can draw with
+transparency, and a text editor. You do not need to write any code — a pack is
+data, and there is nowhere in the format to put a program even if you wanted to.
 
 Give this an hour. Most of that hour is drawing.
 
@@ -10,10 +19,11 @@ Give this an hour. Most of that hour is drawing.
 
 ## 1. Make the folder (2 minutes)
 
-Open Perch → **Pet packs** → type a name, pick a kind of animal, press **New pack**.
+Open Ledgeling → **Pets → Make your own pet → Test** → under **New pack folder**, type a
+name, pick how it moves, press **New pack**.
 
 You now have a folder with placeholder art and a `pet.json` that already works.
-Perch tells you where it is. Open that folder.
+Ledgeling tells you where it is. Open that folder.
 
 ```
 my-new-pet/
@@ -41,24 +51,26 @@ idle.png →  [frame 1][frame 2][frame 3][frame 4]
             ← 48 px →
 ```
 
-- Transparency matters: Perch uses it so clicks pass through the empty corners.
+- Transparency matters: Ledgeling uses it so clicks pass through the empty corners.
 - The frame size is up to you. Whatever you choose, write it in `pet.json` under
   `sprite.width` and `sprite.height`.
-- Draw the animal **facing right**. Perch mirrors it when it walks the other way.
+- Draw the animal **facing right**. Ledgeling mirrors it when it walks the other way.
 - Its feet should touch the bottom edge of the frame. That bottom-centre point is
   where it meets the window edge, which is what `anchor` means.
 
 Save over `sprites/idle.png` and `sprites/move.png`. The pet on screen changes as
 soon as you save — no restart, nothing to press.
 
-**Only `idle` and `move` are required.** Every other animation is optional, and if
-it is missing Perch uses one you did draw:
+**No single animation is required — one is enough.** `idle` and `move` stand in
+for each other, and if any other is missing Ledgeling uses one you did draw:
 
 ```
 climb → move → idle        land  → idle        sleep → idle
 jump  → move → idle        happy → idle        alert → idle
 fall  → move → idle        takeoff → move → idle
 busy  → preen → idle       attention → alert → happy → idle
+dizzy → alert → idle       petted → happy → idle
+stretch → idle
 ```
 
 So a two-picture pack is a complete pet. Adding more art only ever makes it better.
@@ -144,10 +156,17 @@ When you want more, describe what it does as a list of states:
 
 - `duration` is seconds, or `[shortest, longest]` for a bit of variety.
 - `weight` is how likely a transition is compared to the others in the same list.
-- `action` is one of the movements Perch already knows how to do:
+- `action` is one of the movements Ledgeling already knows how to do:
   `move_to_random_surface`, `move_to_nearest_surface`, `move_toward_cursor`,
-  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`.
+  `flee_from_cursor`, `patrol_current_surface`, `return_to_home_surface`,
+  `move_toward_pet` (walk or hop to stand beside the nearest other pet; it does
+  nothing when the pet is alone or cannot reach it).
 - `when` is an optional condition. If it is false, that transition cannot happen.
+- **Rare idles.** A tiny `weight` makes a transition rare. Against the 11 total in
+  the example, `{ "to": "fluff", "weight": 0.2 }` fires about once in fifty
+  changes of state. Give it its own clip (any name you like under `animations`)
+  and a short `duration`; if the clip is missing the pet just idles. The bundled
+  budgie (`fluff`, `dance`) and squirrel (`nibble`, `flip`) each have two.
 
 Conditions are deliberately tiny — a signal, a comparison, a value, joined with
 `&&` and `||`:
@@ -160,8 +179,30 @@ hour >= 22 || hour < 6
 ```
 
 The signals you may use: `idle_seconds`, `session_minutes`, `app_category`,
-`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `is_dragging`.
+`hour`, `energy`, `mood`, `surface_count`, `cursor_distance`, `cursor_speed` (pixels per second), `pet_distance`
+(pixels to the nearest other pet; infinite when there is none),
+`affection` (0 to 1, grows when the pet is petted and clicked, cools a little
+during long absences), `days_together`, `is_dragging`.
+`hour` is the local hour, 0–23. The engine also tires every pet late at night
+(23:00–05:00) and perks it up in the morning (06:00–10:00), so `energy < 0.25`
+rules already make pets sleepy at night; add `hour` rules for more.
 Anything else is an error that tells you so, with the alternatives listed.
+
+**Custom actions and pet types.** The built-in actions can be given your own
+names and speeds in a top-level `actions` block, and states use them like any
+other action:
+
+```json
+"actions": { "scurry": { "base": "patrol_current_surface", "speed": 2.5 } },
+"behavior": { "states": { "run": { "clip": "move", "action": "scurry" } } }
+```
+
+`base` is one of the built-in actions; `speed` (0.1–5, default 1) multiplies
+movement speed while that state runs. Likewise `"locomotion": { "class":
+"walker", "type": "slitherer" }` gives your pet its own type name. The class still
+picks the traversal rules, and `surfaces`, `speed`, `jump`, `gravity` and
+`air_style` reshape it; `type` is the label. Both stay data — no new movement
+code runs.
 
 **Reactions** let events interrupt whatever the pet was doing:
 
@@ -173,14 +214,49 @@ Anything else is an error that tells you so, with the alternatives listed.
 ]
 ```
 
+Two events come from the pet's own body: `landed` (it came down onto a surface
+after a fall, a good hook for a shake-off) and `edge_reached` (it walked to the
+end of a ledge, a good hook for a peek over the side). Give both a `cooldown`.
+
 `cooldown` is seconds, and it is how you keep a pet from becoming annoying. Use it
 generously on anything to do with nudging.
+
+**Picking up, throwing and petting.** Three events come from the pointer:
+
+- `thrown` — the user let go of the pet while moving the pointer fast, so it flies.
+  A pack with no `thrown` reaction gets plain `released` instead, as it always did.
+- `landed_hard` — a thrown pet came down fast. Pair it with a `dizzy` clip.
+- `petted` — the pointer was rubbed back and forth over the pet. Pair it with a
+  `petted` clip (eyes closed, a heart) and a short state:
+
+```json
+"states": {
+  "dizzy": { "clip": "dizzy", "duration": [2, 3], "transitions": [{ "to": "perch" }] },
+  "enjoy": { "clip": "petted", "duration": [2, 4], "transitions": [{ "to": "perch" }] }
+},
+"reactions": [
+  { "on": "thrown", "goto": "dizzy", "priority": 90 },
+  { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+  { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 }
+]
+```
+
+`pet_nearby` fires once when another pet comes within about 140 px, and again
+only after they have parted by more than 200 px; use a long `cooldown` so a
+greeting stays special.
+
+`new_day` fires once when the user's first day with the pet rolls over to the
+next calendar day it is on screen; a `greet` reaction with a long `cooldown`
+makes a good morning hello.
+
+Packs without a `behavior` block get these states and reactions for free; both
+clips are optional and fall back to `alert`/`happy`, then `idle`.
 
 ---
 
 ## 5. When something is wrong
 
-Open **Pet Lab** and press *Check* on your pack. Every problem names the file, the
+Open **Pet Studio → Test** and press *Check* on your pack. Every problem names the file, the
 exact place in it, what is wrong, and what was expected:
 
 ```
@@ -189,7 +265,7 @@ ERROR  pet.json → animations.climb.frames
        Frame counts must be numbers, not quoted strings.
 ```
 
-Pet Lab also has **scenario buttons**, which fire an event immediately so you can
+The Test tab also has **scenario buttons**, which fire an event immediately so you can
 see your `long_session` reaction without working for 45 minutes first, and a
 **debug overlay** that draws the surfaces, the jumps your pet can and cannot make,
 and its current path over your real windows. If a climber refuses to cross a gap,
@@ -200,8 +276,36 @@ that overlay is where you find out why.
 ## 6. Share it
 
 Press **Export** on your pack. You get a `.petpack` file — anyone can drag it onto
-their Perch window to install it. Put a real licence in `LICENSE.txt` first so
+their Ledgeling window to install it. Put a real licence in `LICENSE.txt` first so
 people know what they may do with your drawing.
+
+A `.petpack` holds only `pet.json`, `preview.png`, `LICENSE.txt` and
+`sprites/*.png` (lowercase letters, digits, `-` and `_` in the file name). Anything
+else is left out of the export and refused when someone installs the archive.
+Exporting twice gives the same bytes, so the file has a stable SHA-256 hash.
+
+### Limits
+
+Packs from strangers are untrusted, so everything is capped: at most 64 files,
+8 MiB per archive, 4 MiB per file, 16 MiB once unpacked; sprite strips up to
+4096×1024 px; 64 frames and 60 fps per clip; 32 clips, 64 states, 16 transitions
+per state, 64 reactions, 10 tags; names under 200 characters and the description
+under 2000. A pack over a limit fails with a message naming the limit.
+
+### Publishing checklist
+
+A pack going to a gallery must also pass the stricter publish check
+(`validate_pack_for_publish`): a three-number `version` such as `1.0.0` (updates are
+ordered by it), a lowercase reverse-DNS `id`, a `license` that is one of `CC0-1.0`,
+`CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `MIT`, `Apache-2.0` or
+`proprietary-redistributable`, a non-empty `LICENSE.txt`, a description, a
+256×256 `preview.png`, 48×48 frames, strips exactly frames × frame width wide, and
+no stray files. Installing a newer version of an installed pet is an update
+(`update_pack`); the same or an older version is refused, and a failed install
+leaves the installed pet untouched.
+
+Which names may change between versions is in
+[pack-format-stability.md](pack-format-stability.md).
 
 ---
 
@@ -209,8 +313,8 @@ people know what they may do with your drawing.
 
 - **A pack can never harm anyone.** There is no scripting and no way to add one.
   The worst a broken pack can do is look wrong.
-- **Unknown settings are ignored**, with a note. A pack made for a newer Perch
+- **Unknown settings are ignored**, with a note. A pack made for a newer Ledgeling
   still loads on an older one.
-- **Pixel art scales best.** Perch draws sprites without smoothing.
+- **Pixel art scales best.** Ledgeling draws sprites without smoothing.
 - **Big animals need wide windows.** Use `min_surface_length` to stop a cat from
   trying to stand on a 60-pixel-wide window edge.

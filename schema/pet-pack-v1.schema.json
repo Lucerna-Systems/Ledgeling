@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://perch.local/schema/pet-pack-v1.schema.json",
-  "title": "Perch pet pack (format 1)",
+  "title": "Ledgeling pet pack (format 1)",
   "description": "A pet is data: identity, one sprite block, one locomotion block, animation strips, and optionally a declarative behavior machine. Nothing here can execute code.",
   "type": "object",
   "required": ["format", "id", "name", "author", "version", "sprite", "locomotion", "animations"],
@@ -9,13 +9,13 @@
   "properties": {
     "$schema": { "type": "string" },
     "format": { "const": 1, "description": "Spec version. Currently 1." },
-    "id": { "type": "string", "pattern": "^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)+$", "description": "Reverse-DNS and globally unique, e.g. com.yourname.simplebird." },
-    "name": { "type": "string", "minLength": 1 },
-    "author": { "type": "string", "minLength": 1 },
-    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
-    "description": { "type": "string" },
-    "license": { "type": "string", "description": "SPDX identifier, e.g. CC-BY-4.0." },
-    "tags": { "type": "array", "items": { "type": "string" } },
+    "id": { "type": "string", "maxLength": 200, "pattern": "^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)+$", "description": "Reverse-DNS and globally unique, e.g. com.yourname.simplebird." },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "author": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "version": { "type": "string", "maxLength": 200, "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "description": { "type": "string", "maxLength": 2000 },
+    "license": { "type": "string", "maxLength": 64, "description": "SPDX identifier, e.g. CC-BY-4.0." },
+    "tags": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 40 } },
     "sprite": {
       "type": "object",
       "required": ["width", "height"],
@@ -43,6 +43,7 @@
       "additionalProperties": false,
       "properties": {
         "class": { "enum": ["flier", "climber", "walker", "hopper"] },
+        "type": { "type": "string", "minLength": 1, "maxLength": 40 },
         "surfaces": {
           "type": "array",
           "items": {
@@ -78,16 +79,17 @@
     },
     "animations": {
       "type": "object",
-      "required": ["idle", "move"],
-      "description": "idle and move are required; every other clip falls back down a chain to them. Known clips: climb, jump, fall, land, takeoff, sleep, alert, happy, grabbed, preen, greet, plus busy (this pet is working on a task) and attention (its task is waiting for your answer).",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "description": "No clip is required, but at least one is needed. idle and move stand in for each other, and every other clip falls back down a chain to them. Known clips: climb, jump, fall, land, takeoff, sleep, alert, happy, grabbed, preen, greet, stretch, dizzy (after a throw or hard landing), petted (while stroked), plus busy (this pet is working on a task) and attention (its task is waiting for your answer).",
       "additionalProperties": {
         "type": "object",
         "required": ["file", "frames"],
         "additionalProperties": false,
         "properties": {
           "file": { "type": "string", "description": "Pack-relative path, e.g. sprites/idle.png." },
-          "frames": { "type": "integer", "minimum": 1 },
-          "fps": { "type": "number", "exclusiveMinimum": 0 },
+          "frames": { "type": "integer", "minimum": 1, "maximum": 64 },
+          "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 },
           "loop": { "type": "boolean" },
           "pingpong": { "type": "boolean" },
           "sound": { "type": "string" },
@@ -99,6 +101,23 @@
         }
       }
     },
+    "actions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["base"],
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "enum": [
+              "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
+              "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
+            ]
+          },
+          "speed": { "type": "number", "minimum": 0.1, "maximum": 5 }
+        }
+      }
+    },
     "behavior": {
       "type": "object",
       "additionalProperties": false,
@@ -107,6 +126,7 @@
         "idle_wander_chance": { "type": "number", "minimum": 0, "maximum": 1 },
         "states": {
           "type": "object",
+          "maxProperties": 64,
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,
@@ -119,14 +139,13 @@
                 ]
               },
               "action": {
-                "enum": [
-                  "move_to_random_surface", "move_to_nearest_surface", "move_toward_cursor",
-                  "flee_from_cursor", "patrol_current_surface", "return_to_home_surface"
-                ]
+                "description": "A built-in action, or a name declared in the top-level `actions` block.",
+                "type": "string"
               },
               "sound": { "type": "string" },
               "transitions": {
                 "type": "array",
+                "maxItems": 16,
                 "items": {
                   "type": "object",
                   "required": ["to"],
@@ -136,7 +155,7 @@
                     "weight": { "type": "number", "minimum": 0 },
                     "when": {
                       "type": "string",
-                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, is_dragging."
+                      "description": "signal OP value, joined by && or ||. Signals: idle_seconds, session_minutes, app_category, hour, energy, mood, surface_count, cursor_distance, cursor_speed, pet_distance, affection, days_together, is_dragging."
                     }
                   }
                 }
@@ -148,6 +167,7 @@
     },
     "reactions": {
       "type": "array",
+      "maxItems": 64,
       "items": {
         "type": "object",
         "required": ["on", "goto"],
@@ -156,8 +176,10 @@
           "on": {
             "enum": [
               "surface_lost", "surface_moved_fast", "grabbed", "released", "clicked",
-              "cursor_nearby", "user_idle_long", "user_returned", "long_session",
-              "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy"
+              "cursor_nearby", "cursor_fast", "user_idle_long", "user_returned", "long_session",
+              "break_taken", "app_category_changed", "hour_changed", "startup", "low_energy",
+              "thrown", "landed_hard", "petted", "pet_nearby", "new_day",
+              "landed", "edge_reached"
             ]
           },
           "goto": { "type": "string" },

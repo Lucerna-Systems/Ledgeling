@@ -54,7 +54,7 @@ impl Platform for MockPlatform {
     fn cursor(&self) -> Option<Point> {
         *self.cursor.lock().unwrap()
     }
-    fn mouse_down(&self) -> bool {
-        *self.mouse_down.lock().unwrap()
+    fn mouse_down(&self) -> Option<bool> {
+        Some(*self.mouse_down.lock().unwrap())
     }
 }

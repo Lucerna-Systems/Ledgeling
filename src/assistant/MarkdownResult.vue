@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { ref, watchEffect } from 'vue'
 
 const props = defineProps<{ text: string }>()
 const emit = defineEmits<{ open: [url: string] }>()
-const html = computed(() => DOMPurify.sanitize(marked.parse(props.text, { async: false }), {
-  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
-  ALLOWED_ATTR: ['href', 'title', 'start'],
-  ALLOWED_URI_REGEXP: /^https?:\/\//i,
-  ALLOW_DATA_ATTR: false,
-}))
+const escape = (text: string) => text.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!)
+// marked and DOMPurify load on first render; until then (a frame or two) the text shows as plain escaped text.
+const html = ref(`<p>${escape(props.text)}</p>`)
+let render: ((text: string) => string) | null = null
+const loading = import('./markdown').then(module => { render = module.renderMarkdown })
+watchEffect(() => {
+  const text = props.text
+  if (render) html.value = render(text)
+  else void loading.then(() => { if (render && text === props.text) html.value = render(text) })
+})
 function openLink(event: MouseEvent) {
   const link = (event.target as Element).closest('a')
   if (!link) return

@@ -2,7 +2,7 @@
   "format": 1,
   "id": "com.perch.budgie-classic",
   "name": "Pip the Budgie",
-  "author": "Perch",
+  "author": "Ledgeling",
   "version": "1.0.0",
   "description": "A small green budgie who flits between window tops, preens, and sings when you take a break.",
   "license": "CC-BY-4.0",
@@ -31,7 +31,11 @@
     "preen": { "file": "sprites/preen.png", "frames": 4, "fps": 8 },
     "sleep": { "file": "sprites/sleep.png", "frames": 2, "fps": 2 },
     "happy": { "file": "sprites/happy.png", "frames": 6, "fps": 12, "loop": false },
-    "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false }
+    "alert": { "file": "sprites/alert.png", "frames": 3, "fps": 10, "loop": false },
+    "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
+    "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 },
+    "fluff": { "file": "sprites/fluff.png", "frames": 5, "fps": 8, "loop": false },
+    "dance": { "file": "sprites/dance.png", "frames": 6, "fps": 10 }
   },
   "behavior": {
     "initial": "perch",
@@ -44,14 +48,36 @@
           { "to": "preen", "weight": 3 },
           { "to": "relocate", "weight": 2 },
           { "to": "sing", "weight": 1 },
+          { "to": "fluff", "weight": 0.2 },
+          { "to": "dance", "weight": 0.2 },
           { "to": "restless", "weight": 4, "when": "session_minutes > 45" },
           { "to": "doze", "weight": 6, "when": "idle_seconds > 240" },
-          { "to": "doze", "weight": 4, "when": "energy < 0.25" }
+          { "to": "doze", "weight": 4, "when": "energy < 0.25" },
+          { "to": "doze", "weight": 4, "when": "pet_distance < 120 && energy < 0.4" },
+          { "to": "visit", "weight": 1, "when": "pet_distance < 1500" },
+          { "to": "sing", "weight": 4, "when": "affection > 0.5 && cursor_distance < 400" },
+          { "to": "doze", "weight": 3, "when": "hour >= 23 || hour < 5" },
+          { "to": "sing", "weight": 2, "when": "hour >= 6 && hour < 10" }
         ]
+      },
+      "visit": {
+        "clip": "move",
+        "action": "move_toward_pet",
+        "transitions": [{ "to": "perch", "weight": 1 }]
       },
       "preen": {
         "clip": "preen",
         "duration": [3, 6],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "fluff": {
+        "clip": "fluff",
+        "duration": [2, 3],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "dance": {
+        "clip": "dance",
+        "duration": [3, 5],
         "transitions": [{ "to": "perch", "weight": 1 }]
       },
       "relocate": {
@@ -104,6 +130,16 @@
         "clip": "alert",
         "duration": [0.5, 0.5],
         "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "dizzy": {
+        "clip": "dizzy",
+        "duration": [2, 3],
+        "transitions": [{ "to": "perch", "weight": 1 }]
+      },
+      "enjoy": {
+        "clip": "petted",
+        "duration": [2, 4],
+        "transitions": [{ "to": "perch", "weight": 1 }]
       }
     }
   },
@@ -116,7 +152,13 @@
     { "on": "break_taken", "goto": "sing", "priority": 40, "cooldown": 300 },
     { "on": "user_idle_long", "goto": "doze", "priority": 30 },
     { "on": "user_returned", "goto": "greet", "priority": 60, "cooldown": 60 },
-    { "on": "cursor_nearby", "goto": "peek", "priority": 20, "cooldown": 15 }
+    { "on": "cursor_nearby", "goto": "peek", "priority": 20, "cooldown": 15 },
+    { "on": "thrown", "goto": "dizzy", "priority": 90 },
+    { "on": "landed_hard", "goto": "dizzy", "priority": 90 },
+    { "on": "petted", "goto": "enjoy", "priority": 60, "cooldown": 3 },
+    { "on": "pet_nearby", "goto": "greet", "priority": 50, "cooldown": 120 },
+    { "on": "new_day", "goto": "greet", "priority": 50, "cooldown": 600 },
+    { "on": "cursor_fast", "goto": "startled", "priority": 70, "cooldown": 6 }
   ],
   "personality": {
     "activity": 0.7,

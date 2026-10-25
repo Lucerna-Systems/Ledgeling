@@ -1,11 +1,27 @@
 use super::{apple, types::*, Cancel};
 use reqwest::blocking::{Client, Response};
 use serde_json::{json, Value};
-use std::{io::Read, path::PathBuf, time::Duration};
+use std::{
+    io::{BufRead, BufReader, Read},
+    path::PathBuf,
+    sync::mpsc::{self, RecvTimeoutError},
+    time::{Duration, Instant},
+};
 
 pub trait ModelProvider {
     fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String>;
+    /// One task action, held to `tools` by providers that can constrain their
+    /// output; the rest are only told about them in the system prompt.
+    fn act(&self, messages: &[Message], tools: &[&str], cancel: &Cancel) -> Result<String, String> {
+        let _ = tools;
+        self.complete(messages, cancel)
+    }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String>;
+    /// Whether the model answers in one turn from context Ledgeling gathers,
+    /// instead of exploring with tools.
+    fn single_turn(&self) -> bool {
+        false
+    }
 }
 pub fn secret_name(kind: &ProviderKind) -> &'static str {
     match kind {
@@ -15,11 +31,32 @@ pub fn secret_name(kind: &ProviderKind) -> &'static str {
         _ => "unused",
     }
 }
+/// Where API keys live in the OS credential store.
+const SECRET_SERVICE: &str = "technology.lucerna-systems.ledgeling.tasks";
+const CREDENTIALS: [&str; 4] = ["openai", "anthropic", "compatible", "brave"];
+
+/// Copies keys saved under the pre-rename service into the current one, then
+/// removes the originals. A key already saved under the new service wins.
+pub fn migrate_legacy_secrets() {
+    let legacy = format!("{}.tasks", crate::migrate::LEGACY_IDENTIFIER);
+    for name in CREDENTIALS {
+        let Ok(old) = keyring::Entry::new(&legacy, name) else {
+            continue;
+        };
+        let Ok(value) = old.get_password() else {
+            continue;
+        };
+        if !has_secret(name) && set_secret(name, &value).is_err() {
+            continue;
+        }
+        let _ = old.delete_credential();
+    }
+}
 pub fn set_secret(name: &str, value: &str) -> Result<(), String> {
-    if !matches!(name, "openai" | "anthropic" | "compatible" | "brave") {
+    if !CREDENTIALS.contains(&name) {
         return Err("Unknown credential.".into());
     }
-    let entry = keyring::Entry::new("com.perch.desktop.tasks", name)
+    let entry = keyring::Entry::new(SECRET_SERVICE, name)
         .map_err(|_| "Credential store unavailable".to_string())?;
     if value.is_empty() {
         match entry.delete_credential() {
@@ -33,9 +70,9 @@ pub fn set_secret(name: &str, value: &str) -> Result<(), String> {
     }
 }
 pub fn secret(name: &str) -> Result<String, String> {
-    keyring::Entry::new("com.perch.desktop.tasks", name)
+    keyring::Entry::new(SECRET_SERVICE, name)
         .and_then(|e| e.get_password())
-        .map_err(|_| format!("Add the {name} API key in Connections."))
+        .map_err(|_| format!("Add the {name} API key on the AI providers page."))
 }
 pub fn client() -> Result<Client, String> {
     Client::builder()
@@ -45,11 +82,98 @@ pub fn client() -> Result<Client, String> {
         .build()
         .map_err(|_| "Could not initialise HTTP client".into())
 }
-pub fn response_json(response: Response) -> Result<Value, String> {
+fn check_status(response: &Response) -> Result<(), String> {
     let status = response.status();
-    if !status.is_success() {
-        return Err(format!("Provider returned HTTP {}. Check your connection, model, credentials and usage limits.", status.as_u16()));
+    if status.is_success() {
+        Ok(())
+    } else {
+        Err(format!("Provider returned HTTP {}. Check your connection, model, credentials and usage limits.", status.as_u16()))
     }
+}
+/// Runs a blocking provider call on its own thread, so a cancel is noticed
+/// within 100 ms instead of after the reply or the 90-second timeout. The one
+/// task worker is shared by every chat, so a call it cannot leave holds them all.
+/// The thread is abandoned on cancel and ends when the call does.
+fn cancellable<T: Send + 'static>(
+    cancel: &Cancel,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (done, wait) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(work());
+    });
+    loop {
+        match wait.recv_timeout(Duration::from_millis(100)) {
+            Ok(result) => return result,
+            Err(RecvTimeoutError::Timeout) => cancel.check()?,
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("The request stopped unexpectedly.".into())
+            }
+        }
+    }
+}
+/// How often the reasoning preview may change, since each change is saved and
+/// sent to the panel.
+const REASONING_EVERY: Duration = Duration::from_millis(800);
+/// The last stretch of the model's reasoning, on one line, for the task card.
+fn reasoning_tail(reasoning: &str) -> String {
+    let flat = reasoning.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = flat.len().saturating_sub(90);
+    let tail = &flat[flat.ceil_char_boundary(start)..];
+    if start > 0 {
+        format!("…{tail}")
+    } else {
+        tail.to_string()
+    }
+}
+/// The text of an Ollama streamed reply (one JSON object per line). Returning
+/// early drops the connection, which is what makes Ollama stop generating.
+fn read_stream(reader: impl Read, cancel: &Cancel) -> Result<String, String> {
+    let mut text = String::new();
+    let mut reasoning = String::new();
+    let mut shown = Instant::now() - REASONING_EVERY;
+    for line in BufReader::new(reader.take(2_000_001)).lines() {
+        cancel.check()?;
+        let line = line.map_err(|_| "Provider response interrupted".to_string())?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let chunk: Value = serde_json::from_str(&line)
+            .map_err(|_| "Provider returned invalid JSON.".to_string())?;
+        if let Some(error) = chunk["error"].as_str() {
+            return Err(format!("Ollama reported an error: {error}"));
+        }
+        if let Some(thought) = chunk["message"]["thinking"].as_str() {
+            reasoning.push_str(thought);
+            if reasoning.len() > 4_000 {
+                let cut = reasoning.len() - 2_000;
+                reasoning = reasoning[reasoning.ceil_char_boundary(cut)..].to_string();
+            }
+            if shown.elapsed() >= REASONING_EVERY {
+                shown = Instant::now();
+                cancel.reasoning(&reasoning_tail(&reasoning));
+            }
+        }
+        text.push_str(chunk["message"]["content"].as_str().unwrap_or(""));
+        if text.len() > 2_000_000 {
+            return Err("Provider response exceeded 2 MB.".into());
+        }
+        if chunk["done"].as_bool() == Some(true) {
+            break;
+        }
+    }
+    Ok(text)
+}
+/// Request body for Ollama's chat endpoint. Thinking is off unless the user turns
+/// it on: the reply is a JSON tool call, and a reasoning model (Qwen3) otherwise
+/// spends the token budget and the timeout on `message.thinking`, which is never
+/// read. The context is
+/// raised from Ollama's 4096 default so a folder listing plus the prompt fit.
+fn ollama_chat_body(model: &str, messages: &[Message], thinking: bool) -> Value {
+    json!({"model":model,"messages":messages,"stream":true,"format":"json","think":thinking,"options":{"num_predict":4096,"num_ctx":8192},"keep_alive":"1m"})
+}
+pub fn response_json(response: Response) -> Result<Value, String> {
+    check_status(&response)?;
     let mut body = Vec::new();
     response
         .take(2_000_001)
@@ -201,13 +325,22 @@ pub fn find_in_path(name: &str) -> Option<PathBuf> {
     None
 }
 fn has_secret(name: &str) -> bool {
-    keyring::Entry::new("com.perch.desktop.tasks", name)
+    keyring::Entry::new(SECRET_SERVICE, name)
         .and_then(|e| e.get_password())
         .is_ok()
 }
-/// A connection of `kind` anywhere in the config — the default or any per-pet
-/// override — so detection reflects what a task could actually run on.
+/// The added provider of `kind`, else a connection of it anywhere in the
+/// config, so detection reflects what a task could actually run on.
 fn configured(config: &Connections, kind: ProviderKind) -> Option<Connection> {
+    if let Some(setup) = config.providers.get(&kind) {
+        return Some(Connection {
+            kind,
+            model: setup.model.clone(),
+            endpoint: setup.endpoint.clone(),
+            executable: setup.executable.clone(),
+            thinking: false,
+        });
+    }
     if config.active.kind == kind {
         return Some(config.active.clone());
     }
@@ -225,7 +358,7 @@ pub fn detect(config: &Connections) -> ProviderDetection {
     });
     ProviderDetection {
         codex_installed: find_in_path(&codex).is_some(),
-        claude_bridge: super::runtimes::bridge_ready(),
+        claude_code: super::runtimes::CLAUDE_CODE_LOGIN && super::runtimes::bridge_ready(),
         ollama_app: find_in_path("ollama").is_some(),
         ollama_reachable: ollama_reachable(&ollama),
         openai_key: has_secret("openai"),
@@ -238,11 +371,18 @@ pub fn detect(config: &Connections) -> ProviderDetection {
     }
 }
 pub struct HttpModel(pub Connection);
-impl ModelProvider for HttpModel {
-    fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
+impl HttpModel {
+    /// A completion; `format` is a `response_format`, sent only to the
+    /// on-device model, the one provider here whose output is constrained.
+    fn request(
+        &self,
+        messages: &[Message],
+        format: Option<Value>,
+        cancel: &Cancel,
+    ) -> Result<String, String> {
         cancel.check()?;
         let config = &self.0;
-        // Apple's endpoint is a server Perch starts on demand, not a saved
+        // Apple's endpoint is a server Ledgeling starts on demand, not a saved
         // address, and `system` is the only model it accepts.
         let endpoint = if config.kind == ProviderKind::Apple {
             apple::endpoint(cancel)?
@@ -250,16 +390,21 @@ impl ModelProvider for HttpModel {
             base(config)?
         };
         if config.model.trim().is_empty() && config.kind != ProviderKind::Apple {
-            return Err("Choose a model in Connections.".into());
+            return Err(
+                "Choose a default model for this provider on the AI providers page.".into(),
+            );
         }
         let http = client()?;
         if config.kind == ProviderKind::Ollama {
-            let model_info = response_json(
-                http.post(format!("{endpoint}/api/show"))
-                    .json(&json!({"model":config.model}))
-                    .send()
-                    .map_err(|_| "Could not inspect the local Ollama model".to_string())?,
-            )?;
+            let show = http
+                .post(format!("{endpoint}/api/show"))
+                .json(&json!({"model":config.model}));
+            let model_info = cancellable(cancel, move || {
+                response_json(
+                    show.send()
+                        .map_err(|_| "Could not inspect the local Ollama model".to_string())?,
+                )
+            })?;
             if config.model.contains(":cloud")
                 || model_info.get("remote_host").is_some_and(|v| !v.is_null())
                 || model_info.get("remote_model").is_some_and(|v| !v.is_null())
@@ -269,7 +414,7 @@ impl ModelProvider for HttpModel {
             cancel.check()?;
         }
         let request = match config.kind {
-            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&json!({"model":config.model,"messages":messages,"stream":false,"format":"json","options":{"num_predict":4096},"keep_alive":"1m"})),
+            ProviderKind::Ollama => http.post(format!("{endpoint}/api/chat")).json(&ollama_chat_body(&config.model, messages, config.thinking)),
             ProviderKind::Openai => http.post(format!("{endpoint}/responses")).bearer_auth(secret("openai")?).json(&json!({"model":config.model,"input":messages,"max_output_tokens":4096,"store":false})),
             ProviderKind::Anthropic => {
                 let system = messages.iter().filter(|m| m.role=="system").map(|m|m.content.as_str()).collect::<Vec<_>>().join("\n");
@@ -282,10 +427,27 @@ impl ModelProvider for HttpModel {
             }
             // Local server, no credential: `fm serve` speaks Chat Completions
             // and binds to loopback only.
-            ProviderKind::Apple => http.post(format!("{endpoint}/chat/completions")).json(&json!({"model":apple::MODEL,"messages":messages,"stream":false})),
+            ProviderKind::Apple => {
+                // Bounded so a model that copies a listing out cannot take a minute.
+                let mut body = json!({"model":apple::MODEL,"messages":messages,"stream":false,"max_tokens":600});
+                if let Some(format) = format {
+                    body["response_format"] = format;
+                }
+                http.post(format!("{endpoint}/chat/completions")).json(&body)
+            }
             _ => return Err("Choose an AI model connection, or use a built-in preset without AI.".into()),
         };
-        let v = response_json(request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?)?;
+        let streamed = config.kind == ProviderKind::Ollama;
+        let stop = cancel.clone();
+        let v = cancellable(cancel, move || {
+            let response = request.send().map_err(|_| "Could not reach the provider (90-second timeout). Check the endpoint and connection.".to_string())?;
+            if streamed {
+                check_status(&response)?;
+                read_stream(response, &stop).map(|text| json!({"message":{"content":text}}))
+            } else {
+                response_json(response)
+            }
+        })?;
         cancel.check()?;
         let output = match config.kind {
             ProviderKind::Ollama => v["message"]["content"].as_str().unwrap_or("").to_owned(),
@@ -314,6 +476,26 @@ impl ModelProvider for HttpModel {
         } else {
             Ok(output)
         }
+    }
+}
+impl ModelProvider for HttpModel {
+    fn complete(&self, messages: &[Message], cancel: &Cancel) -> Result<String, String> {
+        self.request(messages, None, cancel)
+    }
+    // The on-device model is small enough to drift off the JSON envelope, but
+    // `fm serve` supports guided generation, so its replies are made valid by
+    // construction instead of being retried.
+    fn act(&self, messages: &[Message], tools: &[&str], cancel: &Cancel) -> Result<String, String> {
+        if self.0.kind == ProviderKind::Apple {
+            self.request(messages, Some(apple::action_format(tools)), cancel)
+        } else {
+            self.complete(messages, cancel)
+        }
+    }
+    // Measured on the real model: exploring with tools answered 1 of 20
+    // folder questions, one look at a gathered overview 15 of 16.
+    fn single_turn(&self) -> bool {
+        self.0.kind == ProviderKind::Apple
     }
     fn capabilities(&self, cancel: &Cancel) -> Result<Capabilities, String> {
         if self.0.kind == ProviderKind::Apple {
@@ -348,7 +530,7 @@ impl ModelProvider for HttpModel {
         };
         let mut valid = false;
         for _ in 0..attempts {
-            let response = self.complete(
+            let response = self.act(
                 &[
                     Message {
                         role: "system".into(),
@@ -361,6 +543,7 @@ impl ModelProvider for HttpModel {
                         content: "Check task capability.".into(),
                     },
                 ],
+                &["finish"],
                 cancel,
             )?;
             valid = parse_call(&response)
@@ -403,6 +586,167 @@ pub fn parse_call(text: &str) -> Result<ToolCall, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        io::Write,
+        net::{TcpListener, TcpStream},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Instant,
+    };
+
+    fn read_request(stream: &mut TcpStream) -> String {
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            if stream.read(&mut byte).unwrap_or(0) == 0 {
+                break;
+            }
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&head).into_owned();
+        let length = head
+            .lines()
+            .find_map(|l| {
+                l.to_lowercase()
+                    .strip_prefix("content-length:")
+                    .map(|v| v.trim().parse().unwrap_or(0))
+            })
+            .unwrap_or(0usize);
+        let mut body = vec![0u8; length];
+        let _ = stream.read_exact(&mut body);
+        head
+    }
+    /// A stand-in Ollama that streams one token every 50 ms for as long as
+    /// the client stays connected, and records when the client went away.
+    fn slow_ollama() -> (String, Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let dropped = Arc::new(AtomicBool::new(false));
+        let seen = dropped.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let head = read_request(&mut stream);
+                if head.starts_with("POST /api/show") {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    );
+                    continue;
+                }
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nConnection: close\r\n\r\n");
+                loop {
+                    std::thread::sleep(Duration::from_millis(50));
+                    let line = b"{\"message\":{\"content\":\"a\"},\"done\":false}\n";
+                    if stream.write_all(line).and_then(|_| stream.flush()).is_err() {
+                        seen.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                }
+            }
+        });
+        (address, dropped)
+    }
+    fn ollama(endpoint: &str) -> HttpModel {
+        HttpModel(Connection {
+            kind: ProviderKind::Ollama,
+            model: "test".into(),
+            endpoint: endpoint.into(),
+            ..Default::default()
+        })
+    }
+    fn message() -> Vec<Message> {
+        vec![Message {
+            role: "user".into(),
+            content: "hi".into(),
+        }]
+    }
+
+    #[test]
+    fn reasoning_is_previewed_while_the_reply_is_read() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let cancel = Cancel::default();
+        let sink = seen.clone();
+        cancel.on_reasoning(move |text| sink.lock().unwrap().push(text.to_string()));
+        let stream = "{\"message\":{\"thinking\":\"Look at\\nthe files\"},\"done\":false}\n{\"message\":{\"content\":\"{}\"},\"done\":true}\n";
+        assert_eq!(read_stream(stream.as_bytes(), &cancel).unwrap(), "{}");
+        assert_eq!(*seen.lock().unwrap(), vec!["Look at the files".to_string()]);
+        assert!(reasoning_tail(&"word ".repeat(100)).starts_with('…'));
+    }
+
+    #[test]
+    fn ollama_thinking_is_opt_in_and_context_is_raised() {
+        let body = ollama_chat_body("qwen3:4b", &[], false);
+        assert_eq!(body["think"], false);
+        assert_eq!(ollama_chat_body("qwen3:4b", &[], true)["think"], true);
+        assert_eq!(body["options"]["num_ctx"], 8192);
+        assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn cancelling_stops_a_streaming_reply_at_once_and_closes_the_connection() {
+        let (endpoint, dropped) = slow_ollama();
+        let cancel = Cancel::default();
+        let worker = cancel.clone();
+        let model = ollama(&endpoint);
+        let started = Instant::now();
+        let handle = std::thread::spawn(move || model.complete(&message(), &worker));
+        std::thread::sleep(Duration::from_millis(400));
+        cancel.cancel();
+        let result = handle.join().unwrap();
+        assert_eq!(result, Err("Task cancelled".into()));
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "cancel took {:?}",
+            started.elapsed()
+        );
+        for _ in 0..40 {
+            if dropped.load(Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("the server was still being read after the task was cancelled");
+    }
+    #[test]
+    fn a_call_that_never_returns_cannot_hold_the_worker_after_a_cancel() {
+        let cancel = Cancel::default();
+        let stop = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            stop.cancel();
+        });
+        let started = Instant::now();
+        let result: Result<(), String> = cancellable(&cancel, || {
+            std::thread::sleep(Duration::from_secs(20));
+            Ok(())
+        });
+        assert_eq!(result, Err("Task cancelled".into()));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+    #[test]
+    fn a_finished_call_returns_its_value() {
+        assert_eq!(cancellable(&Cancel::default(), || Ok(7)), Ok(7));
+    }
+    #[test]
+    fn streamed_replies_are_joined_and_errors_surface() {
+        let cancel = Cancel::default();
+        let body = "{\"message\":{\"content\":\"{\\\"to\"},\"done\":false}\n\n{\"message\":{\"content\":\"ol\\\":1}\"},\"done\":true}\nignored";
+        assert_eq!(
+            read_stream(body.as_bytes(), &cancel).unwrap(),
+            "{\"tool\":1}"
+        );
+        let failed = "{\"error\":\"model not found\"}\n";
+        assert!(read_stream(failed.as_bytes(), &cancel)
+            .unwrap_err()
+            .contains("model not found"));
+        cancel.cancel();
+        assert_eq!(
+            read_stream(body.as_bytes(), &cancel),
+            Err("Task cancelled".into())
+        );
+    }
     #[test]
     fn model_id_parsing_covers_both_listing_shapes() {
         assert_eq!(
@@ -439,11 +783,14 @@ mod tests {
         .is_err());
     }
     #[test]
-    #[ignore = "Requires locally running Ollama and PERCH_TEST_MODEL"]
+    #[ignore = "Requires locally running Ollama and LEDGELING_TEST_MODEL (or PERCH_TEST_MODEL)"]
     fn live_ollama() {
+        let model = std::env::var("LEDGELING_TEST_MODEL")
+            .or_else(|_| std::env::var("PERCH_TEST_MODEL"))
+            .expect("LEDGELING_TEST_MODEL or PERCH_TEST_MODEL");
         let p = HttpModel(Connection {
             kind: ProviderKind::Ollama,
-            model: std::env::var("PERCH_TEST_MODEL").expect("PERCH_TEST_MODEL"),
+            model,
             ..Default::default()
         });
         assert!(p.capabilities(&Cancel::default()).unwrap().structured);

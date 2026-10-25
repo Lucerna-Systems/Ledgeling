@@ -152,6 +152,10 @@ impl PetSurface for NativeSurface {
             return Ok(());
         }
         window.emit("pet:scene", scene)?;
+        #[cfg(target_os = "linux")]
+        if crate::platform::layer::active() {
+            crate::platform::layer::set_input_boxes(window, input_boxes(&scene.frames));
+        }
         self.last.insert(scene.monitor, scene.clone());
         Ok(())
     }
@@ -160,7 +164,7 @@ impl PetSurface for NativeSurface {
             return Ok(());
         }
         if let Some(window) = self.windows.get(&monitor) {
-            window.set_ignore_cursor_events(!interactive)?;
+            crate::platform::pet_ui::click_through(window, !interactive)?;
         }
         self.interactive.insert(monitor, interactive);
         Ok(())
@@ -169,9 +173,11 @@ impl PetSurface for NativeSurface {
         if self.visible == visible {
             return Ok(());
         }
-        for window in self.windows.values() {
+        for (monitor, window) in &self.windows {
             if visible {
                 window.show()?;
+                let interactive = self.interactive.get(monitor).copied().unwrap_or(false);
+                crate::platform::pet_ui::restore_overlay(window, !interactive);
             } else {
                 window.hide()?;
             }
@@ -179,6 +185,47 @@ impl PetSurface for NativeSurface {
         self.visible = visible;
         Ok(())
     }
+}
+
+/// Where a Wayland layer overlay should catch the pointer: each sprite's
+/// box, rotated, padded and snapped outward to a coarse grid in the overlay's
+/// logical pixels. The grid keeps a walking pet from changing the region on
+/// every frame; the padding means a pet stepping away from a resting pointer
+/// still reports it leaving. Transparent margins inside a box catch clicks the
+/// alpha hit test then ignores, which is the cost of not knowing the pointer.
+pub fn input_boxes(frames: &[crate::pet::Frame]) -> Vec<[i32; 4]> {
+    const GRID: f64 = 8.;
+    const PAD: f64 = 4.;
+    frames
+        .iter()
+        .filter(|f| f.opacity > 0. && f.width > 0. && f.height > 0.)
+        .map(|f| {
+            let (sin, cos) = f.rotation.to_radians().sin_cos();
+            let (ax, ay) = (f.width * f.anchor_x, f.height * f.anchor_y);
+            let corners = [
+                (-ax, -ay),
+                (f.width - ax, -ay),
+                (-ax, f.height - ay),
+                (f.width - ax, f.height - ay),
+            ]
+            .map(|(x, y)| (x * cos - y * sin, x * sin + y * cos));
+            let left = corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
+            let right = corners
+                .iter()
+                .map(|c| c.0)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let top = corners.iter().map(|c| c.1).fold(f64::INFINITY, f64::min);
+            let bottom = corners
+                .iter()
+                .map(|c| c.1)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let x0 = ((f.x + left - PAD) / GRID).floor() * GRID;
+            let y0 = ((f.y + top - PAD) / GRID).floor() * GRID;
+            let x1 = ((f.x + right + PAD) / GRID).ceil() * GRID;
+            let y1 = ((f.y + bottom + PAD) / GRID).ceil() * GRID;
+            [x0 as i32, y0 as i32, (x1 - x0) as i32, (y1 - y0) as i32]
+        })
+        .collect()
 }
 
 /// Is the cursor over an opaque pixel of this pet? Empty space around the
@@ -196,20 +243,8 @@ pub fn hit_test(pet: &Pet, cursor: Point, scale: f64) -> bool {
     };
     let sprite = pet.manifest().sprite;
     let texel = (sprite.scale * scale).max(0.01);
-    // Position within the drawn sprite, in texture pixels.
-    let mut x = (cursor.x - rect.x) / texel;
-    let mut y = (cursor.y - rect.y) / texel;
-    let (w, h) = (mask.width as f64, mask.height as f64);
-    let rotation = ((pet.rotation.round() as i64 % 360) + 360) % 360;
-    (x, y) = match rotation {
-        90 => (y, h - x),
-        180 => (w - x, h - y),
-        270 => (w - y, x),
-        _ => (x, y),
-    };
-    if pet.flip_x {
-        x = w - x;
-    }
+    let local = pet.sprite_local(cursor, scale);
+    let (x, y) = (local.x / texel, local.y / texel);
     if x < 0. || y < 0. {
         return false;
     }
@@ -231,4 +266,55 @@ pub fn local_rect(rect: Rect, monitor: &MonitorInfo) -> Rect {
         rect.width / monitor.scale,
         rect.height / monitor.scale,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::input_boxes;
+    use crate::pet::Frame;
+
+    fn frame(x: f64, y: f64, rotation: f64) -> Frame {
+        Frame {
+            pet_id: 1,
+            clip: "idle".into(),
+            frame_index: 0,
+            x,
+            y,
+            flip_x: false,
+            rotation,
+            opacity: 1.,
+            width: 32.,
+            height: 24.,
+            anchor_x: 0.5,
+            anchor_y: 1.,
+        }
+    }
+
+    #[test]
+    fn input_boxes_cover_the_sprite_snapped_outward() {
+        let [x, y, width, height] = input_boxes(&[frame(100., 200., 0.)])[0];
+        // The sprite spans 84..116 × 176..200; padded and snapped to 8 px.
+        assert_eq!([x, y, width, height], [80, 168, 40, 40]);
+    }
+
+    #[test]
+    fn small_moves_keep_the_same_input_box() {
+        assert_eq!(
+            input_boxes(&[frame(102., 200., 0.)]),
+            input_boxes(&[frame(103.5, 200., 0.)])
+        );
+    }
+
+    #[test]
+    fn a_pet_on_a_wall_gets_a_rotated_box() {
+        let [_, _, width, height] = input_boxes(&[frame(100., 200., 90.)])[0];
+        assert!(height > width, "{width}×{height}");
+    }
+
+    #[test]
+    fn invisible_pets_catch_nothing() {
+        let mut faded = frame(100., 200., 0.);
+        faded.opacity = 0.;
+        assert!(input_boxes(&[faded]).is_empty());
+    }
 }

@@ -11,6 +11,7 @@
 //! holds the model resident and a companion app must not keep that alive for
 //! a task the user ran once an hour ago.
 
+use serde_json::{json, Value};
 use std::{
     net::TcpListener,
     process::{Child, Command, Stdio},
@@ -22,12 +23,84 @@ use std::{
 /// no Private Cloud Compute backend in this build, so nothing here can leave
 /// the machine.
 pub const MODEL: &str = "system";
+/// The prompt a task may send: the model's context is about 4,000 tokens,
+/// and the reply needs room too.
+pub const CONTEXT_CHARS: usize = 10_000;
 const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 /// First use pays for loading the model, so readiness is slower than a health
 /// check on an ordinary server.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Perch's own terms for the on-device provider. Bump the version whenever
+/// An object in the dialect `fm serve` accepts: it rejects any object without
+/// `title`, `x-order` and a closed `additionalProperties`.
+fn object(title: &str, required: &[&str], properties: &[(&str, Value)]) -> Value {
+    json!({
+        "type": "object",
+        "title": title,
+        "x-order": properties.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+        "properties": properties.iter().cloned().map(|(n, v)| (n.to_string(), v)).collect::<serde_json::Map<_, _>>(),
+        "required": required,
+        "additionalProperties": false,
+    })
+}
+
+/// A `response_format` that only admits one of `tools`, each with the
+/// arguments the task loop reads. Unknown names are left out.
+pub fn action_format(tools: &[&str]) -> Value {
+    let text = || json!({ "type": "string" });
+    let operation = object(
+        "Operation",
+        &["kind", "destination"],
+        &[
+            (
+                "kind",
+                json!({ "type": "string", "enum": ["move", "write"] }),
+            ),
+            ("source", text()),
+            ("destination", text()),
+            ("content", text()),
+        ],
+    );
+    let choices: Vec<Value> = tools
+        .iter()
+        .filter_map(|tool| {
+            let (title, args): (&str, Vec<(&str, Value)>) = match *tool {
+                "finish" => ("Finish", vec![("text", text())]),
+                "list_folder" => ("ListFolder", vec![("path", text())]),
+                "list_files" => ("ListFiles", vec![]),
+                "read_file" => ("ReadFile", vec![("path", text())]),
+                "find_files" => (
+                    "FindFiles",
+                    vec![("query", text()), ("content", json!({ "type": "boolean" }))],
+                ),
+                "duplicates" => ("Duplicates", vec![]),
+                "changes" => (
+                    "Changes",
+                    vec![("operations", json!({ "type": "array", "items": operation }))],
+                ),
+                "search_web" => ("SearchWeb", vec![("query", text())]),
+                "read_page" => ("ReadPage", vec![("url", text())]),
+                _ => return None,
+            };
+            let names: Vec<&str> = args.iter().map(|(name, _)| *name).collect();
+            let args = object(&format!("{title}Args"), &names, &args);
+            Some(object(
+                title,
+                &["tool", "args"],
+                &[
+                    ("tool", json!({ "type": "string", "enum": [tool] })),
+                    ("args", args),
+                ],
+            ))
+        })
+        .collect();
+    json!({
+        "type": "json_schema",
+        "json_schema": { "name": "action", "schema": { "title": "Action", "anyOf": choices } },
+    })
+}
+
+/// Ledgeling's own terms for the on-device provider. Bump the version whenever
 /// `TERMS` changes materially: a stored acceptance below the current version
 /// stops counting, so the user is asked again rather than being held to text
 /// they never saw.
@@ -35,27 +108,22 @@ pub const TERMS_VERSION: u32 = 1;
 /// Placeholder wording pending legal review — it states the facts the user is
 /// agreeing to, but it has not been drafted by a lawyer.
 pub const TERMS: &str = "\
-Perch passes your request to Apple's on-device Foundation Model through the \
-Apple Foundation Models CLI that ships with macOS. Perch is not the author of \
+Ledgeling passes your request to Apple's on-device Foundation Model through the \
+Apple Foundation Models CLI that ships with macOS. Ledgeling is not the author of \
 that model and does not control what it produces.
 
 Output from this model may be inaccurate, incomplete, or unsuitable for your \
 purpose. Do not rely on it for legal, medical, financial, or safety-critical \
 decisions. You are responsible for reviewing every action before you approve \
-it; Perch asks for approval before changing any file, and that approval is \
+it; Ledgeling asks for approval before changing any file, and that approval is \
 yours to give or refuse.
 
 Your use of the model is also governed by Apple's own terms, which you accept \
-separately and machine-wide by running `sudo fm license`. Perch cannot accept \
+separately and machine-wide by running `sudo fm license`. Ledgeling cannot accept \
 those terms for you.
 
-Perch is provided as is, without warranty of any kind, and its authors are not \
+Ledgeling is provided as is, without warranty of any kind, and its authors are not \
 liable for any loss arising from output generated by this model.";
-
-/// Whether the user has accepted `TERMS` at the version this build ships.
-pub fn terms_accepted(config: &super::types::Connections) -> bool {
-    config.apple_terms.accepted_version >= TERMS_VERSION
-}
 
 /// Why the on-device model cannot be used, in the order worth telling a user
 /// about: each variant is actionable and names the next step.
@@ -77,8 +145,8 @@ impl Readiness {
     pub fn needs_system_settings(&self) -> bool {
         matches!(self, Readiness::NotEnabled | Readiness::Unavailable(_))
     }
-    /// The sentence shown in Connections. Every non-ready case names the thing
-    /// the user has to do, since none of them is something Perch can fix.
+    /// The sentence shown on the AI providers page. Every non-ready case names the thing
+    /// the user has to do, since none of them is something Ledgeling can fix.
     pub fn detail(&self) -> String {
         match self {
             Readiness::Ready => "Apple Intelligence is ready. Runs entirely on this Mac.".into(),
@@ -205,18 +273,18 @@ impl Drop for Server {
 }
 
 fn state_file() -> std::path::PathBuf {
+    std::env::temp_dir().join("ledgeling-fm-serve.pid")
+}
+
+fn legacy_state_file() -> std::path::PathBuf {
     std::env::temp_dir().join("perch-fm-serve.pid")
 }
 
-/// A hard kill — a crash, or the dev watcher restarting the app — never runs
-/// `Drop` or the exit hook, and an orphaned server keeps the model resident.
-/// The pid of the one we started is recorded so the next launch can reap it.
-pub fn reap_stale() {
-    let path = state_file();
-    let Ok(text) = std::fs::read_to_string(&path) else {
+fn reap_pid_file(path: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
-    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(path);
     let Ok(pid) = text.trim().parse::<i32>() else {
         return;
     };
@@ -237,6 +305,14 @@ pub fn reap_stale() {
             libc::kill(pid, libc::SIGTERM);
         }
     }
+}
+
+/// A hard kill — a crash, or the dev watcher restarting the app — never runs
+/// `Drop` or the exit hook, and an orphaned server keeps the model resident.
+/// The pid of the one we started is recorded so the next launch can reap it.
+pub fn reap_stale() {
+    reap_pid_file(&state_file());
+    reap_pid_file(&legacy_state_file());
 }
 
 static SERVER: OnceLock<Mutex<Option<Server>>> = OnceLock::new();
@@ -344,7 +420,7 @@ fn watchdog() {
     });
 }
 
-/// Stops the server now. Called on app exit so `fm serve` never outlives Perch.
+/// Stops the server now. Called on app exit so `fm serve` never outlives Ledgeling.
 pub fn shutdown() {
     if let Some(lock) = SERVER.get() {
         if let Ok(mut guard) = lock.lock() {
@@ -365,6 +441,43 @@ mod tests {
         assert!(!Readiness::Ready.detail().is_empty());
     }
     #[test]
+    fn the_action_format_admits_only_the_offered_tools_in_the_dialect_fm_accepts() {
+        let format = action_format(&["finish", "list_files", "changes", "not_a_tool"]);
+        let choices = format["json_schema"]["schema"]["anyOf"].as_array().unwrap();
+        let tools: Vec<_> = choices
+            .iter()
+            .map(|c| c["properties"]["tool"]["enum"][0].as_str().unwrap())
+            .collect();
+        assert_eq!(tools, ["finish", "list_files", "changes"]);
+        // `fm serve` refuses any object missing these, so every nested one is checked.
+        fn objects(v: &Value, out: &mut Vec<Value>) {
+            if v["type"] == "object" {
+                out.push(v.clone());
+            }
+            match v {
+                Value::Object(map) => map.values().for_each(|c| objects(c, out)),
+                Value::Array(items) => items.iter().for_each(|c| objects(c, out)),
+                _ => {}
+            }
+        }
+        let mut all = vec![];
+        objects(&format["json_schema"]["schema"], &mut all);
+        assert!(all.len() >= 7);
+        for o in all {
+            let keys: Vec<_> = o["properties"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect();
+            let mut order: Vec<String> = serde_json::from_value(o["x-order"].clone()).unwrap();
+            order.sort();
+            assert_eq!(order, keys, "{o}");
+            assert_eq!(o["additionalProperties"], false);
+            assert!(o["title"].is_string());
+        }
+    }
+    #[test]
     fn colour_codes_never_reach_the_settings_panel() {
         assert_eq!(
             strip_ansi("\u{1b}[38;2;255;107;128mModel   unavailable.\u{1b}[0m"),
@@ -379,17 +492,24 @@ mod tests {
     }
     #[test]
     fn terms_count_only_at_the_version_the_user_was_shown() {
-        use super::super::types::{AppleTerms, Connections};
-        let at = |accepted_version| Connections {
-            apple_terms: AppleTerms {
-                accepted_version,
-                accepted_at: 0,
-            },
-            ..Default::default()
+        use super::super::{
+            setup::ready,
+            types::{Connections, ProviderKind, ProviderSetup},
         };
-        assert!(!terms_accepted(&Connections::default()));
-        assert!(!terms_accepted(&at(TERMS_VERSION - 1)));
-        assert!(terms_accepted(&at(TERMS_VERSION)));
+        let at = |terms_version| {
+            let mut config = Connections::default();
+            config.providers.insert(
+                ProviderKind::Apple,
+                ProviderSetup {
+                    terms_version,
+                    ..Default::default()
+                },
+            );
+            config
+        };
+        assert!(!ready(&Connections::default(), &ProviderKind::Apple));
+        assert!(!ready(&at(TERMS_VERSION - 1), &ProviderKind::Apple));
+        assert!(ready(&at(TERMS_VERSION), &ProviderKind::Apple));
     }
     #[test]
     fn the_terms_state_what_is_being_agreed_to() {

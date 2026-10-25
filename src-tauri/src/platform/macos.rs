@@ -236,8 +236,8 @@ impl Platform for NativePlatform {
         }
     }
 
-    fn mouse_down(&self) -> bool {
-        unsafe { CGEventSourceButtonState(1, 0) }
+    fn mouse_down(&self) -> Option<bool> {
+        Some(unsafe { CGEventSourceButtonState(1, 0) })
     }
 }
 

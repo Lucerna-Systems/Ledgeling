@@ -1,11 +1,16 @@
 //! Platforms without a native adapter yet: pets live on monitor edges only.
 use super::{Platform, ProcessInfo};
 use crate::world::{MonitorInfo, Point, WindowInfo};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
+/// A unit struct like the macOS and Windows adapters, so the app constructs
+/// every platform the same way; the monitor cache lives beside it.
 #[derive(Default)]
-pub struct NativePlatform {
-    monitors: Mutex<Vec<MonitorInfo>>,
+pub struct NativePlatform;
+
+fn monitor_cache() -> &'static Mutex<Vec<MonitorInfo>> {
+    static CACHE: OnceLock<Mutex<Vec<MonitorInfo>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
 }
 impl Platform for NativePlatform {
     fn enumerate_windows(&self) -> Result<Vec<WindowInfo>, String> {
@@ -21,10 +26,13 @@ impl Platform for NativePlatform {
         Ok(None)
     }
     fn monitors(&self) -> Result<Vec<MonitorInfo>, String> {
-        Ok(self.monitors.lock().map(|m| m.clone()).unwrap_or_default())
+        Ok(monitor_cache()
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or_default())
     }
     fn set_monitors(&self, monitors: Vec<MonitorInfo>) {
-        if let Ok(mut cache) = self.monitors.lock() {
+        if let Ok(mut cache) = monitor_cache().lock() {
             *cache = monitors;
         }
     }
@@ -34,7 +42,7 @@ impl Platform for NativePlatform {
     fn cursor(&self) -> Option<Point> {
         None
     }
-    fn mouse_down(&self) -> bool {
-        false
+    fn mouse_down(&self) -> Option<bool> {
+        None
     }
 }

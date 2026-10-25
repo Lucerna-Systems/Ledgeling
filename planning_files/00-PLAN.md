@@ -1,10 +1,12 @@
-# Perch — Plan & MVP Status
+# Ledgeling — Plan & MVP Status
 
 One file, replacing the original seven planning documents. Each section keeps the
 original document's intent and records **what was actually built to get the MVP
 running on macOS**. The honest, always-current account of what has and has not
 been verified lives in [`docs/verification.md`](../docs/verification.md) — this
-file summarizes; that one is the record.
+file summarizes; that one is the record. For the operational release roadmap and
+active work packages (WP-0 through WP-11), see
+[`01-RELEASE-PLAN.md`](01-RELEASE-PLAN.md).
 
 ---
 
@@ -60,6 +62,14 @@ by the M0 spike: per-pet window vs full overlay.
   (`EnumWindows`, `DWMWA_EXTENDED_FRAME_BOUNDS`, `DWMWA_CLOAKED`,
   `GetLastInputInfo`, `QueryFullProcessImageNameW`) but **has never been
   compiled or run** — this is a Mac. Treat it as unreviewed.
+- A **Linux adapter** (`platform/linux/`, decisions in `platform/x11_model.rs`)
+  was added on 2026-09-24 at the user's direction (see §5). On X11 it reads
+  the EWMH stacking order, frame extents, window type and state, XScreenSaver
+  idle time and the foreground executable. On Wayland other windows cannot be
+  seen, so pets keep to the screen edges and idle time comes from
+  `ext-idle-notify-v1` or GNOME's idle monitor. It has been run under Xvfb and
+  headless sway in CI, not on a physical Linux desktop; see
+  `docs/verification.md`.
 - **`engine.rs` is the headless core**: world scan, pets, awareness, packs with
   no Tauri. Timeline tests drive it through a mock `Platform`, which is how
   "the user dragged a window while the squirrel was climbing it" is repeatable.
@@ -172,22 +182,39 @@ parts code can do:
 | M4-1 settings/persistence, M4-2 tray/lifecycle/autostart | ✅ Done |
 | M4-3 installer & signing · M4-4 soak · M4-5 authoring-guide test · M4-6 release | ❌ Not done |
 
-77 tests cover it (61 unit, 7 privacy, 9 timeline integration), clippy and fmt
-clean on every change; `docs/verification.md` is the item-by-item account.
+149 Rust tests pass (132 unit, 10 integration timeline, 7 privacy; plus 11
+ignored credential- or environment-gated tests) and 62 UI vitest tests pass,
+clippy and fmt clean on every change; `docs/verification.md` is the item-by-item
+account.
+
+**Linux support was also pulled forward** (2026-09-24, at the user's
+direction), although "macOS/Linux parity" sits on the deferred list below. It
+is an adapter behind the existing `Platform` trait, and it does not touch
+engine behaviour. Linux packaging and release remain out of scope.
 
 **One deferred item was pulled forward early:** the **AI layer** (now the task
 service, [`docs/assistant.md`](../docs/assistant.md)) was built before M4
 shipped, at the user's direction. It is opt-in, independent of pet animation
-and awareness, and its automated suites pass (90 Rust tests + 3 UI tests, plus
-7 ignored credential-gated connection tests that have never been run); its
-desktop behaviour — native bubble, Spaces, Finder handoff — has not been
-hand-verified. See `docs/verification.md`.
+and awareness, and its automated suites pass; its desktop behaviour — the pet
+bubble, Spaces, Finder handoff — has not been hand-verified. See
+`docs/verification.md`.
+
+**Coding mode was also pulled forward** (2026-09-27, at the user's direction).
+It is an opt-in developer workspace behind Settings → Developer tools: one
+floating window with files, a Monaco editor, live diffs, git worktrees bound one
+to one with pets, a run button with port detection, terminals for the user's own
+Claude Code, and the assistant's chat scoped to a worktree. It is a separate page
+and a lazily built backend service, so with the setting off it loads nothing. See
+[`docs/coding-mode.md`](../docs/coding-mode.md). VS Code extensions are
+explicitly not supported; that document says why.
 
 ---
 
 ## 6. What's left before release
 
-In the order the plan itself suggests:
+Active execution is tracked as discrete work packages (WP-0 to WP-11) in
+[`01-RELEASE-PLAN.md`](01-RELEASE-PLAN.md). In the order the original plan itself
+suggests:
 
 1. **Stability soak (M4-4)** — `scripts/soak.py` exists, never run. Eight
    hours: memory drift, sleep/wake, lock/unlock, monitor changes.
@@ -212,7 +239,14 @@ In the order the plan itself suggests:
 ## 7. Deliberately deferred (unchanged)
 
 Nothing here enters the repo until M4 ships publicly: macOS/Linux parity
-beyond what exists, pets noticing each other, more species (cat, moth, bat,
-frog), sound design pass, pet actions, meeting detection,
+beyond what exists, more species (moth, bat, frog), sound design pass, pet actions, meeting detection,
 notification interception, pack marketplace. (The AI layer was on this list
-and was pulled forward early — see §5.)
+and was pulled forward early — see §5. Linux platform support was pulled
+forward too, packaging excepted.)
+
+**Pulled forward on 2026-10-24 at the user's direction** (the pet sprint, branch
+`feature/pet-sprint`): pets noticing each other, and more species (the cat).
+The same sprint added a first-run welcome, throwing and petting, a per-pet bond
+(name, days together, affection) and Studio templates with export. What has
+actually been hand-run is recorded in
+[`docs/verification.md`](../docs/verification.md).

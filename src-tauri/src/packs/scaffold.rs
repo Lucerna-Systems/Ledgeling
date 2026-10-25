@@ -158,7 +158,7 @@ fn manifest_text(slug: &str, name: &str, class: LocomotionClass, clips: &[(&str,
 fn readme_text(name: &str, class: LocomotionClass) -> String {
     format!(
         "# {name}\n\n\
-This pack already runs. Open Pet Lab, pick it, and it appears on your windows.\n\n\
+This pack already runs. Open Pet Studio, pick it, and it appears on your windows.\n\n\
 ## What to change first\n\n\
 1. **The art.** Replace the strips in `sprites/`. Each file is one row of equal-width\n   \
 frames; the engine works out the frame width by dividing the image width by `frames`.\n\
@@ -258,7 +258,7 @@ fn preview_pixels() -> Vec<u8> {
     pixels
 }
 
-fn write_png(path: &Path, pixels: &[u8], width: u32, height: u32) -> Result<(), String> {
+pub(crate) fn write_png(path: &Path, pixels: &[u8], width: u32, height: u32) -> Result<(), String> {
     let file = std::fs::File::create(path)
         .map_err(|e| format!("Could not create {}: {e}", path.display()))?;
     let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);

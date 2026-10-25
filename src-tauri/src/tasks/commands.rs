@@ -1,12 +1,12 @@
 use super::{
     apple,
     providers::{self, ModelProvider},
-    runtimes,
+    runtimes, setup,
     types::*,
     Cancel, TaskService,
 };
 use serde_json::Value;
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
 fn main_only(window: &WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
         Ok(())
@@ -14,12 +14,20 @@ fn main_only(window: &WebviewWindow) -> Result<(), String> {
         Err("Task controls belong to the companion window.".into())
     }
 }
+/// The coding window's Chat tab runs ordinary tasks in the selected worktree.
+fn main_or_code(window: &WebviewWindow) -> Result<(), String> {
+    #[cfg(feature = "coding")]
+    if window.label() == crate::coding::window::LABEL {
+        return Ok(());
+    }
+    main_only(window)
+}
 #[tauri::command]
 pub async fn task_list(
     window: WebviewWindow,
     state: State<'_, TaskService>,
 ) -> Result<Vec<Task>, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.list()
 }
 #[tauri::command]
@@ -28,8 +36,28 @@ pub async fn task_start(
     state: State<'_, TaskService>,
     request: TaskRequest,
 ) -> Result<Task, String> {
-    main_only(&window)?;
-    state.start(request)
+    main_or_code(&window)?;
+    let pet = crate::app::task_pet(window.app_handle(), request.pet_id);
+    state.start_for(request, pet)
+}
+#[tauri::command]
+pub async fn task_rename(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+    title: String,
+) -> Result<Task, String> {
+    main_or_code(&window)?;
+    state.rename(id, &title)
+}
+#[tauri::command]
+pub async fn task_delete(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+) -> Result<(), String> {
+    main_or_code(&window)?;
+    state.delete(id)
 }
 #[tauri::command]
 pub async fn task_cancel(
@@ -37,8 +65,17 @@ pub async fn task_cancel(
     state: State<'_, TaskService>,
     id: i64,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.cancel(id)
+}
+#[tauri::command]
+pub async fn task_force_stop(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    id: i64,
+) -> Result<(), String> {
+    main_or_code(&window)?;
+    state.force_stop(id)
 }
 #[tauri::command]
 pub async fn task_approve(
@@ -48,7 +85,7 @@ pub async fn task_approve(
     approval_id: u64,
     accept: bool,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.answer(id, approval_id, accept)
 }
 #[tauri::command]
@@ -57,7 +94,7 @@ pub async fn task_undo(
     state: State<'_, TaskService>,
     id: i64,
 ) -> Result<(), String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     state.undo(id)
 }
 #[tauri::command]
@@ -65,45 +102,17 @@ pub async fn task_connections(
     window: WebviewWindow,
     state: State<'_, TaskService>,
 ) -> Result<Connections, String> {
-    main_only(&window)?;
+    main_or_code(&window)?;
     Ok(state.config())
 }
 #[tauri::command]
 pub async fn task_save_connections(
     window: WebviewWindow,
     state: State<'_, TaskService>,
-    mut config: Connections,
-) -> Result<(), String> {
+    config: Connections,
+) -> Result<Connections, String> {
     main_only(&window)?;
-    // Acceptance is recorded here rather than trusted from the frontend: the
-    // version is clamped to what this build can show, and the timestamp is
-    // stamped on the transition so it records a real moment of consent.
-    let stored = state.config();
-    config.apple_terms.accepted_version = config
-        .apple_terms
-        .accepted_version
-        .min(apple::TERMS_VERSION);
-    config.apple_terms.accepted_at =
-        if config.apple_terms.accepted_version > stored.apple_terms.accepted_version {
-            chrono::Utc::now().timestamp()
-        } else {
-            stored.apple_terms.accepted_at
-        };
-    // `fm` accepts only one model, so a model id left over from a previously
-    // chosen provider would otherwise be stored and shown as if it were in use.
-    for connection in std::iter::once(&mut config.active).chain(config.per_pet.values_mut()) {
-        if connection.kind == ProviderKind::Apple {
-            connection.model = apple::MODEL.into();
-        }
-    }
-    let uses_apple = std::iter::once(&config.active)
-        .chain(config.per_pet.values())
-        .any(|c| c.kind == ProviderKind::Apple);
-    if uses_apple && !apple::terms_accepted(&config) {
-        return Err(
-            "Accept the Apple Intelligence terms before choosing the on-device model.".into(),
-        );
-    }
+    let config = setup::accept_choices(&state.config(), config)?;
     // Per-pet overrides must clear the same endpoint bar as the default,
     // or they would become a bypass for the HTTPS/localhost rules.
     for connection in std::iter::once(&config.active).chain(config.per_pet.values()) {
@@ -117,7 +126,43 @@ pub async fn task_save_connections(
             providers::base(connection)?;
         }
     }
-    state.set_config(&config)
+    state.set_config(&config)?;
+    Ok(config)
+}
+/// Adds a provider, or saves changes to one already added. `accept` is the
+/// user ticking the terms shown by `task_provider_terms`; the version and
+/// time are stamped here, never taken from the frontend.
+#[tauri::command]
+pub async fn task_add_provider(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    kind: ProviderKind,
+    setup: ProviderSetup,
+    accept: bool,
+) -> Result<Connections, String> {
+    main_only(&window)?;
+    let mut config = state.config();
+    setup::add(
+        &mut config,
+        kind,
+        setup,
+        accept,
+        chrono::Utc::now().timestamp(),
+    )?;
+    state.set_config(&config)?;
+    Ok(config)
+}
+#[tauri::command]
+pub async fn task_remove_provider(
+    window: WebviewWindow,
+    state: State<'_, TaskService>,
+    kind: ProviderKind,
+) -> Result<Connections, String> {
+    main_only(&window)?;
+    let mut config = state.config();
+    setup::remove(&mut config, &kind);
+    state.set_config(&config)?;
+    Ok(config)
 }
 #[tauri::command]
 pub async fn task_secret(window: WebviewWindow, name: String, value: String) -> Result<(), String> {
@@ -155,9 +200,10 @@ pub async fn task_test_connection(
     config: Connection,
 ) -> Result<Capabilities, String> {
     main_only(&window)?;
-    // Testing runs a real completion, so it is gated exactly like a task.
-    if config.kind == ProviderKind::Apple && !apple::terms_accepted(&state.config()) {
-        return Err("Accept the Apple Intelligence terms before testing this connection.".into());
+    // Testing runs a real completion, so the on-device model is gated exactly
+    // like a task. Other probes send only a fixed synthetic prompt.
+    if config.kind == ProviderKind::Apple && !setup::ready(&state.config(), &config.kind) {
+        return Err(setup::not_ready(&config.kind));
     }
     tauri::async_runtime::spawn_blocking(move || {
         if matches!(config.kind, ProviderKind::Codex | ProviderKind::Claude) {
@@ -180,21 +226,31 @@ pub async fn task_account(
         .await
         .map_err(|_| "Account operation failed".to_string())?
 }
-/// Perch's own terms for the on-device provider, plus whether they have been
-/// accepted, so the panel never has to hardcode the text or the version.
+/// Every provider's terms and their version, so the providers page never has
+/// to hardcode the text or the version the backend checks.
 #[tauri::command]
-pub async fn task_apple_terms(
-    window: WebviewWindow,
-    state: State<'_, TaskService>,
-) -> Result<Value, String> {
+pub async fn task_provider_terms(window: WebviewWindow) -> Result<Value, String> {
     main_only(&window)?;
-    let config = state.config();
-    Ok(serde_json::json!({
-        "version": apple::TERMS_VERSION,
-        "text": apple::TERMS,
-        "accepted": apple::terms_accepted(&config),
-        "acceptedAt": config.apple_terms.accepted_at,
-    }))
+    let kinds = [
+        ProviderKind::Apple,
+        ProviderKind::Codex,
+        ProviderKind::Claude,
+        ProviderKind::Ollama,
+        ProviderKind::Openai,
+        ProviderKind::Anthropic,
+        ProviderKind::Compatible,
+    ];
+    let mut terms = serde_json::Map::new();
+    for kind in kinds {
+        if let Some((version, text)) = setup::terms(&kind) {
+            let key = serde_json::to_value(&kind).map_err(|e| e.to_string())?;
+            terms.insert(
+                key.as_str().unwrap_or_default().into(),
+                serde_json::json!({ "version": version, "text": text }),
+            );
+        }
+    }
+    Ok(Value::Object(terms))
 }
 #[tauri::command]
 pub async fn task_apple_open_settings(window: WebviewWindow) -> Result<(), String> {
@@ -227,8 +283,13 @@ pub async fn task_pick(window: WebviewWindow, folders: bool) -> Result<Vec<Strin
 }
 #[tauri::command]
 pub async fn task_open_url(window: WebviewWindow, url: String) -> Result<(), String> {
-    main_only(&window)?;
-    let parsed = reqwest::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+    main_or_code(&window)?;
+    open_web_url(&url)
+}
+/// Open a result's link in the browser. Web links only: the dashboard and the
+/// pet bubble both route through this one check.
+pub fn open_web_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
     if !matches!(parsed.scheme(), "https" | "http")
         || !parsed.username().is_empty()
         || parsed.password().is_some()
@@ -239,11 +300,8 @@ pub async fn task_open_url(window: WebviewWindow, url: String) -> Result<(), Str
 }
 #[tauri::command]
 pub async fn open_assistant(app: tauri::AppHandle, pet_id: Option<u64>) -> Result<(), String> {
-    let main = app
-        .get_webview_window("main")
-        .ok_or("Companion window missing")?;
-    main.show().map_err(|e| e.to_string())?;
-    main.set_focus().map_err(|e| e.to_string())?;
-    app.emit_to("main", "assistant:open", pet_id)
-        .map_err(|e| e.to_string())
+    crate::app::on_main(&app, |handle| crate::companion::reveal(handle).map(|_| ()))
+        .ok_or("Companion window did not open")??;
+    crate::companion::send(&app, "assistant:open", pet_id);
+    Ok(())
 }

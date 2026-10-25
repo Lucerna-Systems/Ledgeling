@@ -1,31 +1,53 @@
-# Perch tasks
+# Ledgeling tasks
 
-Perch now has an opt-in task service, independent of pet animation and awareness.
+Ledgeling now has an opt-in task service, independent of pet animation and awareness.
 Any pet can present a task. Removing or hiding that pet does not stop the worker.
 One task runs at a time, including while awaiting approval; additional tasks queue.
 
 ## Start from a pet
 
-On macOS, right-click a desktop pet for a native speech bubble. It takes keyboard
-input without activating the dashboard. The dashboard starts hidden; open it
-explicitly from the tray menu, Cmd+1 while Perch is active, or the bubble's
-Connections button. Pet overlays and the bubble are auxiliary panels across
-Spaces; neither can become the application's main window.
+Right-click a desktop pet for its speech bubble. It is the same bubble on every
+platform: a small transparent window (`src/bubble`) placed next to the pet with
+its tail pointing at it, above the pet when there is room and below it
+otherwise. If the window the pet stands on moves, the bubble moves with it. It
+takes keyboard input without bringing the dashboard forward. On macOS it is a
+non-activating panel, so typing into it does not activate Ledgeling either; on
+Windows it is a tool window, so it has no taskbar button, no Alt+Tab entry, and
+pets never perch on it. Clicking anywhere else, the close button, or Escape
+closes it. Cmd/Ctrl+Enter runs the request.
 
-Drag a pet into an open Finder folder or onto a Finder folder icon to give that
-pet a working folder. The drop uses a native file promise, not window inspection.
-Finder briefly receives a uniquely named hidden `.perch-handoff-*` file, removed
-one second after completion. No existing file is overwritten. A crash during this
-handoff can leave that harmless hidden file behind; it can be removed manually.
-The folder binding is session-only, preventing a different pet from inheriting
-access after a restart. The chosen folder is visible in the bubble. Choosing a
-folder through its ellipsis button is an alternative. Hold Shift while dragging
-to move a pet normally without initiating a Finder handoff.
+The dashboard starts hidden; open it explicitly from the tray menu, Cmd+1 while
+Ledgeling is active, or the bubble's AI providers button. On macOS, pet overlays and
+the bubble are auxiliary panels across Spaces; neither can become the
+application's main window.
+
+Drag a pet into an open folder or onto a folder icon to give that pet a working
+folder: in Finder on macOS, and in Explorer or onto the desktop on Windows. The
+path comes from the drop itself, not from inspecting the window it landed in.
+The drop briefly leaves a uniquely named hidden `.ledgeling-handoff-*` file in the
+folder (earlier versions used `.perch-handoff-*`, which Ledgeling continues to clean up if found), and the folder it landed in is the one bound. It is removed one second
+after completion. No existing file is overwritten.
+
+- **macOS:** the drag is a native file promise, and Finder reports where it
+  wrote the file.
+- **Windows:** the drag is an OLE drag offering one virtual file. Explorer does
+  not tell the drag where it wrote it, so for the length of the handoff Ledgeling
+  listens to the shell's change notifications for that uniquely named file and
+  takes its parent directory. If none arrives within 15 seconds of the drop,
+  nothing is bound; choose the folder with the bubble's folder row instead. A
+  drop somewhere other than a folder, such as onto another app, binds nothing.
+
+A crash during the handoff can leave that harmless hidden file behind; it can
+be removed manually. The folder binding is session-only, preventing a different
+pet from inheriting access after a restart. The chosen folder is visible in the
+bubble. Choosing a folder with the bubble's folder row works on every platform.
+Hold Shift while dragging to move a pet normally without a handoff.
 
 The **Actions / Ask** toggle determines execution:
 
 - **Ask:** a question for the connected model, optionally with web research.
-  Nothing on disk is read. The loop follows from the connection — a local or
+  When the pet has a folder, the question comes with it, so "what is in this
+  folder?" means the pet's folder; with none, nothing on disk is read. The loop follows from the connection — a local or
   API model runs Standard tools; Codex/Claude runtimes run Advanced mode with
   a separate start approval.
 - **Actions:** without a connection the adjacent menu chooses the built-in
@@ -33,11 +55,11 @@ The **Actions / Ask** toggle determines execution:
   files, or exact duplicates — which need a chosen folder; the typed text is
   the filename prefix for rename or search phrase for find. With any
   connection, local or cloud, the model runs the request itself with file
-  tools in the chosen folder — or, when none was chosen, in the Documents/Perch
-  folder Perch creates, where it may also add folders. "My instructions" in
-  the menu sends free-form instructions. A cloud API model requires the
-  content checkbox before a folder is read; an agent's start approval is its
-  consent.
+  tools in the chosen folder — or, when none was chosen, in the Documents/Ledgeling
+  folder Ledgeling creates, where it may also add folders. "My instructions" in
+  the menu sends free-form instructions. Consent to send content to a cloud
+  provider is given once, when it is added on the AI providers page; an
+  agent's start approval still asks before each run.
 
 The bubble displays progress, task results and approvals. Approve or reject
 there; completed file changes offer Undo. Further requests include the previous
@@ -68,12 +90,12 @@ and pack validation raises a note naming the fallback. See
 
 ## Approvals are written for people, not for agents
 
-Approvals arrive from three different producers — Perch's own file planner, the
+Approvals arrive from three different producers — Ledgeling's own file planner, the
 Codex app-server protocol, the Claude SDK bridge's tool hooks — each with its own
 internal payload. `tasks::summary` turns any of them into one shape before it is
 stored: a headline, up to six lines, a count of what was not listed, a caution
 note, and the label for the accept button ("Approve", "Start", "Allow"). Every
-surface renders that summary; none of them renders the payload. A shape Perch
+surface renders that summary; none of them renders the payload. A shape Ledgeling
 does not recognise is relabelled leaf by leaf and says so, rather than being
 dumped as JSON. Progress lines are translated the same way: the user reads
 "Preparing changes for you to review", never the tool name that produced it.
@@ -84,7 +106,7 @@ task history, since those are the user's own paths.
 
 When a model is connected, the bubble also shows a quiet **Select another model**
 link. Clicking it fetches the models of this pet's effective provider and swaps
-the link for a native picker; a choice is saved immediately as that pet's
+the link for a picker; a choice is saved immediately as that pet's
 override and applies from the next task (a running task keeps the connection it
 started with). The web panel's connection state refreshes through the
 `connections:changed` event when the bubble changes it.
@@ -92,7 +114,23 @@ started with). The web panel's connection state refreshes through the
 The dashboard's **Your assistant** panel offers attachments, multiple folders,
 full history, source links, connection settings, and the operation journal.
 
-## Connections
+## AI providers
+
+Every provider is set up once on the **AI providers** page in the sidebar:
+its address or executable, its default model, its API key, and its terms.
+Adding a provider is where those terms are accepted — Apple's on-device terms,
+and for cloud APIs and agents, consent to content leaving this computer. The
+backend stamps the terms version and time; a stored acceptance below the
+version this build ships stops counting, so the provider asks again. Removing a
+provider clears every pet choice that pointed at it, and deletes its saved key.
+
+Everywhere else — the Assistant's provider picker, per-pet choices, the pet
+bubble — only switches between added providers. A pick is saved before it is
+shown, so what the picker says is always what a task runs on. The first
+provider added becomes the default when none is picked. Configurations from
+before this page carry over: providers already in use become added ones, and
+only acceptances actually recorded carry over, so a cloud provider that was
+consented to per request asks for its terms once.
 
 Run `npm install` and `npm ci --prefix sidecar`, then `npm run prepare:sidecar`.
 The packaging hook copies the build machine's Node executable into the app with
@@ -116,9 +154,11 @@ when needed, not during ordinary pet animation.
   actual ChatGPT sign-in state from `account/read`; the managed browser login and
   Check account are there for when signing in is genuinely outstanding. No token
   extraction is used.
-- **Claude SDK:** the runtime is bundled with Perch and detected as installed.
-  Uses the saved Anthropic API key. Subscription authentication is deliberately
-  not offered because official third-party guidance conflicts.
+- **Claude Code (development builds only):** the bundled Claude SDK runtime,
+  signed in through the Claude Code login on this machine (run `claude` once to
+  sign in). Anthropic's guidance does not allow shipped third-party products to
+  offer claude.ai login, so debug builds offer this option and release builds
+  never do. Released builds use Claude only through the Anthropic API key.
 - **Brave:** enable search and save a Brave Search API key. Search is independent
   of the AI provider. Public HTTPS text/HTML pages can also be read when allowed.
 
@@ -129,38 +169,59 @@ bodies or credentials. Model calls are limited to 90 seconds and 4,096 output
 tokens; Standard tasks stop at 24 steps / 350 KB accumulated context. There is
 no silent provider fallback. Tests/probes can incur provider usage.
 
-The Connections panel is split into **Installed apps** (Codex, the bundled Claude
-runtime, Ollama) and **API keys** (OpenAI, Anthropic, any OpenAI-compatible
-endpoint). Installed apps are detected automatically — PATH probes for Codex and
-Ollama, a short reachability check against the Ollama endpoint, a packaged-files
-check for the Claude sidecar, and credential-store look-ups for saved API keys —
-so each select shows only what this machine can actually run. A saved provider
-stays selectable even when detection misses it (a stopped Ollama, a Codex at a
-custom path), so detection can never lock a configured connection away.
+The page lists apps this machine could run — PATH probes for Codex and Ollama,
+a short reachability check against the Ollama endpoint, a packaged-files check
+for the Claude sidecar, Apple silicon for Apple Intelligence — and credential-store
+look-ups for saved API keys. An added provider stays listed even when detection
+misses it (a stopped Ollama, a Codex at a custom path).
 
-Model lists load automatically when a provider is selected, through the
-provider's free listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex
-`model/list`). Listing does not run a completion and does not incur provider
-usage; **Test connection** is the action that spends tokens, verifying structured
-task responses. The model field also accepts a typed ID that the listing missed,
-for compatible endpoints that do not implement `/models` or use custom names.
+**Apple Intelligence** is basic, and labelled so on the providers page and in
+the composer. Measured on the real model, exploring a folder with tools answered
+1 of 20 folder questions, while one look at a gathered overview answered 15 of
+16. So it does not run the tool loop: Ledgeling gathers what the request can see
+— the shared folder as relative paths, shallow levels first and deeper ones
+while about 4,000 characters remain (app bundles count as one entry), attached
+files' text, web results when allowed, the last two turns — and the model
+answers once, in plain text, within its 4,000-token context. It cannot change
+files. Actions with it run the built-in actions as they would with no AI; free
+instructions there are refused with a pointer to Ask. `fm serve` offers no
+native tool calling (it ignores `tools`, and forcing one fails).
+
+Other providers run the tool loop. Its folder tool shows one folder's own
+entries, so large folders can be explored; the whole-tree listing refuses more
+than 2,000 files and points to it. A call identical to one already made is
+answered with "already done" instead of running again, and a tool without
+arguments is offered only until it has been called.
+
+For every provider, a request with no folder or attachment tells the model it
+cannot see the disk, and to say a folder is needed only when the request is
+about the user's files. A final answer that only repeats the request is refused
+and asked again, the same as an unreadable action. Asking from the pet bubble
+shares the pet's folder when it has one.
+
+Model lists load when a provider is opened, through the provider's free
+listing endpoint (`/v1/models`, Ollama `/api/tags`, Codex `model/list`).
+Listing does not run a completion and does not incur provider usage; **Test**
+is the action that spends tokens, verifying structured task responses. The
+model field also accepts a typed ID that the listing missed, for compatible
+endpoints that do not implement `/models` or use custom names.
 
 ### Per-companion models
 
 One connection is the default for every pet, and any pet can carry its own
 override. A task runs on the pet's override when one is set, otherwise on the
-default; mode selection and cloud-consent rules follow that effective
-connection. Overrides are stored with the connection metadata in the assistant
-database and persist independently of the default — changing the default later
-does not re-point pets that have their own model. The assistant panel shows the
-chosen companion's effective connection in its badge and request summary, and
-Companion models in Connections lists every pet with its effective connection,
-where an override can be set or cleared. Overrides for pets that are removed from
-the desktop remain stored but are not shown anywhere.
+default; mode selection follows that effective connection. Overrides are
+stored with the connection metadata in the assistant database and persist
+independently of the default — changing the default later does not re-point
+pets that have their own provider. In the Assistant, pick a pet in the
+carousel and choose its provider under it; "Default" makes it follow the
+default again. A pet uses its provider's default model unless one was picked
+for it in the pet bubble. Overrides for pets that are removed from the desktop
+remain stored but are not shown anywhere.
 
 ## Execution and recovery
 
-Standard tools list/read/find selected files, detect byte-identical duplicates,
+Standard tools look inside one folder at a time, list/read/find selected files, detect byte-identical duplicates,
 propose moves/new files, search, fetch public pages, or finish with a text answer.
 Text, Markdown, CSV and text PDFs are supported; scanned PDFs/OCR are not.
 Limits are 2,000 files, 20 directory levels, 10 MB document input, 120 KB extracted
@@ -187,8 +248,8 @@ Claude also has a 24-turn / $2 per-query cap.
 
 History, selected paths, generated content and journals live in
 `<app config>/assistant/tasks.sqlite`, including SQLite WAL files. They are local
-and not encrypted by Perch; OS disk protection applies. Do not delete the database
-while Perch is running or while you need its undo records.
+and not encrypted by Ledgeling; OS disk protection applies. Do not delete the database
+while Ledgeling is running or while you need its undo records.
 
 ## Validation
 

@@ -2,10 +2,10 @@
 
 ## Project Structure & Module Organization
 
-The directory is `lupetty`; the product is **Perch**. M0-M4 are implemented as far
+The directory is `lupetty`; the product is **Ledgeling**. M0-M4 are implemented as far
 as code goes; `docs/verification.md` records what has actually been run and what
 has not. `planning_files/00-PLAN.md` is the consolidated plan and the authority
-on intent.
+on intent; `planning_files/01-RELEASE-PLAN.md` tracks active release work packages.
 
 - `src-tauri/src/world/` surface extraction, the traversal graph, scan diffing.
 - `src-tauri/src/pet/` pet runtime, locomotion classes, pathfinding, behavior FSM.
@@ -26,11 +26,12 @@ The Vue 3 / TypeScript / Tailwind 4 frontend and Tauri 2 / Rust backend are scaf
 - `npm install`: install frontend dependencies.
 - `npm run dev`: run the frontend development server.
 - `npm run tauri dev`: launch the desktop app.
-- `npm run build`: type-check and build the frontend.
-- `npm test`: run the focused Rust tests.
-- `npm run check`: frontend build and Rust Clippy with warnings denied.
+- `npm run build`: type-check and build the frontend (`vue-tsc --noEmit && vite build`).
+- `npm test`: run the Rust test suite (`cargo test --manifest-path src-tauri/Cargo.toml --features coding`, 149 tests).
+- `npm run test:ui`: run the 62 UI tests via Vitest (`vitest run`).
+- `npm run check`: frontend build plus Rust Clippy (default and `--features coding`) with warnings denied.
 - `npm run tauri build`: build desktop bundles.
-- `cargo test --manifest-path src-tauri/Cargo.toml`: run Rust tests.
+- `cargo test --manifest-path src-tauri/Cargo.toml`: run default release Rust tests without the `coding` feature.
 
 ## Coding Style & Naming Conventions
 
@@ -38,13 +39,14 @@ Use two-space indentation in Vue, TypeScript, and JSON; use `rustfmt` defaults f
 
 ## Testing Guidelines
 
-74 Rust tests: unit tests beside the code, `src-tauri/tests/timeline.rs` for
-window-layout replays through the mock platform, and `src-tauri/tests/privacy.rs`,
-which fails the build if a window-title, screen-capture, key-state or network API
-appears anywhere in the source. Add tests for behavior changes — surface geometry,
-traversal rules, pack validation messages — and prefer driving `engine::Engine`
-with `platform::mock::MockPlatform` over anything needing a GUI. No frontend test
-runner is configured; if one is added, colocate `*.test.ts`.
+149 Rust tests: 132 unit tests beside the code, 10 in `src-tauri/tests/timeline.rs`
+for window-layout replays through the mock platform, and 7 in `src-tauri/tests/privacy.rs`,
+which fails the build if a window-title, screen-capture, key-state or unisolated network API
+appears anywhere in the source. 62 UI tests in Vitest (`npm run test:ui`) cover
+dashboard, assistant, approvals, and bubble logic with colocated `*.test.ts` files.
+Add tests for behavior changes — surface geometry, traversal rules, pack validation
+messages — and prefer driving `engine::Engine` with `platform::mock::MockPlatform`
+over anything needing a GUI.
 
 ## Commit & Pull Request Guidelines
 

@@ -174,7 +174,7 @@ fn codex_action(details: &Value) -> ApprovalSummary {
                 .map(|p| relative(p, root.as_deref()))
                 .collect(),
             more: paths.len().saturating_sub(MAX_ITEMS),
-            note: "The agent wrote these files itself; Perch cannot undo them for you.".into(),
+            note: "The agent wrote these files itself; Ledgeling cannot undo them for you.".into(),
             accept: "Allow".into(),
             monospace: false,
         };
@@ -191,7 +191,7 @@ fn codex_action(details: &Value) -> ApprovalSummary {
 
 /// Last resort: a shape nobody here recognises. Showing the raw payload would
 /// be showing the agent's internals, so scalar leaves are relabelled instead,
-/// and the note says plainly that Perch could not read the request.
+/// and the note says plainly that Ledgeling could not read the request.
 fn unrecognised(title: &str, details: &Value) -> ApprovalSummary {
     ApprovalSummary {
         headline: if title.is_empty() {
@@ -201,17 +201,18 @@ fn unrecognised(title: &str, details: &Value) -> ApprovalSummary {
         },
         items: leaf_lines(details, MAX_ITEMS),
         more: 0,
-        note: "Perch could not read this request in full. Approve only if you understand it."
+        note: "Ledgeling could not read this request in full. Approve only if you understand it."
             .into(),
         accept: "Approve".into(),
         monospace: false,
     }
 }
 
-/// What a tool call is doing, in the user's words. Tool names are Perch's
+/// What a tool call is doing, in the user's words. Tool names are Ledgeling's
 /// internal vocabulary and its models'; progress lines are read by people.
 pub fn tool_label(tool: &str) -> &'static str {
     match tool {
+        "list_folder" => "Looking in a folder",
         "list_files" => "Looking through your files",
         "read_file" => "Reading a file",
         "find_files" => "Searching your files",

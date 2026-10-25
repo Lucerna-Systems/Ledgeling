@@ -1,16 +1,16 @@
 [package]
-name = "perch"
+name = "ledgeling"
 version = "0.1.0"
 description = "A little company for your desktop"
-authors = ["Perch contributors"]
+authors = ["Ledgeling contributors"]
 edition = "2021"
 
 [lib]
-name = "perch"
+name = "ledgeling"
 path = "src/lib.rs"
 
 [[bin]]
-name = "perch"
+name = "ledgeling"
 path = "src/main.rs"
 
 [build-dependencies]
@@ -34,6 +34,27 @@ rfd = "0.15"
 scraper = "0.24"
 libc = "0.2"
 open = "5"
+# Terminals are a normal feature: terminal mode and coding mode share them.
+portable-pty = "0.9"
+# Coding mode, only in builds made with `--features coding`
+notify = { version = "8", default-features = false, features = ["macos_fsevent"], optional = true }
+ignore = { version = "0.4", optional = true }
+
+[features]
+# Experimental coding mode stays out of release builds until it has been run on
+# every platform; see docs/coding-mode.md.
+coding = ["dep:notify", "dep:ignore"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["screensaver", "res"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
+# Client code for the COSMIC protocols vendored in protocols/.
+wayland-scanner = "0.31"
+dbus = "0.9"
+# The overlay as a Wayland layer surface. The versions follow Tauri's own GTK.
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 
 [dev-dependencies]
 tempfile = "3"

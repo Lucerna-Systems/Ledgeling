@@ -23,8 +23,10 @@ pub trait Platform: Send + Sync {
     fn fullscreen_app_active(&self) -> Result<bool, String>;
     /// Cursor position in virtual-desktop physical pixels.
     fn cursor(&self) -> Option<Point>;
-    /// Is the primary mouse button held down?
-    fn mouse_down(&self) -> bool;
+    /// Is the primary mouse button held down? `None` when the platform cannot
+    /// tell without reading input state; the overlay's pointer capture then
+    /// reports the release instead.
+    fn mouse_down(&self) -> Option<bool>;
     /// Monitor geometry is supplied by the window toolkit, which already
     /// reports DPI-correct work areas on every platform. The app layer passes
     /// exactly one monitor — the pet screen — which is what anchors the
@@ -37,14 +39,28 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::NativePlatform;
 #[cfg(target_os = "windows")]
-mod windows;
+pub(crate) mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::NativePlatform;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{layer, prepare_process, set_overlay_pointer, NativePlatform};
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod fallback;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub use fallback::NativePlatform;
 
+/// Runs before the window toolkit starts. Only Linux needs anything here.
+#[cfg(not(target_os = "linux"))]
+pub fn prepare_process() {}
+
 pub mod mock;
+pub mod wayland_model;
+pub mod x11_model;
+
+pub mod handoff;
+#[cfg(target_os = "windows")]
+mod windows_drop;
 
 pub mod pet_ui;

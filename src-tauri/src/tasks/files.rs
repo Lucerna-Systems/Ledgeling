@@ -30,9 +30,18 @@ impl Scope {
         Ok(Self { roots, attachments })
     }
     pub fn path(&self, input: &str, write: bool) -> Result<PathBuf, String> {
-        let raw = Path::new(input);
+        // A verbatim (`\\?\`) Windows path only splits on `\`, but callers
+        // (including on-device models) write paths with `/` on any platform.
+        let normalized = input.replace('/', std::path::MAIN_SEPARATOR_STR);
+        let raw = Path::new(&normalized);
         let path = if raw.is_absolute() {
             raw.to_path_buf()
+        } else if let Some(inside) = self.roots.iter().find_map(|r| {
+            // "curseforge/minecraft" means inside the shared "curseforge".
+            let rest = raw.strip_prefix(r.file_name()?).ok()?;
+            (!rest.as_os_str().is_empty()).then(|| r.join(rest))
+        }) {
+            inside
         } else {
             self.roots
                 .first()
@@ -49,6 +58,173 @@ impl Scope {
             ));
         }
         Ok(path)
+    }
+    /// One folder's own entries, without descending: what "what is in this
+    /// folder?" needs, and small enough for an on-device model's context even
+    /// when the tree below holds thousands of files. An empty `input` means the
+    /// chosen folders themselves.
+    pub fn list_folder(&self, input: &str, cancel: &Cancel) -> Result<serde_json::Value, String> {
+        const MAX: usize = 100;
+        let folders = match self.shared_folder(input) {
+            Some(root) => vec![root],
+            None if input.trim().trim_end_matches('/').is_empty()
+                || matches!(input.trim(), "." | "./") =>
+            {
+                self.roots.clone()
+            }
+            None => {
+                let path = self
+                    .path(input.trim(), false)
+                    .map_err(|_| self.unknown_folder(input))?;
+                if !path.is_dir() {
+                    return Err(self.unknown_folder(input));
+                }
+                vec![path]
+            }
+        };
+        if folders.is_empty() {
+            return Err("No folder was shared for this task.".into());
+        }
+        let mut listed = Vec::new();
+        for folder in folders {
+            no_links(&folder)?;
+            let mut entries = Vec::new();
+            for entry in fs::read_dir(&folder)
+                .map_err(|_| format!("{} is not a folder that can be read.", folder.display()))?
+            {
+                cancel.check()?;
+                let entry = entry.map_err(|e| e.to_string())?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Ok(ty) = entry.file_type() else { continue };
+                if name.starts_with('.') || ty.is_symlink() {
+                    continue;
+                }
+                entries.push(if ty.is_dir() {
+                    serde_json::json!({ "name": name, "kind": "folder" })
+                } else {
+                    let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    serde_json::json!({ "name": name, "kind": "file", "bytes": bytes })
+                });
+            }
+            entries.sort_by(|a, b| {
+                a["kind"]
+                    .as_str()
+                    .cmp(&b["kind"].as_str())
+                    .reverse()
+                    .then(a["name"].as_str().cmp(&b["name"].as_str()))
+            });
+            let more = entries.len().saturating_sub(MAX);
+            entries.truncate(MAX);
+            listed.push(serde_json::json!({ "folder": folder, "entries": entries, "more": more }));
+        }
+        Ok(serde_json::Value::Array(listed))
+    }
+    /// The shared folders as paths relative to each, shallow levels first and
+    /// deeper ones while `budget` characters remain, for a model that gets one
+    /// look instead of exploring. Paths rather than an indented tree, because a
+    /// small model misreads indentation and invents entries.
+    pub fn overview(&self, budget: usize, cancel: &Cancel) -> Result<String, String> {
+        // Joined with `/` explicitly: this text goes to a model, not the
+        // filesystem, and `Path::display()` would use `\` on Windows.
+        fn portable(path: &Path) -> String {
+            path.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        }
+        const PER_FOLDER: usize = 25;
+        // Bundles are folders on disk but single things to a person.
+        const OPAQUE: [&str; 5] = ["app", "bundle", "framework", "xcodeproj", "photoslibrary"];
+        let mut out = Vec::new();
+        let mut used = 0;
+        for root in &self.roots {
+            no_links(root)?;
+            out.push(format!("{}/", root.display()));
+            let mut queue = std::collections::VecDeque::from([PathBuf::new()]);
+            'folders: while let Some(relative) = queue.pop_front() {
+                cancel.check()?;
+                let Ok(entries) = fs::read_dir(root.join(&relative)) else {
+                    continue;
+                };
+                let mut folders = Vec::new();
+                let mut files = Vec::new();
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let Ok(ty) = entry.file_type() else { continue };
+                    if name.starts_with('.') || ty.is_symlink() {
+                        continue;
+                    }
+                    if ty.is_dir() {
+                        folders.push(name)
+                    } else {
+                        files.push(name)
+                    }
+                }
+                folders.sort();
+                files.sort();
+                let total = folders.len() + files.len();
+                let mut lines = Vec::new();
+                for name in folders.iter().chain(&files).take(PER_FOLDER) {
+                    let path = relative.join(name);
+                    let folder = folders.contains(name);
+                    lines.push(format!(
+                        "{}{}",
+                        portable(&path),
+                        if folder { "/" } else { "" }
+                    ));
+                    let bundle = Path::new(name)
+                        .extension()
+                        .is_some_and(|e| OPAQUE.contains(&e.to_string_lossy().as_ref()));
+                    if folder && !bundle {
+                        queue.push_back(path);
+                    }
+                }
+                if total > PER_FOLDER {
+                    lines.push(format!(
+                        "{}… and {} more",
+                        if relative.as_os_str().is_empty() {
+                            String::new()
+                        } else {
+                            format!("{}/", portable(&relative))
+                        },
+                        total - PER_FOLDER
+                    ));
+                }
+                let cost: usize = lines.iter().map(|l| l.len() + 1).sum();
+                if used + cost > budget {
+                    break 'folders;
+                }
+                used += cost;
+                out.extend(lines);
+            }
+        }
+        Ok(out.join("\n"))
+    }
+    /// The shared folder `input` names, in the loose forms a model writes it:
+    /// its full path, `~/…`, its own name, or the tail of its path.
+    fn shared_folder(&self, input: &str) -> Option<PathBuf> {
+        let input = input.trim().trim_end_matches('/');
+        if input.is_empty() {
+            return None;
+        }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let expanded = match (input.strip_prefix("~/"), &home) {
+            (Some(rest), Some(home)) => home.join(rest),
+            _ => PathBuf::from(input),
+        };
+        self.roots
+            .iter()
+            .find(|root| {
+                **root == expanded || (!expanded.is_absolute() && root.ends_with(&expanded))
+            })
+            .cloned()
+    }
+    fn unknown_folder(&self, input: &str) -> String {
+        let shared: Vec<String> = self.roots.iter().map(|r| r.display().to_string()).collect();
+        format!(
+            "{input} is not a folder in this task. The shared folder is {}; pass \"\" for it, or a path inside it.",
+            shared.join(", ")
+        )
     }
     pub fn list(&self, cancel: &Cancel) -> Result<Vec<PathBuf>, String> {
         fn walk(
@@ -79,7 +255,7 @@ impl Scope {
                 }
                 if out.len() > 2000 {
                     return Err(
-                        "This task is limited to 2,000 files. Choose a smaller folder.".into(),
+                        "This folder holds more than 2,000 files, too many to list at once. Use list_folder to look inside it one folder at a time.".into(),
                     );
                 }
             }
@@ -102,7 +278,7 @@ pub fn default_root() -> Result<PathBuf, String> {
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .ok_or("The home folder is unavailable.")?;
-    let root = home.join("Documents").join("Perch");
+    let root = home.join("Documents").join("Ledgeling");
     fs::create_dir_all(&root).map_err(|e| format!("Could not create {}: {e}", root.display()))?;
     root.canonicalize().map_err(|e| e.to_string())
 }
@@ -117,6 +293,11 @@ pub fn no_links(path: &Path) -> Result<(), String> {
             return Err("Relative path traversal is not allowed.".into());
         }
         current.push(part);
+        // Windows cannot stat a bare drive prefix like `\\?\C:`, and neither
+        // a prefix nor the root can be a link.
+        if !matches!(part, Component::Normal(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&current) {
             Ok(m) if m.file_type().is_symlink() => {
                 return Err(format!(
@@ -348,6 +529,80 @@ pub fn undo(scope: &Scope, op: &mut Operation, cancel: &Cancel) -> Result<(), St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_overview_lists_shallow_levels_first_as_paths_and_skips_bundle_insides() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap().join("games");
+        for dir in [
+            "minecraft/Instances/Re-Console/saves/deep",
+            "Tool.app/Contents/MacOS",
+        ] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        std::fs::write(root.join("notes.txt"), "hi").unwrap();
+        let scope = super::Scope::new(&[root.to_string_lossy().into()], &[]).unwrap();
+        let full = scope.overview(10_000, &super::Cancel::default()).unwrap();
+        let lines: Vec<&str> = full.lines().collect();
+        assert!(lines.contains(&"minecraft/Instances/Re-Console/"), "{full}");
+        assert!(lines.contains(&"Tool.app/"));
+        assert!(!full.contains("Contents"), "a bundle is one thing: {full}");
+        let at = |line: &str| lines.iter().position(|l| *l == line).unwrap();
+        assert!(
+            at("notes.txt") < at("minecraft/Instances/"),
+            "shallow levels come first"
+        );
+        // A tight budget keeps the shallow levels and drops the deep ones.
+        let short = scope.overview(40, &super::Cancel::default()).unwrap();
+        assert!(
+            short.contains("minecraft/") && !short.contains("Re-Console"),
+            "{short}"
+        );
+    }
+    #[test]
+    fn a_folder_can_be_named_the_ways_a_model_writes_it() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap().join("curseforge");
+        std::fs::create_dir_all(root.join("minecraft/Instances")).unwrap();
+        let scope = super::Scope::new(&[root.to_string_lossy().into()], &[]).unwrap();
+        let listed = |input: &str| {
+            scope
+                .list_folder(input, &super::Cancel::default())
+                .map(|v| {
+                    v[0]["entries"][0]["name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+        };
+        let full = root.to_string_lossy().to_string();
+        for root_form in [
+            "",
+            ".",
+            "./",
+            "curseforge",
+            "curseforge/",
+            &full,
+            &format!("{full}/"),
+        ] {
+            assert_eq!(
+                listed(root_form).as_deref(),
+                Ok("minecraft"),
+                "{root_form:?}"
+            );
+        }
+        for inside in [
+            "minecraft",
+            "curseforge/minecraft",
+            &format!("{full}/minecraft"),
+        ] {
+            assert_eq!(listed(inside).as_deref(), Ok("Instances"), "{inside:?}");
+        }
+        let missing = listed("Documents/nowhere").unwrap_err();
+        assert!(
+            missing.contains(&full),
+            "names the shared folder: {missing}"
+        );
+    }
     use super::*;
     fn setup() -> (tempfile::TempDir, Scope, Cancel) {
         let dir = tempfile::tempdir().unwrap();

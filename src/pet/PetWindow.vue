@@ -96,7 +96,7 @@ onMounted(async () => {
   await subscribe<SpawnPayload>('pet:spawn', payload => atlases.set(payload.petId, payload))
   await subscribe<number>('pet:despawn', despawn)
   await subscribe<Scene>('pet:scene', render)
-  await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null })
+  await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null; caring = false; stopHold() })
   await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicate(value.petId, value.status) })
   await subscribe<string>('pet:sound', source => { void new Audio(source).play().catch(() => {}) })
   // The backend sends spawn payloads before this webview could listen; ask it
@@ -106,6 +106,24 @@ onMounted(async () => {
 })
 onUnmounted(() => { disposed = true; off.forEach(stop => stop()); fading.forEach(clearTimeout); fading.clear() })
 
+/** On a Wayland layer overlay the backend cannot read the pointer, so the
+ *  overlay reports it: once per frame while it moves over a pet, and once when
+ *  it leaves. The compositor only routes it here while it is over a pet. */
+const reportsPointer = new URLSearchParams(location.search).has('pointer')
+let pointerAt: [number, number] | null = null
+let pointerQueued = false
+function report(point: [number, number] | null) {
+  if (!reportsPointer) return
+  pointerAt = point
+  if (pointerQueued) return
+  pointerQueued = true
+  requestAnimationFrame(() => {
+    pointerQueued = false
+    void invoke('pet_pointer', { point: pointerAt }).catch(() => {})
+  })
+}
+function leave() { if (!dragging) report(null) }
+
 function act(kind: string) { void invoke('pet_interact', { kind }).catch(() => {}) }
 
 function ask(event: MouseEvent) {
@@ -113,27 +131,52 @@ function ask(event: MouseEvent) {
   if (id) void invoke('show_pet_bubble', { petId: Number(id) }).catch(() => {})
 }
 
+/** A press that stays put this long is petting, not a click or a drag. */
+const HOLD_MS = 500
+let holdTimer: ReturnType<typeof setTimeout> | null = null
+let caring = false
+function stopHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null } }
+
 function down(event: PointerEvent) {
   if (event.button !== 0) return
+  stopHold()
+  holdTimer = setTimeout(() => {
+    holdTimer = null
+    if (!dragging || nativeDragging) return
+    caring = true
+    act('pet')
+  }, HOLD_MS)
   dragging = true
   pressedAt = event.timeStamp
   pressedX = event.clientX; pressedY = event.clientY
   dragPet = Number((event.target as HTMLElement).closest<HTMLElement>('[data-pet-id]')?.dataset.petId) || null
   // Capture so the release still arrives if the pointer leaves the overlay.
   ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
-  act('grab')
+  // The grab picks the pet under the pointer, so it must know where that is.
+  if (reportsPointer) {
+    void invoke('pet_pointer', { point: [event.clientX, event.clientY] }).catch(() => {}).then(() => act('grab'))
+  } else act('grab')
 }
 function move(event: PointerEvent) {
+  report([event.clientX, event.clientY])
   if (!dragging || nativeDragging || !dragPet || event.shiftKey) return
   if (Math.hypot(event.clientX - pressedX, event.clientY - pressedY) < 12) return
+  if (caring) return
+  stopHold()
   nativeDragging = true
-  void invoke('pet_folder_drag', { petId: dragPet }).catch(() => { nativeDragging = false })
+  // Where the native drag is unavailable the pet simply follows the cursor;
+  // it is tried once per press, not on every move.
+  void invoke('pet_folder_drag', { petId: dragPet }).catch(() => {})
 }
 function up(event: PointerEvent) {
   if (!dragging) return
   dragging = false
+  nativeDragging = false
+  stopHold()
   act('release')
-  if (event.timeStamp - pressedAt < 250) act('click')
+  const wasCaring = caring
+  caring = false
+  if (!wasCaring && event.timeStamp - pressedAt < 250) act('click')
 }
 </script>
 
@@ -145,6 +188,7 @@ function up(event: PointerEvent) {
     @pointermove="move"
     @pointerup="up"
     @pointercancel="up"
+    @pointerleave="leave"
     @contextmenu.prevent="ask"
   />
   <svg v-if="debug" class="debug-overlay" xmlns="http://www.w3.org/2000/svg">

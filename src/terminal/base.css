@@ -1,0 +1,67 @@
+/* Controls, chips and dots shared by the coding window and the terminal
+   window: the same tokens from style.css at a denser scale. */
+:is(.code-shell, .term-shell) {
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --row: 28px;
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  font-size: 12.5px; line-height: 1.45; color: var(--ink); background: var(--surface);
+}
+:is(.code-shell, .term-shell) ::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.code-shell, .term-shell) ::-webkit-scrollbar-track, :is(.code-shell, .term-shell) ::-webkit-scrollbar-corner { background: transparent; }
+:is(.code-shell, .term-shell) ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 10px; background: color-mix(in srgb, var(--muted) 30%, transparent) padding-box; }
+:is(.code-shell, .term-shell) p { margin: 0; }
+:is(.code-shell, .term-shell) h2 { font-size: 13px; font-weight: 650; margin: 0; letter-spacing: -.1px; }
+:is(.code-shell, .term-shell) h3 { font-size: 12.5px; font-weight: 600; margin: 0; }
+:is(.code-shell, .term-shell) code, :is(.code-shell, .term-shell) .mono { font: 11.5px/1.5 var(--mono); }
+
+/* Controls */
+:is(.code-shell, .term-shell) :where(button:not(.bare)) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 28px; padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); font-size: 12px; font-weight: 550; white-space: nowrap;
+}
+:is(.code-shell, .term-shell) :where(button:not(.bare):not(:disabled):hover) { background: var(--soft); }
+:is(.code-shell, .term-shell) .primary-button { background: var(--accent-gradient) !important; border-color: transparent !important; color: var(--on-accent); box-shadow: 0 3px 10px -4px var(--accent-glow); }
+:is(.code-shell, .term-shell) .primary-button:not(:disabled):hover { filter: brightness(1.07); }
+:is(.code-shell, .term-shell) .danger-button { color: var(--danger); }
+:is(.code-shell, .term-shell) .ghost { border-color: transparent !important; background: transparent; color: var(--muted); }
+:is(.code-shell, .term-shell) .ghost:not(:disabled):hover { color: var(--ink); }
+:is(.code-shell, .term-shell) .icon { min-height: 26px; width: 26px; padding: 0 !important; border-color: transparent !important; background: transparent; color: var(--muted); }
+:is(.code-shell, .term-shell) .icon:not(:disabled):hover { color: var(--ink); background: var(--soft); }
+:is(.code-shell, .term-shell) .icon.on { color: var(--accent); background: var(--accent-soft); }
+:is(.code-shell, .term-shell) .bare { background: none; border: 0; padding: 0; color: inherit; text-align: left; }
+:is(.code-shell, .term-shell) :where(input:not([type=checkbox]), select, textarea) {
+  min-height: 30px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface);
+  padding: 5px 9px; font-size: 12.5px; min-width: 0; color: var(--ink);
+}
+:is(.code-shell, .term-shell) :where(input, textarea):focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+:is(.code-shell, .term-shell) :where(select) { padding-right: 26px; appearance: none; background-image: var(--chevron); background-repeat: no-repeat; background-position: right 7px center; }
+:is(.code-shell, .term-shell) input::placeholder, :is(.code-shell, .term-shell) textarea::placeholder { color: var(--placeholder); }
+:is(.code-shell, .term-shell) input[type=checkbox] { accent-color: var(--accent); }
+:is(.code-shell, .term-shell) .text-link { font-size: 12px; }
+.chips { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.chip.live { background: color-mix(in srgb, var(--status-live) 14%, transparent); color: var(--status-live); }
+.chip.busy { background: var(--status-running-bg); color: var(--status-running-ink); }
+.chip.ask { background: var(--status-waiting-bg); color: var(--status-waiting-ink); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.dot.live { background: var(--status-live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-live) 20%, transparent); }
+.dot.busy { background: var(--status-running-ink); animation: pulse 1.4s ease-in-out infinite; }
+.dot.idle { background: var(--line-strong); }
+@keyframes pulse { 50% { opacity: .35; } }
+.muted { color: var(--muted); }
+.small { font-size: 11px; }
+.empty { display: grid; justify-items: center; align-content: center; gap: 8px; height: 100%; padding: 28px 22px; text-align: center; color: var(--muted); }
+.empty h2 { color: var(--ink); font-size: 15px; }
+.empty p { max-width: 34ch; }
+.empty .glyph { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); }
+
+/* Confirmation dialog */
+.card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.dialog-scrim { position: fixed; inset: 0; z-index: 50; background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.dialog { position: fixed; z-index: 51; top: 22%; left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-lift); }
+.dialog p { font-size: 13px; overflow-wrap: anywhere; }
+.dialog .card-actions { justify-content: flex-end; margin-top: 14px; }
+:is(.code-shell, .term-shell) .danger-solid { background: var(--danger); border-color: transparent; color: #fff; }
+:is(.code-shell, .term-shell) .danger-solid:hover { filter: brightness(1.08); }
