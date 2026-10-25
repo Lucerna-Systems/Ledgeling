@@ -8,3 +8,8 @@ src-tauri/gen/
 /sidecar/node
 /sidecar/node.exe
 /sidecar/node_modules/
+
+# Local configuration and secrets; only the template is tracked.
+.env
+.env.*
+!.env.example
