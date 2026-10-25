@@ -536,6 +536,19 @@ Branch `feat/pack-hardening`. Nothing here has been run by hand in the app.
   are tested. The schema is checked against the limits constants but no JSON
   Schema validator runs over the bundled packs.
 
+## Path-filtered CI (2026-10-25)
+
+`scripts/ci-changes.mjs` (6 vitest tests: Rust/pack/schema → matrix, Vue →
+frontend only, docs → nothing, unknown or build-wide files → both, no earlier
+run or a base missing from the history → both, nothing changed → nothing). The
+`gh run list` lookups were run against this repository's real history and gave the
+expected base commit, and the classifier was run on a real diff. The workflow
+YAML parses. **Not run:** the workflow itself. The first run after merge will
+compare against an older commit and, because `verify.yml` changed, run the full
+matrix; the skipping paths (a Vue-only PR, a docs-only PR, an already-released
+prod push) have not been seen in Actions yet, and `verify-result` has not been
+required in branch protection.
+
 ## Local .env flow (2026-10-25)
 
 `scripts/with-env.mjs` (4 vitest tests: parsing, shell precedence, no values
