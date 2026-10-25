@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  # Read-only: lets `plan` see whether verify already passed on this commit.
+  checks: read
 
 defaults:
   run:
@@ -29,6 +31,7 @@ jobs:
       channel: ${{ steps.plan.outputs.channel }}
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
+      verified: ${{ steps.verified.outputs.verified }}
     steps:
       - uses: actions/checkout@v4
       - id: plan
@@ -54,13 +57,38 @@ jobs:
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Planned $version"
+      # An alpha promotes a commit that already went through the release on
+      # main, so repeating the whole matrix proves nothing new. Skip it only
+      # when verify has passed on all three platforms for this exact commit;
+      # anything else (a hotfix pushed straight to prod, a failed or missing
+      # run) still runs it. Pushes to main always verify: the PR that merged
+      # may have been tested against an older main.
+      - id: verified
+        if: ${{ github.ref_name == 'prod' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.name | test("verify \\((macos|ubuntu|windows)-latest\\)"))] as $v | if ([$v[] | select(.conclusion != "success")] | length) > 0 then 0 else [$v[].name | capture("verify \\((?<os>macos|ubuntu|windows)-latest\\)").os] | unique | length end' \
+            || echo 0)
+          if [ "$passed" = 3 ]; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+            echo "Verify already passed on macOS, Ubuntu and Windows for $GITHUB_SHA; skipping it."
+          else
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            echo "Verify has not passed on all platforms for $GITHUB_SHA ($passed of 3); running it."
+          fi
 
   verify:
     needs: plan
+    if: ${{ needs.plan.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yml
 
   build:
     needs: [plan, verify]
+    # `verify` is skipped for an already-verified alpha; a skipped need would
+    # otherwise skip this job too. A failed or cancelled verify still stops it.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     # The GitHub Environment named for the channel ("pre-alpha" or "alpha")
     # holds that build's server addresses; see docs/development.md.
     environment: ${{ needs.plan.outputs.channel }}
