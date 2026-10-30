@@ -929,8 +929,48 @@ fn room_engine(
     let (mut engine, platform) =
         biome_engine(vec![vec![flush]], |s| s.effects.make_room = make_room);
     *platform.access.lock().unwrap() = access;
+    *platform.idle.lock().unwrap() = 10.;
     run(&mut engine, &platform, 2.5);
     (engine, platform)
+}
+
+#[test]
+fn make_room_waits_while_you_work_and_pets_never_move_a_window() {
+    // Busy: input a moment ago, so nothing moves yet.
+    let flush = win(1, 200., 0., 900., 700.).with_pid(7);
+    let (mut engine, platform) =
+        biome_engine(vec![vec![flush.clone()]], |s| s.effects.make_room = true);
+    *platform.access.lock().unwrap() = ledgeling::platform::ResizeAccess::Granted;
+    run(&mut engine, &platform, 3.);
+    assert!(
+        platform.moves.lock().unwrap().is_empty(),
+        "not while typing"
+    );
+    *platform.idle.lock().unwrap() = 5.;
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        platform.moves.lock().unwrap().len(),
+        1,
+        "once the user pauses"
+    );
+
+    // A pet standing on a window with no biome never makes it move.
+    let slack = win(2, 200., 0., 900., 700.).with_pid(9);
+    let (mut engine, platform) = biome_engine(vec![vec![slack]], |s| {
+        s.effects.make_room = true;
+        s.biomes.clear();
+    });
+    *platform.access.lock().unwrap() = ledgeling::platform::ResizeAccess::Granted;
+    *platform.idle.lock().unwrap() = 10.;
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 20.);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert_eq!(
+        engine.cramped,
+        vec![2],
+        "its edge has no room, so pets keep off it"
+    );
 }
 
 #[test]
