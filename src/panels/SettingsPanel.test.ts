@@ -200,3 +200,10 @@ describe('make room at the top', () => {
     wrapper.unmount()
   })
 })
+
+it('says why the last window could not be moved', () => {
+  snapshot.value = { settings: { ...baseSettings, effects: { jelly: true, biomes: true, makeRoom: true } }, resizeAccess: 'granted', roomError: 'That window could not be found to move it.' } as unknown as Snapshot
+  const wrapper = mount(SettingsPanel)
+  expect(wrapper.text()).toContain("couldn't be moved: That window could not be found")
+  wrapper.unmount()
+})

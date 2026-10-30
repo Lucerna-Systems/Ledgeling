@@ -198,6 +198,8 @@ const neverSeen = [
         <p>When a window touches the top of the screen and a pet or biome stands on it, move the window's top edge down a little so they stay in view. It goes back when they leave.</p>
         <p v-if="makeRoom && access === 'needs_permission'">Ledgeling needs Accessibility permission to move other apps' windows. Until then, pets keep off those edges. <button type="button" class="text-link" @click="grantAccess">Allow in System Settings</button></p>
         <p v-else-if="makeRoom && access === 'unsupported'">This desktop doesn't let apps move other windows, so pets keep off those edges instead.</p>
+        <p v-else-if="makeRoom && snapshot?.roomError">The last window couldn't be moved: {{ snapshot.roomError }} Ledgeling tries again in half a minute.</p>
+        <p v-else-if="makeRoom && access === 'granted'">Ledgeling may move windows.</p>
       </div>
       <button class="toggle" :class="{ enabled: makeRoom }" role="switch" :aria-checked="makeRoom" aria-label="Make room at the top"
               @click="save({ effects: { ...settings?.effects, jelly, biomes, makeRoom: !makeRoom } })"><span /></button>

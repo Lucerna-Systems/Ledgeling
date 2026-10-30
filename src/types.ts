@@ -246,6 +246,8 @@ export interface Snapshot {
   suspended: boolean
   /** Whether "make room at the top" may move windows on this desktop. */
   resizeAccess?: 'granted' | 'needs_permission' | 'unsupported'
+  /** Why "make room at the top" last failed to move a window. */
+  roomError?: string | null
   notes: string[]
   packsDir: string
   native: boolean
