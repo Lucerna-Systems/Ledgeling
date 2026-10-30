@@ -180,13 +180,12 @@ impl Engine {
         self.cramped = self.find_cramped();
         if self.settings.effects.biomes {
             let scale = self.pet_scale();
-            let placed = self.biomes.layout(
-                &self.settings.biomes,
-                &self.decor,
-                &self.surfaces,
-                scale,
-                &self.cramped,
-            );
+            let mut placed =
+                self.biomes
+                    .layout(&self.settings.biomes, &self.decor, &self.surfaces, scale);
+            // Props on a cramped window are still drawn (they are the user's),
+            // but a pet sitting in them would be cut off.
+            placed.retain(|p| !self.cramped.contains(&p.host));
             let ledges = Biomes::prop_surfaces(&placed, scale);
             self.surfaces.extend(ledges);
         }
@@ -209,6 +208,26 @@ impl Engine {
             .filter(|w| self.resize_access != ResizeAccess::Granted || self.room.refused(w.id))
             .map(|w| w.id)
             .collect()
+    }
+
+    /// Why props on this window may be cut off by the top of the screen, and
+    /// what would help; `None` when there is room.
+    fn headroom_notice(&self, host: u64) -> Option<String> {
+        let monitor = self.monitors.first()?;
+        let window = self.windows.iter().find(|w| w.id == host)?;
+        if window.rect.y - monitor.work.y >= CRAMPED_HEIGHT * monitor.scale
+            || self.room.is_holding(host)
+        {
+            return None;
+        }
+        Some(if !self.settings.effects.make_room {
+            "This window touches the top of the screen, so tall props are cut off. Turn on Make room at the top in Settings → Biomes to fix that."
+        } else if self.resize_access == ResizeAccess::NeedsPermission {
+            "This window touches the top of the screen, so tall props are cut off. Allow Ledgeling under Accessibility (Settings → Biomes) so it can make room."
+        } else {
+            "This window touches the top of the screen and can't be moved, so tall props are cut off."
+        }
+        .into())
     }
 
     /// Make room above windows that need it, or put them back.
@@ -284,7 +303,6 @@ impl Engine {
             &self.decor,
             &self.surfaces,
             self.pet_scale(),
-            &self.cramped,
         );
         self.biomes.frames(&placed)
     }
@@ -381,6 +399,7 @@ impl Engine {
             props: Vec::new(),
             palette,
             error: self.edit_error.clone(),
+            notice: None,
         };
         if let Edit::Editing { biome } = edit {
             let setting = self.settings.biomes.iter().find(|b| b.id == biome)?;
@@ -395,6 +414,7 @@ impl Engine {
             view.edge_y = edge.span_start.y;
             view.edge_width = edge.span_end.x - edge.span_start.x;
             view.props = setting.props.clone();
+            view.notice = self.headroom_notice(*host);
         }
         Some(view)
     }

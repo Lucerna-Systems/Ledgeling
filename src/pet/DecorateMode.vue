@@ -120,6 +120,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </button>
         </div>
         <p class="decorate-hint">Drag onto the window's top edge. Right-click a prop to remove it, double-click to flip it.</p>
+        <p v-if="edit.notice" class="decorate-notice">{{ edit.notice }}</p>
         <p v-if="edit.error" class="decorate-error">{{ edit.error }}</p>
       </div>
       <div v-if="drag" class="decorate-ghost" :style="ghost" />
@@ -145,6 +146,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .decorate-handle:hover { outline: 2px solid rgba(91, 91, 214, 0.8); }
 .decorate-hint { color: #5f6879; font-size: 12px; }
 .decorate-error { color: #b4232c; }
+.decorate-notice { color: #8a5a00; }
 .decorate button { font: inherit; }
 .decorate-done, .decorate-ask button { border: 0; border-radius: 8px; padding: 5px 12px; background: #5b5bd6; color: #fff; cursor: pointer; }
 @media (prefers-color-scheme: dark) {

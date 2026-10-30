@@ -166,6 +166,8 @@ export interface EditView {
   props: PlacedProp[]
   palette: PaletteItem[]
   error: string | null
+  /** Why props here may be cut off by the top of the screen, if they are. */
+  notice: string | null
 }
 export interface PaletteItem { decor: string; prop: string; width: number; height: number }
 export interface PropAtlas { image: string; frames: number; fps: number; width: number; height: number }
