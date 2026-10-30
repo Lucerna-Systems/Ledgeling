@@ -22,6 +22,31 @@ pub struct StudioImage {
     pub pixels: Vec<u8>,
 }
 
+/// A first save must never land on a pack that is already installed: Studio
+/// gives every new design its own id, so a clash means something went wrong,
+/// and replacing that pack would change every pet already using it.
+pub fn ensure_unused(packs_dir: &Path, manifest: &str) -> Result<(), String> {
+    let id = serde_json::from_str::<serde_json::Value>(manifest)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(str::to_owned))
+        .ok_or("The design has no id yet. Give it a name and try again.")?;
+    let pet = loader::scan(packs_dir)
+        .into_iter()
+        .find(|l| l.summary.id == id)
+        .map(|l| l.summary.name);
+    let decor = decor::scan(packs_dir)
+        .0
+        .into_iter()
+        .find(|p| p.manifest.id == id)
+        .map(|p| p.manifest.name);
+    match pet.or(decor) {
+        Some(name) => Err(format!(
+            "`{name}` already uses that id, and saving would replace it. Rename your design and save again."
+        )),
+        None => Ok(()),
+    }
+}
+
 /// Write the pack into `packs_dir`, replacing an earlier Studio save of the same
 /// pack. Built-in packs are never overwritten.
 pub fn save(
@@ -396,6 +421,19 @@ mod decor_tests {
             edited[0].directory.ends_with("decor-meadow"),
             "it stays in its own folder"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_first_save_never_lands_on_an_installed_pack() {
+        let dir = std::env::temp_dir().join(format!("studio-unused-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        super::super::builtin::restore(&dir, &[]).unwrap();
+        let clash = r#"{ "id": "com.perch.squirrel-red" }"#;
+        let error = ensure_unused(&dir, clash).unwrap_err();
+        assert!(error.contains("already uses that id"), "{error}");
+        assert!(ensure_unused(&dir, r#"{ "id": "com.perch.decor-meadow" }"#).is_err());
+        assert!(ensure_unused(&dir, r#"{ "id": "com.studio.ember-k3x9" }"#).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

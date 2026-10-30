@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { ArrowLeft, Plus, Trash2 } from '@lucide/vue'
 import { call, native } from '../state'
 import { cloneDecor, decorId, decorPayload, decorProblems, MAX_SIDE, newProp, PROP_ANIMATIONS, resize, starterDecor, SWAYS, type DecorDraft, type PropAnimation } from './decorModel'
+import { uniqueId } from './model'
 import SpriteEditor from './SpriteEditor.vue'
 import StudioShell from './StudioShell.vue'
 import { thumbnailer } from './thumbs'
@@ -76,8 +77,13 @@ async function save() {
   saving.value = true
   saved.value = ''
   try {
-    const id = await call<string>('save_decor_pack', { ...decorPayload(draft.value), inPlace: props.mode === 'in_place' })
+    // As with pets: only a pack opened to edit, or saved before, may be
+    // replaced; a new one (or a copy) gets an id of its own first.
+    const replace = !!draft.value.id
+    if (!replace) draft.value.id = uniqueId(decorId(draft.value))
+    const id = await call<string>('save_decor_pack', { ...decorPayload(draft.value), inPlace: replace })
     if (id) {
+      draft.value.id = id
       saved.value = draft.value.name.trim()
       emit('saved', id)
     }

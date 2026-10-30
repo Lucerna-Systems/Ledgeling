@@ -7,7 +7,7 @@ import TestTab from './TestTab.vue'
 import BehaviorEditor from './BehaviorEditor.vue'
 import PetLook from './PetLook.vue'
 import StudioShell from './StudioShell.vue'
-import { FRAME, movements, payload, problems, starterDraft } from './model'
+import { FRAME, movements, payload, problems, slug, starterDraft, uniqueId } from './model'
 import { draft, openInStudio } from './state'
 
 const emit = defineEmits<{ go: [page: 'pets'] }>()
@@ -61,8 +61,13 @@ async function save(bringOut: boolean) {
   saved.value = null
   exported.value = ''
   try {
-    const summary = await call<PackSummary>('save_studio_pack', payload(draft.value, previewImage()))
+    // Only a design that already has an id (opened to edit, or saved before)
+    // may replace a pack; a new one gets an id of its own first.
+    const replace = !!draft.value.id
+    if (!replace) draft.value.id = uniqueId(`com.studio.${slug(draft.value.name)}`)
+    const summary = await call<PackSummary>('save_studio_pack', { ...payload(draft.value, previewImage()), replace })
     if (summary) {
+      draft.value.id = summary.id
       saved.value = summary
       await refreshPacks()
       if (bringOut) await call('spawn_pet', { packId: summary.id })

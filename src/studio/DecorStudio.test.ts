@@ -81,7 +81,8 @@ it('saves a copy as a new pack and will not let it take the original id', async 
   await flushPromises()
   const args = saveArgs()
   expect(args.inPlace).toBe(false)
-  expect(JSON.parse(args.manifest).id).toBe('com.studio.decor-meadow')
+  // A copy gets an id of its own, so it can never replace another pack.
+  expect(JSON.parse(args.manifest).id).toMatch(/^com\.studio\.decor-meadow-[a-z0-9]{4}$/)
   // The host's draft is left as it was.
   expect(initial.name).toBe('Garden')
   wrapper.unmount()
@@ -100,5 +101,20 @@ it('shows the ledge over the canvas only while pets can sit on the prop', async 
   await wrapper.get('[aria-label="Pets can sit on it"]').setValue(true)
   const line = wrapper.get('.canvas-overlay .decor-ledge')
   expect(Number(line.attributes('y1'))).toBeCloseTo(3.2)
+  wrapper.unmount()
+})
+
+it('saving the same new pack again updates it instead of making another', async () => {
+  api.invoke.mockImplementation(async (_command: string, args: { manifest: string }) => JSON.parse(args.manifest).id)
+  const wrapper = mount(DecorStudio, { props: { initial: { ...existing(), id: undefined }, mode: 'new' } })
+  await wrapper.get('.primary-button').trigger('click')
+  await flushPromises()
+  await wrapper.get('.primary-button').trigger('click')
+  await flushPromises()
+  const saves = api.invoke.mock.calls.filter(c => c[0] === 'save_decor_pack').map(c => c[1])
+  expect(saves).toHaveLength(2)
+  expect(saves[0].inPlace).toBe(false)
+  expect(saves[1].inPlace).toBe(true)
+  expect(JSON.parse(saves[1].manifest).id).toBe(JSON.parse(saves[0].manifest).id)
   wrapper.unmount()
 })
