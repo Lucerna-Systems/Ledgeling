@@ -559,6 +559,23 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Decorate mode (2026-10-30)
+
+Automated: `npm test` 359 lib + 12 privacy + 29 timeline passing, `npm run
+test:ui` 187 passing, `npm run check` clean. Tests cover adopting an app (same
+app twice, the eight-biome limit, a path refused), placing (clamped, unknown pack
+or prop refused, the sixteen-prop limit), moving, flipping, removing, the palette
+order, a timeline from pick (empty space explained, then a Safari window) through
+placing a bush a quarter along the edge, and the overlay: a pick sends its point,
+a drop above the edge places at the right fraction, a drop elsewhere does
+nothing, and move, flip, remove and Done each send one command.
+
+**Not run:** Decorate mode has not been opened in the app. Whether the overlay
+really receives every click while decorating (it is made fully interactive), the
+tray's placement near the top of the screen, Escape reaching a non-focusable
+overlay, and dark mode were not seen. There is no Decorate entry in the pet
+bubble; it is in Settings → Biomes.
+
 ## Biomes in the engine (2026-10-30)
 
 Automated: `npm test` 355 lib + 12 privacy + 28 timeline passing, `npm run

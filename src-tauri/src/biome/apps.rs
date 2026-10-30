@@ -7,6 +7,12 @@ use super::BiomeSetting;
 use crate::{platform::Platform, world::WindowInfo};
 use std::collections::HashMap;
 
+/// The app of a window the user clicked in Decorate mode, to make or open its
+/// biome. Asked only because the user chose this window.
+pub fn app_of(window: &WindowInfo, platform: &dyn Platform) -> Option<String> {
+    window.pid.and_then(|pid| platform.process_name(pid))
+}
+
 /// New pids named per scan at most; the rest wait for the next scan.
 const LOOKUPS_PER_SCAN: usize = 8;
 

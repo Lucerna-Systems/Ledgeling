@@ -17,6 +17,8 @@ pub struct Scene {
     pub frames: Vec<Frame>,
     /// Biome props, drawn beneath the pets.
     pub props: Vec<crate::biome::PropFrame>,
+    /// Decorate mode, when it is on: the overlay takes every click.
+    pub edit: Option<crate::biome::edit::EditView>,
     pub debug: Option<DebugOverlay>,
 }
 

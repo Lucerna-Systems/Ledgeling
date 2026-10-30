@@ -2,7 +2,8 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
-import type { DecorPayload, Frame, PropAtlas, PropFrame, Scene, SpawnPayload } from '../types'
+import type { DecorPayload, EditView, Frame, PropAtlas, PropFrame, Scene, SpawnPayload } from '../types'
+import DecorateMode from './DecorateMode.vue'
 
 /** The overlay is a renderer and nothing else: it draws the frames Rust sends
  *  and forwards pointer events back. It never decides where a pet is. */
@@ -13,6 +14,10 @@ const nodes = new Map<number, HTMLDivElement>()
 const decorAtlases = new Map<string, Record<string, PropAtlas>>()
 const propNodes = new Map<string, HTMLDivElement>()
 let propLayer: HTMLDivElement | null = null
+const edit = ref<EditView | null>(null)
+/** Bumped when decor images arrive, so palette thumbnails redraw. */
+const decorVersion = ref(0)
+const propAtlas = (decor: string, prop: string) => { void decorVersion.value; return decorAtlases.get(decor)?.[prop] }
 const off: UnlistenFn[] = []
 const indicators = new Map<number, string>()
 const fading = new Map<number, ReturnType<typeof setTimeout>>()
@@ -86,6 +91,7 @@ function drawProp(prop: PropFrame) {
 
 function render(scene: Scene) {
   debug.value = scene.debug
+  edit.value = scene.edit ?? null
   const present = new Set(scene.frames.map(f => f.petId))
   for (const [id, node] of nodes) {
     if (!present.has(id)) { node.remove(); nodes.delete(id) }
@@ -133,7 +139,7 @@ async function subscribe<T>(event: string, callback: (value: T) => void) {
 onMounted(async () => {
   await subscribe<SpawnPayload>('pet:spawn', payload => atlases.set(payload.petId, payload))
   await subscribe<number>('pet:despawn', despawn)
-  await subscribe<DecorPayload>('decor:spawn', payload => decorAtlases.set(payload.decor, payload.atlas))
+  await subscribe<DecorPayload>('decor:spawn', payload => { decorAtlases.set(payload.decor, payload.atlas); decorVersion.value++ })
   await subscribe<Scene>('pet:scene', render)
   await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null; caring = false; stopHold() })
   await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicate(value.petId, value.status) })
@@ -237,6 +243,7 @@ function up(event: PointerEvent) {
     @pointerleave="leave"
     @contextmenu.prevent="ask"
   />
+  <DecorateMode v-if="edit" :edit="edit" :atlas="propAtlas" />
   <svg v-if="debug" class="debug-overlay" xmlns="http://www.w3.org/2000/svg">
     <line v-for="(s, i) in debug.surfaces" :key="`s${i}`" :x1="s[0]" :y1="s[1]" :x2="s[2]" :y2="s[3]" class="debug-surface" />
     <line v-for="(j, i) in debug.jumps" :key="`j${i}`" :x1="j[0]" :y1="j[1]" :x2="j[2]" :y2="j[3]" class="debug-jump" />
