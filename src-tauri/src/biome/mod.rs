@@ -97,6 +97,8 @@ pub struct Placed<'a> {
     pub slot: usize,
     pub index: usize,
     pub biome: u64,
+    /// The window it stands on.
+    pub host: u64,
     /// Where the prop stands on its window's top edge.
     pub base: Point,
     pub width: f64,
@@ -191,24 +193,18 @@ impl Biomes {
 
     /// Every prop that can be seen: on a hosted biome, from an installed decor
     /// pack, and standing on a part of the top edge no other window covers.
-    /// `cramped` windows have no room above their top edge, so nothing
-    /// stands there.
     pub fn layout<'a>(
         &self,
         biomes: &'a [BiomeSetting],
         decor: &'a HashMap<String, Arc<DecorPack>>,
         surfaces: &[Surface],
         scale: f64,
-        cramped: &[u64],
     ) -> Vec<Placed<'a>> {
         let mut out = Vec::new();
         for (slot, biome) in biomes.iter().enumerate() {
             let Some(&host) = self.hosts.get(&biome.id) else {
                 continue;
             };
-            if cramped.contains(&host) {
-                continue;
-            }
             let tops: Vec<&Surface> = surfaces
                 .iter()
                 .filter(|s| s.owner == host && s.kind == SurfaceKind::WindowTop)
@@ -232,6 +228,7 @@ impl Biomes {
                         slot,
                         index,
                         biome: biome.id,
+                        host,
                         base,
                         width: def.width * scale,
                         height: def.height * scale,

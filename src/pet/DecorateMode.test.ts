@@ -13,7 +13,7 @@ const palette = [
 ]
 const editing: EditView = {
   picking: false, biome: 1, app: 'safari', edgeX: 100, edgeY: 400, edgeWidth: 600,
-  props: [{ decor: 'meadow', prop: 'oak', x: 0.5, flip: false }], palette, error: null,
+  props: [{ decor: 'meadow', prop: 'oak', x: 0.5, flip: false }], palette, error: null, notice: null,
 }
 const atlas = () => ({ image: 'data:image/png;base64,', frames: 1, fps: 0, width: 32, height: 20 })
 
@@ -59,4 +59,10 @@ describe('decorate mode', () => {
     ])
     wrapper.unmount()
   })
+})
+
+it('says when props on this window are cut off by the top of the screen', () => {
+  const wrapper = mount(DecorateMode, { props: { edit: { ...editing, notice: 'Allow Ledgeling under Accessibility' }, atlas } })
+  expect(wrapper.get('.decorate-notice').text()).toContain('Accessibility')
+  wrapper.unmount()
 })

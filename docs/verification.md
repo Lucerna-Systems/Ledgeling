@@ -586,8 +586,13 @@ Automated: `room.rs` unit tests with the mock platform:
 - a short window is never squeezed.
 
 Timelines: off never touches a window; on, it moves a biome's window down by its
-tallest prop and back when switched off; without permission nothing moves and
-the edge is left alone (no props drawn, pets steer clear).
+tallest prop and back when switched off; without permission nothing moves, pets
+keep off that edge, the props are still drawn (only not perchable), and Decorate
+mode says the window needs the Accessibility permission.
+
+First hand-run (macOS, the user, 2026-10-30) found that an earlier version hid
+every prop on a window against the menu bar while the permission was missing,
+which looked like biomes not working at all. Props are now always drawn.
 
 **Not run:**
 - No window has actually been moved: the macOS Accessibility calls

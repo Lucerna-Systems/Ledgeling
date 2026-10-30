@@ -966,12 +966,26 @@ fn make_room_moves_a_biome_window_down_by_its_tallest_prop() {
 }
 
 #[test]
-fn without_permission_nothing_moves_and_the_edge_is_left_alone() {
-    let (engine, platform) = room_engine(true, ledgeling::platform::ResizeAccess::NeedsPermission);
+fn without_permission_nothing_moves_and_pets_keep_off_but_props_still_show() {
+    let (mut engine, platform) =
+        room_engine(true, ledgeling::platform::ResizeAccess::NeedsPermission);
     assert!(platform.moves.lock().unwrap().is_empty());
     assert_eq!(engine.cramped, vec![1]);
+    assert_eq!(
+        engine.prop_frames().len(),
+        2,
+        "the user's own decorations are never hidden"
+    );
+    assert!(prop_ledges(&engine).is_empty(), "but no pet sits in them");
+    engine.start_decorating();
+    engine.request_pick(ledgeling::world::Point::new(500., 300.));
+    run(&mut engine, &platform, 0.1);
+    let notice = engine
+        .edit_view()
+        .and_then(|v| v.notice)
+        .unwrap_or_default();
     assert!(
-        engine.prop_frames().is_empty(),
-        "props would be cut off, so they wait"
+        notice.contains("Accessibility"),
+        "Decorate says why: {notice}"
     );
 }
