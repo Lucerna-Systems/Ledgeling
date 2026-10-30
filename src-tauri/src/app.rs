@@ -112,6 +112,8 @@ pub struct Snapshot {
     pub suspended: bool,
     /// Whether "make room at the top" may move windows here.
     pub resize_access: crate::platform::ResizeAccess,
+    /// Why "make room at the top" last failed to move a window.
+    pub room_error: Option<String>,
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
@@ -202,6 +204,7 @@ impl App {
             scan_error: engine.scan_error.clone(),
             suspended: engine.suspended,
             resize_access: engine.resize_access,
+            room_error: engine.room.last_error.clone(),
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,

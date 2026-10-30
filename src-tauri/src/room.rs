@@ -21,6 +21,9 @@ const SETTLE: f64 = 1.;
 /// How far a window may be from where it was put before that counts as the
 /// user having moved it.
 const TOLERANCE: f64 = 3.;
+/// Seconds before a window that refused to move is tried again: permission
+/// may have been granted since, or the app may have been busy.
+const RETRY_AFTER: f64 = 30.;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Record {
@@ -33,9 +36,13 @@ struct Record {
 #[derive(Default)]
 pub struct Room {
     records: HashMap<u64, Record>,
-    /// Windows that refused to move, or that the user moved back after
-    /// Ledgeling moved them. Never moved again; pets keep off their tops.
-    refused: HashSet<u64>,
+    /// Windows the user moved back after Ledgeling moved them. Never moved
+    /// again; pets keep off their tops.
+    declined: HashSet<u64>,
+    /// Windows that refused to move, and when; tried again later.
+    failed: HashMap<u64, f64>,
+    /// Why the last move failed, in plain words, for Settings.
+    pub last_error: Option<String>,
 }
 
 /// One window that has something on its top edge, and how tall that is.
@@ -59,8 +66,10 @@ impl Room {
         mouse_down: bool,
         platform: &dyn Platform,
     ) {
-        self.refused
+        self.declined
             .retain(|id| windows.iter().any(|w| w.id == *id));
+        self.failed
+            .retain(|id, at| windows.iter().any(|w| w.id == *id) && clock - *at < RETRY_AFTER);
         // Forget windows that closed. One the user has moved since is theirs:
         // it is never put back, and never moved again either.
         let mut declined = Vec::new();
@@ -75,7 +84,7 @@ impl Room {
             }
             kept
         });
-        self.refused.extend(declined);
+        self.declined.extend(declined);
         if access != ResizeAccess::Granted || mouse_down {
             return;
         }
@@ -100,7 +109,7 @@ impl Room {
             let Some(need) = need else {
                 continue;
             };
-            if self.refused.contains(&window.id) {
+            if self.refused(window.id) {
                 continue;
             }
             let wanted = work_top + need.height + MARGIN * scale;
@@ -113,6 +122,7 @@ impl Room {
             }
             match platform.set_window_frame(window, target) {
                 Ok(()) => {
+                    self.last_error = None;
                     self.records.insert(
                         window.id,
                         Record {
@@ -123,8 +133,9 @@ impl Room {
                         },
                     );
                 }
-                Err(_) => {
-                    self.refused.insert(window.id);
+                Err(error) => {
+                    self.failed.insert(window.id, clock);
+                    self.last_error = Some(error);
                 }
             }
         }
@@ -141,15 +152,18 @@ impl Room {
                 }
             }
         }
-        self.refused.clear();
+        self.declined.clear();
+        self.failed.clear();
+        self.last_error = None;
     }
 
     pub fn is_holding(&self, window: u64) -> bool {
         self.records.contains_key(&window)
     }
 
+    /// Declined by the user, or refused recently: pets keep off it for now.
     pub fn refused(&self, window: u64) -> bool {
-        self.refused.contains(&window)
+        self.declined.contains(&window) || self.failed.contains_key(&window)
     }
 }
 
@@ -356,6 +370,22 @@ mod tests {
             &stubborn,
         );
         assert!(room.refused(1));
+        assert_eq!(room.last_error.as_deref(), Some("That window refused."));
+        // Half a minute later it is tried again, and this time it moves.
+        stubborn.stubborn.lock().unwrap().clear();
+        let windows = scan(&stubborn);
+        room.update(
+            31.,
+            &windows,
+            25.,
+            1.,
+            &NEED,
+            ResizeAccess::Granted,
+            false,
+            &stubborn,
+        );
+        assert!(room.is_holding(1));
+        assert!(room.last_error.is_none());
     }
 
     #[test]
