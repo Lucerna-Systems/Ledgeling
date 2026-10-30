@@ -90,6 +90,10 @@ pub struct WindowInfo {
     pub z_index: usize,
     pub is_minimized: bool,
     pub monitor_id: u64,
+    /// The owning process, where the platform can tell. Only ever turned into
+    /// a name to match a biome, never kept otherwise; see `biome::apps`.
+    #[serde(default)]
+    pub pid: Option<u32>,
 }
 impl WindowInfo {
     pub fn new(id: u64, rect: Rect) -> Self {
@@ -99,6 +103,13 @@ impl WindowInfo {
             z_index: 0,
             is_minimized: false,
             monitor_id: 0,
+            pid: None,
+        }
+    }
+    pub fn with_pid(self, pid: u32) -> Self {
+        Self {
+            pid: Some(pid),
+            ..self
         }
     }
 }
@@ -121,6 +132,8 @@ impl MonitorInfo {
     }
 }
 pub const MONITOR_OWNER_BASE: u64 = 1 << 56;
+/// Biome props share the namespace too, above monitors: slot × 64 + prop.
+pub const PROP_OWNER_BASE: u64 = 1 << 57;
 
 /// The rectangle spanning every monitor. Empty input yields a zero rect.
 pub fn virtual_desktop(monitors: &[MonitorInfo]) -> Rect {

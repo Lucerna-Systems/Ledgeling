@@ -17,6 +17,11 @@ pub trait Platform: Send + Sync {
     fn idle_seconds(&self) -> Result<f64, String>;
     /// Focused application — process name only, never the title.
     fn foreground_process(&self) -> Result<Option<ProcessInfo>, String>;
+    /// Executable name for a process, lowercased and without extension, the
+    /// same form `foreground_process` gives. Never a window title.
+    fn process_name(&self, _pid: u32) -> Option<String> {
+        None
+    }
     /// Monitor geometry, work areas and scale factors.
     fn monitors(&self) -> Result<Vec<MonitorInfo>, String>;
     /// Is a fullscreen or exclusive app running? Suspend trigger.

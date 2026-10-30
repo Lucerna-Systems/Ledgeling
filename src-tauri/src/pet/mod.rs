@@ -51,6 +51,8 @@ const MAX_THROWN_STRETCH: f64 = 0.25;
 const SHAKE_CARRY: f64 = 0.6;
 /// Upward speed a shaken-off pet leaves with, logical px/s.
 const SHAKE_POP: f64 = 450.;
+/// Share of wanders a pet with a home biome spends there.
+const HOME_BIAS: f64 = 0.6;
 const PET_COOLDOWN: f64 = 2.;
 /// Slack in logical pixels beyond the sprite's half-width that still counts as
 /// standing at the end of a surface; a pet is never planned closer than that.
@@ -155,6 +157,8 @@ pub struct WorldView<'a> {
     /// Squish and wobble are on. Off, a pet still follows its window
     /// smoothly, without overshoot, squash or being shaken loose.
     pub jelly: bool,
+    /// Surfaces of this pet's home biome; empty when it has none on screen.
+    pub home: &'a [SurfaceKey],
     /// Window the user is working in. Only set while a nudge is escalating, so
     /// the pet drifts somewhere visible instead of somewhere random.
     pub attention: Option<u64>,
@@ -246,6 +250,8 @@ pub struct Pet {
     /// The perch and the point it was at last tick, so a window moving under
     /// the pet can be told apart from the pet walking along it.
     ride_ref: Option<(Perch, Point)>,
+    /// The biome the user made this pet's home.
+    pub home_biome: Option<u64>,
 }
 
 /// Energy pulled by the time of day, per hour: late at night pets tire
@@ -301,6 +307,7 @@ impl Pet {
             folder: None,
             jelly: Jelly::default(),
             ride_ref: None,
+            home_biome: None,
         }
     }
 
@@ -620,7 +627,8 @@ impl Pet {
         } else if self.thrown_fall && self.motion == Motion::Falling {
             if let Arc_::Fall { vx, vy } = self.arc {
                 let speed = vx.hypot(vy) / view.scale;
-                self.jelly.aim(-(speed / THROWN_STRETCH_SPEED).min(MAX_THROWN_STRETCH));
+                self.jelly
+                    .aim(-(speed / THROWN_STRETCH_SPEED).min(MAX_THROWN_STRETCH));
             }
         }
         self.jelly.step(dt, jelly);
@@ -909,7 +917,10 @@ impl Pet {
                 .or_else(|| self.random_perch(view)),
             Action::PatrolCurrentSurface => self.patrol_target(view),
             Action::MoveTowardPet => self.peer_perch(view),
-            Action::ReturnToHomeSurface => self.home.or_else(|| self.random_perch(view)),
+            Action::ReturnToHomeSurface => self
+                .biome_perch(view)
+                .or(self.home)
+                .or_else(|| self.random_perch(view)),
         };
         match target {
             Some(target) => self.travel_to(target, view),
@@ -1287,7 +1298,29 @@ impl Pet {
         })
     }
 
+    /// Somewhere in this pet's home biome, if it has one on screen.
+    fn biome_perch(&mut self, view: &WorldView<'_>) -> Option<Perch> {
+        let homes: Vec<&Surface> = candidates_of(view, self.manifest())
+            .into_iter()
+            .map(|(_, s)| s)
+            .filter(|s| view.home.contains(&s.key()))
+            .collect();
+        if homes.is_empty() {
+            return None;
+        }
+        let surface = homes[self.rng.pick(homes.len())];
+        let t = self.rng.range(surface.t_start(), surface.t_end());
+        self.perch_on(surface, t, view.scale)
+            .or_else(|| self.perch_on(surface, surface.midpoint_t(), view.scale))
+    }
+
     fn random_perch(&mut self, view: &WorldView<'_>) -> Option<Perch> {
+        // A pet with a home spends most of its wandering there, not all of it.
+        if !view.home.is_empty() && self.rng.range(0., 1.) < HOME_BIAS {
+            if let Some(perch) = self.biome_perch(view) {
+                return Some(perch);
+            }
+        }
         let current = self.perch.map(|p| p.key);
         let attention: Vec<&Surface> = view
             .attention

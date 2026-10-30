@@ -149,10 +149,15 @@ impl Platform for NativePlatform {
                     z_index: windows.len(),
                     is_minimized: !flag(dict, kCGWindowIsOnscreen),
                     monitor_id: monitor_for(rect),
+                    pid: number(dict, kCGWindowOwnerPID).map(|pid| pid as u32),
                 });
             }
             Ok(windows)
         }
+    }
+
+    fn process_name(&self, pid: u32) -> Option<String> {
+        process_name(pid as i32)
     }
 
     fn idle_seconds(&self) -> Result<f64, String> {

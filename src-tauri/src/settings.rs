@@ -1,6 +1,7 @@
 //! Preferences and session state, persisted as JSON. A corrupt file is moved
 //! aside and replaced with defaults rather than being allowed to stop launch.
 use crate::awareness::{AppCategory, AwarenessConfig, CategoryMap};
+use crate::biome::BiomeSetting;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -30,6 +31,8 @@ pub struct PetSetting {
     pub days: u32,
     /// How fond of the user it is, 0 to 1.
     pub affection: f64,
+    /// The biome this pet calls home, if the user gave it one.
+    pub home_biome: Option<u64>,
 }
 impl Default for PetSetting {
     fn default() -> Self {
@@ -43,6 +46,7 @@ impl Default for PetSetting {
             last_seen: None,
             days: 1,
             affection: 0.2,
+            home_biome: None,
         }
     }
 }
@@ -111,6 +115,8 @@ pub struct Settings {
     #[serde(default = "tour_seen")]
     pub tour_done: bool,
     pub effects: Effects,
+    /// Scenes on app windows; see `biome`. At most `biome::MAX_BIOMES`.
+    pub biomes: Vec<BiomeSetting>,
 }
 
 /// The playful physics, each of which a user can switch off.
@@ -119,10 +125,15 @@ pub struct Settings {
 pub struct Effects {
     /// Squash, stretch and wobble. Off, pets still follow windows smoothly.
     pub jelly: bool,
+    /// Biomes are drawn on their windows. Off, they are kept but not shown.
+    pub biomes: bool,
 }
 impl Default for Effects {
     fn default() -> Self {
-        Self { jelly: true }
+        Self {
+            jelly: true,
+            biomes: true,
+        }
     }
 }
 fn tour_seen() -> bool {
@@ -151,6 +162,7 @@ impl Default for Settings {
             welcomed: false,
             tips_dismissed: false,
             effects: Effects::default(),
+            biomes: Vec::new(),
         }
     }
 }
@@ -184,6 +196,11 @@ impl Settings {
         }
         if !self.pets.is_empty() {
             self.welcomed = true;
+        }
+        crate::biome::sanitize(&mut self.biomes);
+        let homes: Vec<u64> = self.biomes.iter().map(|b| b.id).collect();
+        for pet in &mut self.pets {
+            pet.home_biome = pet.home_biome.filter(|id| homes.contains(id));
         }
         self.accent = self.accent.to_lowercase();
         if !is_hex_color(&self.accent) || self.accent == RETIRED_DEFAULT_ACCENT {
@@ -358,9 +375,11 @@ mod tests {
     #[test]
     fn effects_default_on_and_a_partial_block_keeps_the_rest() {
         let old: Settings = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
-        assert!(old.effects.jelly, "files from before effects existed get squish");
-        let off: Settings =
-            serde_json::from_str(r#"{ "effects": { "jelly": false } }"#).unwrap();
+        assert!(
+            old.effects.jelly,
+            "files from before effects existed get squish"
+        );
+        let off: Settings = serde_json::from_str(r#"{ "effects": { "jelly": false } }"#).unwrap();
         assert!(!off.effects.jelly);
     }
     #[test]

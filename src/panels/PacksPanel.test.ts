@@ -58,3 +58,20 @@ it('renames a pet that is out with the trimmed name', async () => {
   expect(api.invoke).toHaveBeenCalledWith('rename_pet', { petId: 7, name: 'Biscuit' })
   wrapper.unmount()
 })
+
+it('makes a biome a pet\'s home through set_pet_home', async () => {
+  const summary = { id: 'pip', name: 'Pip', author: 'a', version: '1', description: '', license: '', tags: [], class: 'flier', surfaces: [], animations: [], assistantClips: [], preview: null, directory: '', builtin: true, errors: 0, warnings: 0, notes: 0, loadable: true }
+  api.invoke.mockImplementation(async (command: string) => {
+    if (command === 'list_packs') return [{ summary, report: { diagnostics: [] } }]
+    return undefined
+  })
+  snapshot.value = { settings: { ...settings, tipsDismissed: true, biomes: [{ id: 4, app: 'safari', props: [] }] }, packs: [], notes: [], pets: [{ id: 7, packId: 'pip', name: 'Pip', days: 3, affection: 0.4, homeBiome: null }] } as unknown as Snapshot
+  const wrapper = mount(PacksPanel)
+  await flushPromises()
+  const home = wrapper.get('select.pet-home')
+  expect(home.text()).toContain('Home: safari')
+  await home.setValue('4')
+  await flushPromises()
+  expect(api.invoke).toHaveBeenCalledWith('set_pet_home', { pet: 7, biome: 4 })
+  wrapper.unmount()
+})

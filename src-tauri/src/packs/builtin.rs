@@ -240,6 +240,53 @@ pub const BUILTIN: &[BuiltinPack] = &[
             ),
         ],
     },
+    // Decor, not a pet: it sits beside the pets and is told apart by its
+    // `decor.json`.
+    BuiltinPack {
+        folder: "decor-meadow",
+        files: &[
+            (
+                "decor.json",
+                include_bytes!("../../../packs/decor-meadow/decor.json"),
+            ),
+            (
+                "LICENSE.txt",
+                include_bytes!("../../../packs/decor-meadow/LICENSE.txt"),
+            ),
+            (
+                "preview.png",
+                include_bytes!("../../../packs/decor-meadow/preview.png"),
+            ),
+            (
+                "sprites/oak.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/oak.png"),
+            ),
+            (
+                "sprites/pine.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/pine.png"),
+            ),
+            (
+                "sprites/bush.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/bush.png"),
+            ),
+            (
+                "sprites/flower.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/flower.png"),
+            ),
+            (
+                "sprites/rock.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/rock.png"),
+            ),
+            (
+                "sprites/tuft.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/tuft.png"),
+            ),
+            (
+                "sprites/mushroom.png",
+                include_bytes!("../../../packs/decor-meadow/sprites/mushroom.png"),
+            ),
+        ],
+    },
 ];
 
 pub fn is_builtin_directory(directory: &Path) -> bool {

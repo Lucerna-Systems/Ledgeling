@@ -3,13 +3,17 @@
 //! replaying a window-layout timeline through a mock platform.
 use crate::{
     awareness::{Awareness, AwarenessSummary},
-    packs::{loader, LocomotionClass, Pack},
+    biome::{Biomes, PropFrame},
+    packs::{
+        decor::{self, DecorPack},
+        loader, LocomotionClass, Pack,
+    },
     pet::{fsm::Rng, spawn_point, Bond, Peer, Pet, WorldView},
     platform::Platform,
     settings::{clean_name, PetSetting, Settings},
     world::{
         self, virtual_desktop, MonitorInfo, Point, Rect, Surface, SurfaceChange, SurfaceGraph,
-        SurfaceTracker, WindowInfo,
+        SurfaceKey, SurfaceTracker, WindowInfo,
     },
 };
 use chrono::NaiveDate;
@@ -25,6 +29,8 @@ const MIN_SEGMENT: f64 = 48.;
 
 pub struct Engine {
     pub packs: HashMap<String, Arc<Pack>>,
+    /// Decor packs by id: the props biomes are built from.
+    pub decor: HashMap<String, Arc<DecorPack>>,
     pub pets: Vec<Pet>,
     pub monitors: Vec<MonitorInfo>,
     pub windows: Vec<WindowInfo>,
@@ -45,6 +51,7 @@ pub struct Engine {
     pub sounds: Vec<(u64, String)>,
     /// The OS asks for reduced motion; treated as squish and wobble off.
     pub reduced_motion: bool,
+    pub biomes: Biomes,
     tracker: SurfaceTracker,
     next_id: u64,
     clock: f64,
@@ -63,6 +70,7 @@ impl Engine {
         let awareness = Awareness::new(settings.awareness.clone(), settings.category_map());
         Self {
             packs,
+            decor: HashMap::new(),
             pets: Vec::new(),
             monitors: Vec::new(),
             windows: Vec::new(),
@@ -78,6 +86,7 @@ impl Engine {
             attention: None,
             sounds: Vec::new(),
             reduced_motion: false,
+            biomes: Biomes::default(),
             tracker: SurfaceTracker::default(),
             next_id: 1,
             clock: 0.,
@@ -129,7 +138,55 @@ impl Engine {
 
     fn rebuild(&mut self) {
         self.surfaces = world::surfaces(&self.windows, &self.monitors, MIN_SEGMENT);
+        if self.settings.effects.biomes {
+            let scale = self.pet_scale();
+            let placed =
+                self.biomes
+                    .layout(&self.settings.biomes, &self.decor, &self.surfaces, scale);
+            let ledges = Biomes::prop_surfaces(&placed, scale);
+            self.surfaces.extend(ledges);
+        }
         self.graph = SurfaceGraph::build(&self.surfaces);
+    }
+
+    /// Pets live on one screen, so one scale serves every biome.
+    fn pet_scale(&self) -> f64 {
+        self.monitors.first().map_or(1., |m| m.scale)
+    }
+
+    /// What the overlay draws for every visible biome prop, positions still
+    /// in physical pixels.
+    pub fn prop_frames(&self) -> Vec<PropFrame> {
+        if !self.settings.effects.biomes {
+            return Vec::new();
+        }
+        let placed = self.biomes.layout(
+            &self.settings.biomes,
+            &self.decor,
+            &self.surfaces,
+            self.pet_scale(),
+        );
+        self.biomes.frames(&placed)
+    }
+
+    /// Make a biome this pet's home, or none.
+    pub fn set_pet_home(&mut self, pet: u64, biome: Option<u64>) {
+        let biome = biome.filter(|id| self.settings.biomes.iter().any(|b| b.id == *id));
+        if let Some(pet) = self.pets.iter_mut().find(|p| p.id == pet) {
+            pet.home_biome = biome;
+            self.settings_changed = true;
+        }
+    }
+
+    pub fn delete_biome(&mut self, id: u64) {
+        self.settings.biomes.retain(|b| b.id != id);
+        for pet in &mut self.pets {
+            if pet.home_biome == Some(id) {
+                pet.home_biome = None;
+            }
+        }
+        self.settings_changed = true;
+        self.rebuild();
     }
 
     /// A screen swap strands pets where the new screen is not — the pick
@@ -245,6 +302,7 @@ impl Engine {
                     if let Some(pet) = self.pets.iter_mut().find(|p| p.id == id) {
                         pet.bond = bond_from(&setting, self.today);
                         pet.roll_day(self.today);
+                        pet.home_biome = setting.home_biome;
                     }
                     // A saved spot only applies while it is still on the
                     // screens pets have: coordinates from a disconnected
@@ -352,6 +410,7 @@ impl Engine {
                 last_seen: Some(pet.bond.last_seen.to_string()),
                 days: pet.bond.days,
                 affection: pet.bond.affection,
+                home_biome: pet.home_biome,
             })
             .collect();
     }
@@ -393,6 +452,18 @@ impl Engine {
                 perch: pet.perch,
             })
             .collect();
+        let jelly = self.settings.effects.jelly && !self.reduced_motion;
+        let homes: HashMap<u64, Vec<SurfaceKey>> = self
+            .settings
+            .biomes
+            .iter()
+            .map(|b| {
+                let keys = self
+                    .biomes
+                    .home_keys(b.id, &self.settings.biomes, &self.surfaces);
+                (b.id, keys)
+            })
+            .collect();
         let mut pets = std::mem::take(&mut self.pets);
         for pet in &mut pets {
             if (pet.is_held() || pet.is_tended()) && held_by_mouse == Some(false) {
@@ -407,7 +478,11 @@ impl Engine {
                 scale: self.scale_at(pet.position),
                 speed_scale: self.settings.speed_scale.clamp(0.25, 3.),
                 attention: self.attention,
-                jelly: self.settings.effects.jelly && !self.reduced_motion,
+                jelly,
+                home: pet
+                    .home_biome
+                    .and_then(|id| homes.get(&id))
+                    .map_or(&[], Vec::as_slice),
             };
             let mut pet_events = events.clone();
             pet.tick(dt, &view, base, &mut pet_events);
@@ -416,6 +491,24 @@ impl Engine {
             }
         }
         self.pets = pets;
+        if self.settings.effects.biomes {
+            let perches: Vec<(u64, Option<SurfaceKey>)> = self
+                .pets
+                .iter()
+                .map(|p| (p.id, p.perch.map(|perch| perch.key)))
+                .collect();
+            let scale = self.pet_scale();
+            self.biomes
+                .track_landings(&perches, &self.settings.biomes, jelly);
+            self.biomes.tick(
+                dt,
+                &self.settings.biomes,
+                &self.decor,
+                &self.surfaces,
+                jelly,
+                scale,
+            );
+        }
     }
 
     fn scan(&mut self, platform: &dyn Platform) {
@@ -437,6 +530,12 @@ impl Engine {
                 }
                 self.windows = windows;
                 self.scan_error = None;
+                if self.settings.effects.biomes {
+                    self.biomes
+                        .update_hosts(&self.settings.biomes, &self.windows, platform);
+                } else {
+                    self.biomes.clear();
+                }
             }
             Err(error) => {
                 self.windows.clear();
@@ -489,6 +588,12 @@ impl Engine {
             }
         }
         self.packs = packs;
+        let (decor, decor_broken) = decor::scan(packs_dir);
+        self.decor = decor
+            .into_iter()
+            .map(|pack| (pack.manifest.id.clone(), Arc::new(pack)))
+            .collect();
+        broken.extend(decor_broken.iter().map(|report| report.text()));
         let live: Vec<u64> = self
             .pets
             .iter()

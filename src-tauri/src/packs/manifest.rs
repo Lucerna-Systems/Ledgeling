@@ -513,6 +513,9 @@ impl Manifest {
         self.animations.get(self.resolve_clip(wanted))
     }
     pub fn allows(&self, kind: SurfaceKind) -> bool {
+        if kind == SurfaceKind::PropTop {
+            return self.allows(SurfaceKind::WindowTop);
+        }
         self.locomotion.surfaces.contains(&kind)
     }
 }
@@ -1577,7 +1580,11 @@ fn read_jelly(root: &Map<String, Value>, report: &mut Report) -> JellyBlock {
             continue;
         };
         // Stiffness and damping of zero would leave the spring without a rest.
-        let min = if matches!(key, "stiffness" | "damping") { 0.1 } else { 0. };
+        let min = if matches!(key, "stiffness" | "damping") {
+            0.1
+        } else {
+            0.
+        };
         if !(min..=max).contains(&v) {
             report.push(Diagnostic::warning(
                 MANIFEST_FILE,

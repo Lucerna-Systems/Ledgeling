@@ -815,7 +815,11 @@ fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
 
 #[test]
 fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warnings() {
-    assert_eq!(super::builtin::BUILTIN.len(), 4);
+    assert_eq!(
+        super::builtin::BUILTIN.len(),
+        5,
+        "four pets and the meadow decor"
+    );
     let root = std::env::temp_dir().join(format!("perch-builtin-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let written = super::builtin::restore(&root, &[]).unwrap();
@@ -828,6 +832,13 @@ fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warning
         assert_eq!(listing.summary.errors, 0, "{}", listing.report.text());
         assert_eq!(listing.summary.warnings, 0, "{}", listing.report.text());
     }
+    let (decor, broken) = super::decor::scan(&root);
+    assert_eq!(decor.len(), 1, "the meadow is decor, not a broken pet");
+    assert!(
+        broken.is_empty(),
+        "{:?}",
+        broken.iter().map(Report::text).collect::<Vec<_>>()
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -1491,7 +1502,13 @@ fn a_pack_without_a_jelly_block_still_squishes_with_the_defaults() {
 
 #[test]
 fn a_jelly_block_tunes_the_springs_and_names_every_bad_value() {
-    let with = |jelly: &str| MINIMAL.replacen("\"format\": 1,", &format!("\"format\": 1, \"jelly\": {jelly},"), 1);
+    let with = |jelly: &str| {
+        MINIMAL.replacen(
+            "\"format\": 1,",
+            &format!("\"format\": 1, \"jelly\": {jelly},"),
+            1,
+        )
+    };
     let (manifest, report) = parse(&with(r#"{ "grip": 0.95, "squash": 1.5 }"#));
     let params = manifest.unwrap().jelly_params();
     assert!(!report.has_errors(), "{}", report.text());
@@ -1499,16 +1516,26 @@ fn a_jelly_block_tunes_the_springs_and_names_every_bad_value() {
     assert_eq!(params.squash, 1.5);
 
     let (manifest, report) = parse(&with(r#"{ "grip": 4, "stiffness": 0, "wobble": 1 }"#));
-    let params = manifest.expect("bad tuning never stops a pack loading").jelly_params();
+    let params = manifest
+        .expect("bad tuning never stops a pack loading")
+        .jelly_params();
     assert_eq!(params.grip, 1.);
     assert!(params.stiffness > 0.);
     let paths: Vec<&str> = report.diagnostics.iter().map(|d| d.path.as_str()).collect();
     for path in ["jelly.grip", "jelly.stiffness", "jelly.wobble"] {
         assert!(paths.contains(&path), "{path} is named: {}", report.text());
     }
-    let grip = report.diagnostics.iter().find(|d| d.path == "jelly.grip").unwrap();
+    let grip = report
+        .diagnostics
+        .iter()
+        .find(|d| d.path == "jelly.grip")
+        .unwrap();
     assert!(grip.expected.contains("0 to 1"), "{}", grip.expected);
 
     let (_, report) = parse(&with(r#"{ "grip": "tight" }"#));
-    assert!(errors(&report).iter().any(|e| e.contains("jelly.grip")), "{}", report.text());
+    assert!(
+        errors(&report).iter().any(|e| e.contains("jelly.grip")),
+        "{}",
+        report.text()
+    );
 }

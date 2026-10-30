@@ -271,7 +271,10 @@ multiplies Ledgeling's own default, except `grip`:
 | `grip` | 0–1 | 0.6 | How hard a shake has to be to knock it off. 1 never lets go. |
 
 A value outside its range is clamped and noted, never a reason the pack fails
-to load. Users can switch squish and wobble off in Settings, and Ledgeling
+to load.
+
+Trees, flowers and rocks for biomes come in a separate kind of pack; see
+[decor-format.md](decor-format.md). Users can switch squish and wobble off in Settings, and Ledgeling
 honours the system's reduce-motion setting.
 
 ---

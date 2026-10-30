@@ -559,6 +559,31 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Biomes in the engine (2026-10-30)
+
+Automated: `npm test` 355 lib + 12 privacy + 28 timeline passing, `npm run
+test:ui` 179 passing, `npm run check` clean. New tests cover:
+- the decor format: defaults, every bad value named by path, backwards ledges,
+  the prop limit, a missing sprite, and the bundled Meadow loading cleanly;
+- the app resolver: only biome ids are cached, never names; each process is named
+  once; nothing is named with no biomes;
+- `sanitize`, and that prop owner ids stay clear of monitors;
+- timelines:
+  - a biome stands on its app's front window and moves when another of its
+    windows comes forward;
+  - a prop behind another window is neither drawn nor perchable;
+  - biomes off draws nothing and names no process;
+  - a squirrel sits in the oak and rides it when the window moves;
+  - a pet with a home spends most of its settled time there;
+- a privacy test: only a biome's own app name reaches `settings.json`, and only
+  the platform adapters and the resolver ask for names.
+
+**Not run:** nothing seen in the app. How the props look and sway, the overlay's
+prop layer, the Home picker, and the Biomes settings were not opened. The Windows
+`GetWindowThreadProcessId` change and the Linux pid plumbing were not compiled
+here (macOS only); CI builds them. There is no way to make a biome yet other than
+editing `settings.json` by hand; Decorate mode is the next PR.
+
 ## Squish and wobble (2026-10-30)
 
 Automated: `npm test` 345 lib + 11 + 23 timeline passing, `npm run test:ui` 176

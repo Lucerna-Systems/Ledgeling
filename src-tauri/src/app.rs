@@ -85,6 +85,8 @@ pub struct PetView {
     pub surface: Option<String>,
     pub days: u32,
     pub affection: f64,
+    /// The biome this pet calls home.
+    pub home_biome: Option<u64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -160,6 +162,7 @@ impl App {
                     surface: pet.perch.map(|p| p.key.kind.as_str().to_string()),
                     days: pet.bond.days,
                     affection: pet.bond.affection,
+                    home_biome: pet.home_biome,
                 })
                 .collect(),
             packs: loader::scan(&self.packs_dir)
@@ -279,6 +282,37 @@ async fn pet_action(
         }
         other => return Err(format!("Unknown action `{other}`.")),
     }
+    app.dirty = true;
+    Ok(app.snapshot())
+}
+
+#[tauri::command]
+async fn delete_biome(
+    id: u64,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<Snapshot, String> {
+    if window.label() != "main" {
+        return Err("This control belongs to the companion window.".into());
+    }
+    let mut app = locked(&state)?;
+    app.engine.delete_biome(id);
+    app.dirty = true;
+    Ok(app.snapshot())
+}
+
+#[tauri::command]
+async fn set_pet_home(
+    pet: u64,
+    biome: Option<u64>,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<Snapshot, String> {
+    if window.label() != "main" {
+        return Err("This control belongs to the companion window.".into());
+    }
+    let mut app = locked(&state)?;
+    app.engine.set_pet_home(pet, biome);
     app.dirty = true;
     Ok(app.snapshot())
 }
@@ -958,6 +992,8 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             pet_action,
             pet_interact,
             set_reduced_motion,
+            delete_biome,
+            set_pet_home,
             set_settings,
             set_app_icon,
             list_packs,
@@ -1501,6 +1537,7 @@ struct AtlasSync {
     monitor: u64,
     present: Present,
     payloads: Vec<windows_mgr::SpawnPayload>,
+    decor: Vec<windows_mgr::DecorPayload>,
 }
 
 struct RenderPlan {
@@ -1683,6 +1720,9 @@ fn run_loop(shared: Shared, handle: tauri::AppHandle) {
             if let Err(error) = renderer.sync(entry.monitor, &entry.present, entry.payloads) {
                 eprintln!("Ledgeling could not send sprites: {error}");
             }
+            if let Err(error) = renderer.sync_decor(entry.monitor, entry.decor) {
+                eprintln!("Ledgeling could not send decor: {error}");
+            }
         }
         for (monitor, interactive) in plan.interactive {
             let _ = renderer.set_interactive(monitor, interactive);
@@ -1797,7 +1837,9 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
     plan.moving = engine
         .pets
         .iter()
-        .any(|pet| !matches!(pet.motion, Motion::Settled) || pet.jelly.is_active());
+        .any(|pet| !matches!(pet.motion, Motion::Settled) || pet.jelly.is_active())
+        || engine.biomes.is_active();
+    let all_props = engine.prop_frames();
     for monitor in &engine.monitors {
         let here: Vec<&crate::pet::Pet> = engine
             .pets
@@ -1824,10 +1866,42 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
                 atlas: pet.pack.atlas(),
             })
             .collect();
+        let props: Vec<crate::biome::PropFrame> = all_props
+            .iter()
+            .filter(|prop| {
+                engine
+                    .monitor_for(Point::new(prop.x, prop.y))
+                    .map(|m| m.id == monitor.id)
+                    .unwrap_or(monitor.is_primary)
+            })
+            .map(|prop| {
+                let local = windows_mgr::to_local(Point::new(prop.x, prop.y), monitor);
+                crate::biome::PropFrame {
+                    x: local.x,
+                    y: local.y,
+                    ..prop.clone()
+                }
+            })
+            .collect();
+        let mut used: Vec<String> = props.iter().map(|p| p.decor.clone()).collect();
+        used.sort();
+        used.dedup();
+        let decor = renderer
+            .missing_decor(monitor.id, &used)
+            .into_iter()
+            .filter_map(|id| {
+                let pack = engine.decor.get(&id)?;
+                Some(windows_mgr::DecorPayload {
+                    decor: id,
+                    atlas: pack.atlas(),
+                })
+            })
+            .collect();
         plan.sync.push(AtlasSync {
             monitor: monitor.id,
             present,
             payloads,
+            decor,
         });
 
         let mut frames = Vec::new();
@@ -1848,6 +1922,7 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
         plan.scenes.push(Scene {
             monitor: monitor.id,
             frames,
+            props,
             debug: engine.settings.debug.then(|| debug_overlay(app, monitor)),
         });
     }

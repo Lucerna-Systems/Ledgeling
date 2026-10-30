@@ -15,6 +15,9 @@ pub enum SurfaceKind {
     MonitorLeft,
     MonitorRight,
     TaskbarTop,
+    /// A ledge on a biome prop, such as the top of a bush. Never named by a
+    /// pack: a pet may stand here wherever it may stand on a window top.
+    PropTop,
 }
 impl SurfaceKind {
     pub const ALL: [SurfaceKind; 9] = [
@@ -39,7 +42,7 @@ impl SurfaceKind {
     pub fn normal(self) -> Point {
         use SurfaceKind::*;
         match self {
-            WindowTop | MonitorBottom | TaskbarTop => Point::new(0., -1.),
+            WindowTop | MonitorBottom | TaskbarTop | PropTop => Point::new(0., -1.),
             WindowBottom | MonitorTop => Point::new(0., 1.),
             WindowLeft | MonitorRight => Point::new(-1., 0.),
             WindowRight | MonitorLeft => Point::new(1., 0.),
@@ -61,6 +64,7 @@ impl SurfaceKind {
             MonitorLeft => "monitor_left",
             MonitorRight => "monitor_right",
             TaskbarTop => "taskbar_top",
+            PropTop => "prop_top",
         }
     }
     pub fn parse(name: &str) -> Option<SurfaceKind> {

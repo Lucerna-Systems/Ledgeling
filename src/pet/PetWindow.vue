@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
-import type { Frame, Scene, SpawnPayload } from '../types'
+import type { DecorPayload, Frame, PropAtlas, PropFrame, Scene, SpawnPayload } from '../types'
 
 /** The overlay is a renderer and nothing else: it draws the frames Rust sends
  *  and forwards pointer events back. It never decides where a pet is. */
@@ -10,6 +10,9 @@ const stage = ref<HTMLDivElement>()
 const debug = ref<Scene['debug']>(null)
 const atlases = new Map<number, SpawnPayload>()
 const nodes = new Map<number, HTMLDivElement>()
+const decorAtlases = new Map<string, Record<string, PropAtlas>>()
+const propNodes = new Map<string, HTMLDivElement>()
+let propLayer: HTMLDivElement | null = null
 const off: UnlistenFn[] = []
 const indicators = new Map<number, string>()
 const fading = new Map<number, ReturnType<typeof setTimeout>>()
@@ -53,6 +56,34 @@ function draw(frame: Frame) {
   node.style.backgroundPositionX = `${-frame.frameIndex * frame.width}px`
 }
 
+/** Biome props sit in their own layer under the pets and never take clicks. */
+function drawProp(prop: PropFrame) {
+  const clip = decorAtlases.get(prop.decor)?.[prop.prop]
+  if (!clip) return
+  let node = propNodes.get(prop.key)
+  if (!node) {
+    if (!propLayer) {
+      propLayer = document.createElement('div')
+      propLayer.className = 'prop-layer'
+      stage.value?.prepend(propLayer)
+    }
+    node = document.createElement('div')
+    node.className = 'prop-sprite'
+    propLayer.appendChild(node)
+    propNodes.set(prop.key, node)
+  }
+  const left = prop.x - prop.width * prop.anchorX
+  const top = prop.y - prop.height
+  node.style.width = `${prop.width}px`
+  node.style.height = `${prop.height}px`
+  // Sway and squash pivot on the foot, where the prop meets the window.
+  node.style.transformOrigin = `${prop.anchorX * 100}% 100%`
+  node.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(${prop.rotation}deg) scale(${(prop.flip ? -1 : 1) * prop.squashX}, ${prop.squashY})`
+  node.style.backgroundImage = `url(${clip.image})`
+  node.style.backgroundSize = `${clip.frames * prop.width}px ${prop.height}px`
+  node.style.backgroundPositionX = `${-prop.frameIndex * prop.width}px`
+}
+
 function render(scene: Scene) {
   debug.value = scene.debug
   const present = new Set(scene.frames.map(f => f.petId))
@@ -60,6 +91,12 @@ function render(scene: Scene) {
     if (!present.has(id)) { node.remove(); nodes.delete(id) }
   }
   scene.frames.forEach(draw)
+  const props = scene.props ?? []
+  const shown = new Set(props.map(p => p.key))
+  for (const [key, node] of propNodes) {
+    if (!shown.has(key)) { node.remove(); propNodes.delete(key) }
+  }
+  props.forEach(drawProp)
 }
 
 function despawn(petId: number) {
@@ -96,6 +133,7 @@ async function subscribe<T>(event: string, callback: (value: T) => void) {
 onMounted(async () => {
   await subscribe<SpawnPayload>('pet:spawn', payload => atlases.set(payload.petId, payload))
   await subscribe<number>('pet:despawn', despawn)
+  await subscribe<DecorPayload>('decor:spawn', payload => decorAtlases.set(payload.decor, payload.atlas))
   await subscribe<Scene>('pet:scene', render)
   await subscribe<number>('pet:drag-ended', () => { dragging = false; nativeDragging = false; dragPet = null; caring = false; stopHold() })
   await subscribe<{petId: number | null; status: string}>('task:indicator', value => { if (value.petId !== null) indicate(value.petId, value.status) })
@@ -212,6 +250,11 @@ function up(event: PointerEvent) {
 .pet-sprite {
   position: absolute; left: 0; top: 0; will-change: transform;
   background-repeat: no-repeat; image-rendering: pixelated; user-select: none;
+}
+.prop-layer { position: absolute; inset: 0; pointer-events: none; }
+.prop-sprite {
+  position: absolute; left: 0; top: 0; will-change: transform;
+  background-repeat: no-repeat; image-rendering: pixelated;
 }
 .debug-overlay { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .debug-surface { stroke: #4fbaa4; stroke-width: 3; }

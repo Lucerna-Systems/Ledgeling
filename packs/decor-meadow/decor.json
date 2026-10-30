@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "id": "com.perch.decor-meadow",
+  "name": "Meadow",
+  "author": "Ledgeling",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0",
+  "props": {
+    "oak": {
+      "file": "sprites/oak.png",
+      "width": 48,
+      "height": 64,
+      "sway": "tall",
+      "perch": {
+        "y": 0.05,
+        "from": 0.15,
+        "to": 0.85
+      }
+    },
+    "pine": {
+      "file": "sprites/pine.png",
+      "width": 32,
+      "height": 64,
+      "sway": "tall"
+    },
+    "bush": {
+      "file": "sprites/bush.png",
+      "width": 32,
+      "height": 20,
+      "sway": "soft",
+      "perch": {
+        "y": 0.15,
+        "from": 0.1,
+        "to": 0.9
+      }
+    },
+    "flower": {
+      "file": "sprites/flower.png",
+      "width": 12,
+      "height": 16,
+      "sway": "soft"
+    },
+    "rock": {
+      "file": "sprites/rock.png",
+      "width": 20,
+      "height": 12,
+      "sway": "stiff"
+    },
+    "tuft": {
+      "file": "sprites/tuft.png",
+      "width": 16,
+      "height": 10,
+      "sway": "soft"
+    },
+    "mushroom": {
+      "file": "sprites/mushroom.png",
+      "width": 12,
+      "height": 12,
+      "sway": "stiff"
+    }
+  }
+}

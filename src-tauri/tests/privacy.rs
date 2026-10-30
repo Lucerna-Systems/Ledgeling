@@ -389,3 +389,71 @@ fn the_foreground_process_name_is_mapped_and_never_retained() {
     assert_eq!(category, AppCategory::Comms);
     assert_eq!(std::mem::size_of_val(&category), 1);
 }
+
+#[test]
+fn window_process_names_reach_disk_only_as_the_users_own_biomes() {
+    use ledgeling::{
+        biome::BiomeSetting,
+        engine::Engine,
+        platform::mock::MockPlatform,
+        settings::Settings,
+        world::{MonitorInfo, Rect, WindowInfo},
+    };
+    let monitor = MonitorInfo {
+        id: 0,
+        bounds: Rect::new(0., 0., 1600., 1000.),
+        work: Rect::new(0., 0., 1600., 960.),
+        scale: 1.,
+        is_primary: true,
+    };
+    let windows: Vec<WindowInfo> = [(1, 7), (2, 9), (3, 11)]
+        .into_iter()
+        .enumerate()
+        .map(|(z, (id, pid))| WindowInfo {
+            z_index: z,
+            ..WindowInfo::new(id, Rect::new(100. * id as f64, 300., 500., 300.)).with_pid(pid)
+        })
+        .collect();
+    let platform = MockPlatform::new(vec![monitor], vec![windows]);
+    platform.names.lock().unwrap().extend([
+        (7, "safari".to_string()),
+        (9, "tax-return-helper".to_string()),
+        (11, "slack".to_string()),
+    ]);
+    let mut settings = Settings::default();
+    settings.biomes = vec![BiomeSetting {
+        id: 1,
+        app: "safari".into(),
+        props: vec![],
+    }];
+    let mut engine = Engine::new(settings, Default::default());
+    engine.set_monitors(vec![monitor]);
+    for _ in 0..120 {
+        engine.tick(1. / 60., &platform);
+    }
+    assert_eq!(
+        engine.biomes.hosts.get(&1),
+        Some(&1),
+        "the names were looked at"
+    );
+    engine.remember_pets();
+    let saved = serde_json::to_string(&engine.settings).unwrap();
+    assert!(saved.contains("\"safari\""), "the user's own biome is kept");
+    for name in ["tax-return-helper", "slack"] {
+        assert!(!saved.contains(name), "{name} was written to settings");
+    }
+
+    // Only the platform adapters and the biome resolver may ask for a name.
+    for (path, text) in read_all() {
+        let allowed = path.to_string_lossy().contains("/platform/")
+            || path.ends_with("biome/apps.rs")
+            || path.ends_with("privacy.rs");
+        if !allowed {
+            assert!(
+                !text.contains(".process_name("),
+                "{} asks for a process name",
+                path.display()
+            );
+        }
+    }
+}

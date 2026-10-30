@@ -37,6 +37,190 @@ fn win(id: u64, x: f64, y: f64, w: f64, h: f64) -> WindowInfo {
     WindowInfo::new(id, Rect::new(x, y, w, h))
 }
 
+fn meadow(app: &str) -> ledgeling::biome::BiomeSetting {
+    let prop = |name: &str, x: f64| ledgeling::biome::PlacedProp {
+        decor: "com.perch.decor-meadow".into(),
+        prop: name.into(),
+        x,
+        flip: false,
+    };
+    ledgeling::biome::BiomeSetting {
+        id: 1,
+        app: app.into(),
+        props: vec![prop("oak", 0.5), prop("tuft", 0.2)],
+    }
+}
+
+/// An engine with one Safari biome, windows owned by Safari (pid 7) and Slack
+/// (pid 9), and the decor packs loaded from the repository.
+fn biome_engine(
+    frames: Vec<Vec<WindowInfo>>,
+    configure: impl FnOnce(&mut Settings),
+) -> (Engine, MockPlatform) {
+    let mut settings = Settings::default();
+    settings.pets.clear();
+    settings.biomes = vec![meadow("safari")];
+    configure(&mut settings);
+    let mut engine = Engine::new(settings, HashMap::new());
+    engine.reload_packs(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../packs"));
+    let platform = MockPlatform::new(monitors(), frames);
+    platform
+        .names
+        .lock()
+        .unwrap()
+        .extend([(7, "safari".to_string()), (9, "slack".to_string())]);
+    engine.set_monitors(monitors());
+    (engine, platform)
+}
+
+fn front_to_back(windows: Vec<WindowInfo>) -> Vec<WindowInfo> {
+    windows
+        .into_iter()
+        .enumerate()
+        .map(|(z, w)| WindowInfo { z_index: z, ..w })
+        .collect()
+}
+
+fn prop_ledges(engine: &Engine) -> Vec<ledgeling::world::Surface> {
+    engine
+        .surfaces
+        .iter()
+        .filter(|s| s.kind == ledgeling::world::SurfaceKind::PropTop)
+        .copied()
+        .collect()
+}
+
+#[test]
+fn a_biome_stands_on_its_apps_frontmost_window_and_follows_it() {
+    let safari_a = win(1, 100., 500., 600., 300.).with_pid(7);
+    let slack = win(2, 800., 450., 600., 300.).with_pid(9);
+    let safari_b = win(3, 300., 200., 600., 300.).with_pid(7);
+    let (mut engine, platform) = biome_engine(
+        vec![
+            front_to_back(vec![safari_a.clone(), slack.clone(), safari_b.clone()]),
+            front_to_back(vec![safari_b, slack, safari_a]),
+        ],
+        |_| {},
+    );
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        engine.biomes.hosts.get(&1),
+        Some(&1),
+        "the front Safari window"
+    );
+    let props = engine.prop_frames();
+    assert_eq!(props.len(), 2, "both props stand on it");
+    assert!(
+        props.iter().all(|p| (p.y - 500.).abs() < 1.),
+        "on its top edge"
+    );
+    assert!(!prop_ledges(&engine).is_empty(), "the oak can be sat on");
+    platform.advance();
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        engine.biomes.hosts.get(&1),
+        Some(&3),
+        "it moved to the new front window"
+    );
+    assert!(engine.prop_frames().iter().all(|p| (p.y - 200.).abs() < 2.));
+}
+
+#[test]
+fn a_prop_hidden_behind_another_window_is_neither_drawn_nor_perchable() {
+    // Slack sits in front of the middle of Safari's top edge, where the oak is.
+    let safari = win(1, 100., 500., 600., 300.).with_pid(7);
+    let slack = win(2, 300., 400., 200., 300.).with_pid(9);
+    let (mut engine, platform) = biome_engine(vec![front_to_back(vec![slack, safari])], |_| {});
+    run(&mut engine, &platform, 1.);
+    let props = engine.prop_frames();
+    assert_eq!(
+        props.len(),
+        1,
+        "only the tuft at 0.2 is in the open: {props:?}"
+    );
+    assert_eq!(props[0].prop, "tuft");
+    assert!(prop_ledges(&engine).is_empty());
+}
+
+#[test]
+fn with_biomes_off_nothing_is_drawn_and_no_process_is_named() {
+    let safari = win(1, 100., 500., 600., 300.).with_pid(7);
+    let (mut engine, platform) = biome_engine(vec![vec![safari]], |s| s.effects.biomes = false);
+    run(&mut engine, &platform, 1.);
+    assert!(engine.prop_frames().is_empty());
+    assert!(prop_ledges(&engine).is_empty());
+    assert_eq!(*platform.name_lookups.lock().unwrap(), 0);
+}
+
+#[test]
+fn a_climber_can_sit_in_the_oak_and_ride_it_when_the_window_moves() {
+    let (mut engine, platform) = biome_engine(
+        vec![
+            vec![win(1, 100., 500., 600., 300.).with_pid(7)],
+            vec![win(1, 300., 450., 600., 300.).with_pid(7)],
+        ],
+        |_| {},
+    );
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 1.);
+    let ledge = prop_ledges(&engine)[0];
+    let pet = &mut engine.pets[0];
+    pet.perch = Some(ledgeling::pet::pathfind::Perch {
+        key: ledge.key(),
+        t: ledge.midpoint_t(),
+    });
+    pet.position = ledge.point(ledge.midpoint_t());
+    pet.motion = ledgeling::pet::Motion::Settled;
+    pet.listen(true);
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        engine.pets[0].perch.map(|p| p.key),
+        Some(ledge.key()),
+        "it stays in the tree"
+    );
+    let before = engine.pets[0].position;
+    platform.advance();
+    run(&mut engine, &platform, 1.);
+    let pet = &engine.pets[0];
+    assert_eq!(pet.perch.map(|p| p.key.owner), Some(ledge.owner));
+    assert!(
+        (pet.position.x - before.x - 200.).abs() < 1.,
+        "carried with the window"
+    );
+}
+
+#[test]
+fn a_pet_with_a_home_spends_most_of_its_resting_time_there() {
+    let windows = vec![
+        win(1, 50., 600., 450., 250.).with_pid(9),
+        win(2, 600., 500., 450., 300.).with_pid(7),
+        win(3, 1150., 600., 400., 250.).with_pid(9),
+    ];
+    let (mut engine, platform) = biome_engine(vec![front_to_back(windows)], |_| {});
+    run(&mut engine, &platform, 1.);
+    let id = engine.spawn("com.perch.squirrel-red").unwrap();
+    engine.set_pet_home(id, Some(1));
+    let (mut home, mut settled) = (0, 0);
+    for _ in 0..(240 * 60) {
+        engine.tick(1. / 60., &platform);
+        let pet = &engine.pets[0];
+        if pet.motion == ledgeling::pet::Motion::Settled {
+            settled += 1;
+            if pet.perch.is_some_and(|p| {
+                p.key.owner == 2 || p.key.kind == ledgeling::world::SurfaceKind::PropTop
+            }) {
+                home += 1;
+            }
+        }
+    }
+    assert!(settled > 0);
+    assert!(
+        home * 2 > settled,
+        "home for {home} of {settled} settled ticks"
+    );
+}
+
 fn packs() -> HashMap<String, Arc<ledgeling::packs::Pack>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packs");
     let mut packs = HashMap::new();
@@ -178,9 +362,16 @@ fn a_dragged_window_carries_the_pet_smoothly() {
         }
     }
     let pet = &engine.pets[0];
-    assert_eq!(pet.perch.map(|p| p.key.owner), Some(1), "still on the window");
+    assert_eq!(
+        pet.perch.map(|p| p.key.owner),
+        Some(1),
+        "still on the window"
+    );
     // Each step moved the window 224 px at once; before, the pet did too.
-    assert!(biggest < 60., "the drawn pet jumped {biggest} px in one frame");
+    assert!(
+        biggest < 60.,
+        "the drawn pet jumped {biggest} px in one frame"
+    );
     assert!(
         pet.drawn_position().distance(pet.position) < 2.,
         "and it has caught up a second later"
