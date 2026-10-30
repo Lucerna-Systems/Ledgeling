@@ -191,7 +191,7 @@ fn a_climber_can_sit_in_the_oak_and_ride_it_when_the_window_moves() {
 }
 
 #[test]
-fn a_pet_with_a_home_spends_most_of_its_resting_time_there() {
+fn a_pet_with_a_home_keeps_to_that_window_once_it_gets_there() {
     let windows = vec![
         win(1, 50., 600., 450., 250.).with_pid(9),
         win(2, 600., 500., 450., 300.).with_pid(7),
@@ -201,23 +201,29 @@ fn a_pet_with_a_home_spends_most_of_its_resting_time_there() {
     run(&mut engine, &platform, 1.);
     let id = engine.spawn("com.perch.squirrel-red").unwrap();
     engine.set_pet_home(id, Some(1));
-    let (mut home, mut settled) = (0, 0);
+    let at_home = |p: &ledgeling::pet::pathfind::Perch| {
+        p.key.owner == 2 || p.key.kind == ledgeling::world::SurfaceKind::PropTop
+    };
+    let (mut arrived, mut settled_elsewhere) = (false, 0);
     for _ in 0..(240 * 60) {
         engine.tick(1. / 60., &platform);
         let pet = &engine.pets[0];
-        if pet.motion == ledgeling::pet::Motion::Settled {
-            settled += 1;
-            if pet.perch.is_some_and(|p| {
-                p.key.owner == 2 || p.key.kind == ledgeling::world::SurfaceKind::PropTop
-            }) {
-                home += 1;
-            }
+        let Some(perch) = pet
+            .perch
+            .filter(|_| pet.motion == ledgeling::pet::Motion::Settled)
+        else {
+            continue;
+        };
+        if at_home(&perch) {
+            arrived = true;
+        } else if arrived {
+            settled_elsewhere += 1;
         }
     }
-    assert!(settled > 0);
-    assert!(
-        home * 2 > settled,
-        "home for {home} of {settled} settled ticks"
+    assert!(arrived, "it found its way home");
+    assert_eq!(
+        settled_elsewhere, 0,
+        "and never settled anywhere else after"
     );
 }
 

@@ -319,8 +319,8 @@ impl Biomes {
             .fold(0., f64::max)
     }
 
-    /// Where a pet whose home is this biome likes to be: the window's top
-    /// edge and any prop it can sit on.
+    /// Where a pet whose home is this biome lives: every edge of the window
+    /// it stands on, and any prop it can sit on.
     pub fn home_keys(
         &self,
         biome: u64,
@@ -334,7 +334,7 @@ impl Biomes {
         surfaces
             .iter()
             .filter(|s| {
-                (s.owner == host && s.kind == SurfaceKind::WindowTop)
+                (s.owner == host && s.kind.is_window())
                     || (s.kind == SurfaceKind::PropTop && slot_of(s.owner) == slot)
             })
             .map(Surface::key)

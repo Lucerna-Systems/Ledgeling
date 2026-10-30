@@ -559,6 +559,17 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Pets keep to their home biome; make room only for biomes (2026-10-30)
+
+From the hand run: Chrome kept moving down while in use, because pets wandering
+onto it made room move it and moving off made it move back, sometimes mid-typing.
+Now only biomes move windows, and only after 2 s without input; windows go back
+30 s after their biome is gone; pets keep off top edges with no room instead.
+Separately, a pet with a home biome on screen now only chooses places on that
+window (any edge) and its props. Timelines: no move while busy, one once idle; a
+pet never moves a window; a homed squirrel never settles elsewhere once home.
+**Not run:** neither change has been seen in the app yet.
+
 ## Decor page, prop animations, shared Studio (2026-10-30)
 
 Automated:
