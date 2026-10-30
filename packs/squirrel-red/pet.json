@@ -169,5 +169,6 @@
     "sociability": 0.4,
     "sleepiness": 0.2,
     "curiosity": 0.9
-  }
+  },
+  "jelly": { "grip": 0.6 }
 }

@@ -14,6 +14,11 @@ export interface Frame {
   height: number
   anchorX: number
   anchorY: number
+  /** Squash and stretch about the anchor; 1 is the sprite as drawn. */
+  squashX: number
+  squashY: number
+  /** Degrees added to `rotation` while the pet wobbles. */
+  lean: number
 }
 
 export interface ClipAtlas {
@@ -120,6 +125,13 @@ export interface Settings {
   welcomed: boolean
   /** The "meet your pet" tip card has been dismissed. */
   tipsDismissed: boolean
+  effects: Effects
+}
+
+/** The playful physics, each of which can be switched off. */
+export interface Effects {
+  /** Squash, stretch and wobble. Off, pets still follow windows smoothly. */
+  jelly: boolean
 }
 
 export interface SessionSummary {

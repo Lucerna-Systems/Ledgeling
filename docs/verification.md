@@ -559,6 +559,23 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Squish and wobble (2026-10-30)
+
+Automated: `npm test` 345 lib + 11 + 23 timeline passing, `npm run test:ui` 176
+passing, `npm run check` clean. New tests cover the springs (settle, overshoot,
+no overshoot when off, teleport snap, shake threshold by grip, bounded squash,
+breathing), the optional `jelly` block (defaults, clamping, every bad value
+named), the settings default, the switch in Settings, and three timelines: a
+dragged window no longer moves the drawn pet more than 60 px in one frame (it
+used to jump 224 px), a hard shake knocks the squirrel off but not the gecko,
+and with the switch off nothing squashes, leans or falls off.
+
+**Not run:** nothing here has been seen in the app. `npm run dev:app` was not
+launched, so how the wobble *looks*, whether the grip values feel right on a
+real drag, the reduce-motion path, and the frame rate while springs settle are
+all unchecked. No CPU measurement was taken; springs add work only while one is
+moving, but that is reasoning, not a number. Windows and Linux untried.
+
 ## Pet sprint (2026-10-24)
 
 Baseline before the sprint: `npm test` 227 lib + 7 + 11 passing, `npm run test:ui`

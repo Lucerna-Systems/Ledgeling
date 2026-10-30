@@ -26,5 +26,6 @@
     "move": { "file": "sprites/move.png", "frames": 4, "fps": 10 },
     "dizzy": { "file": "sprites/dizzy.png", "frames": 4, "fps": 8 },
     "petted": { "file": "sprites/petted.png", "frames": 4, "fps": 6 }
-  }
+  },
+  "jelly": { "grip": 0.95 }
 }

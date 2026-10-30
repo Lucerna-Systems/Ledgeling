@@ -200,15 +200,11 @@ pub fn input_boxes(frames: &[crate::pet::Frame]) -> Vec<[i32; 4]> {
         .iter()
         .filter(|f| f.opacity > 0. && f.width > 0. && f.height > 0.)
         .map(|f| {
-            let (sin, cos) = f.rotation.to_radians().sin_cos();
-            let (ax, ay) = (f.width * f.anchor_x, f.height * f.anchor_y);
-            let corners = [
-                (-ax, -ay),
-                (f.width - ax, -ay),
-                (-ax, f.height - ay),
-                (f.width - ax, f.height - ay),
-            ]
-            .map(|(x, y)| (x * cos - y * sin, x * sin + y * cos));
+            let (sin, cos) = (f.rotation + f.lean).to_radians().sin_cos();
+            let (w, h) = (f.width * f.squash_x, f.height * f.squash_y);
+            let (ax, ay) = (w * f.anchor_x, h * f.anchor_y);
+            let corners = [(-ax, -ay), (w - ax, -ay), (-ax, h - ay), (w - ax, h - ay)]
+                .map(|(x, y)| (x * cos - y * sin, x * sin + y * cos));
             let left = corners.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
             let right = corners
                 .iter()
@@ -287,6 +283,9 @@ mod tests {
             height: 24.,
             anchor_x: 0.5,
             anchor_y: 1.,
+            squash_x: 1.,
+            squash_y: 1.,
+            lean: 0.,
         }
     }
 

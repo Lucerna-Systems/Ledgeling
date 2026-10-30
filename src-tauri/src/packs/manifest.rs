@@ -5,6 +5,7 @@ use super::{
     diagnostics::{Diagnostic, Report, Tier},
     expr::Condition,
 };
+use crate::jelly::JellyParams;
 use crate::world::SurfaceKind;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -428,6 +429,30 @@ impl Default for Personality {
     }
 }
 
+/// How springy the pet feels: multipliers on the engine's own defaults, so a
+/// pack that says nothing still squishes and wobbles.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JellyBlock {
+    pub stiffness: f64,
+    pub damping: f64,
+    pub squash: f64,
+    pub breath: f64,
+    /// 0..1: how hard it holds on to a shaken window; 1 never lets go.
+    pub grip: f64,
+}
+impl Default for JellyBlock {
+    fn default() -> Self {
+        Self {
+            stiffness: 1.,
+            damping: 1.,
+            squash: 1.,
+            breath: 1.,
+            grip: JellyParams::default().grip,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
@@ -446,9 +471,20 @@ pub struct Manifest {
     pub custom_actions: BTreeMap<String, CustomAction>,
     pub reactions: Vec<Reaction>,
     pub personality: Personality,
+    pub jelly: JellyBlock,
 }
 
 impl Manifest {
+    pub fn jelly_params(&self) -> JellyParams {
+        let base = JellyParams::default();
+        JellyParams {
+            stiffness: base.stiffness * self.jelly.stiffness,
+            damping: base.damping * self.jelly.damping,
+            squash: base.squash * self.jelly.squash,
+            grip: self.jelly.grip,
+            breath: base.breath * self.jelly.breath,
+        }
+    }
     /// The clip actually played for a requested name, following the fallback
     /// chain so a missing optional animation never breaks a pack.
     pub fn resolve_clip<'a>(&'a self, wanted: &'a str) -> &'a str {
@@ -541,6 +577,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
     };
     let reactions = read_reactions(root, &behavior, report);
     let personality = read_personality(root, report);
+    let jelly = read_jelly(root, report);
     note_unknown(
         root,
         "",
@@ -561,6 +598,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
             "behavior",
             "reactions",
             "personality",
+            "jelly",
         ],
         report,
     );
@@ -580,6 +618,7 @@ pub fn parse(text: &str, report: &mut Report) -> Option<Manifest> {
         custom_actions,
         reactions,
         personality,
+        jelly,
     };
     check_bounds(&manifest, report);
     Some(manifest)
@@ -1517,6 +1556,49 @@ fn read_personality(root: &Map<String, Value>, report: &mut Report) -> Personali
         report,
     );
     personality
+}
+
+fn read_jelly(root: &Map<String, Value>, report: &mut Report) -> JellyBlock {
+    let mut jelly = JellyBlock::default();
+    let Some(value) = root.get("jelly") else {
+        return jelly;
+    };
+    let Some(map) = expect_object(value, "jelly", report) else {
+        return jelly;
+    };
+    for (key, target, max) in [
+        ("stiffness", &mut jelly.stiffness, 3.),
+        ("damping", &mut jelly.damping, 3.),
+        ("squash", &mut jelly.squash, 3.),
+        ("breath", &mut jelly.breath, 3.),
+        ("grip", &mut jelly.grip, 1.),
+    ] {
+        let Some(v) = number(map, "jelly", key, false, report) else {
+            continue;
+        };
+        // Stiffness and damping of zero would leave the spring without a rest.
+        let min = if matches!(key, "stiffness" | "damping") {
+            0.1
+        } else {
+            0.
+        };
+        if !(min..=max).contains(&v) {
+            report.push(Diagnostic::warning(
+                MANIFEST_FILE,
+                format!("jelly.{key}"),
+                format!("Found {v}."),
+                format!("`{key}` runs from {min} to {max}; the value has been clamped."),
+            ));
+        }
+        *target = v.clamp(min, max);
+    }
+    note_unknown(
+        map,
+        "jelly",
+        &["stiffness", "damping", "squash", "breath", "grip"],
+        report,
+    );
+    jelly
 }
 
 /// The per-class default profile used when a pack omits `behavior` entirely.

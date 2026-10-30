@@ -121,6 +121,132 @@ fn dragging_a_window_carries_the_squirrel_with_it() {
     );
 }
 
+/// Stand the pet on one of window 1's edges and pin it there, as an open
+/// bubble does, so only the window decides whether it stays.
+fn perch_on_window(engine: &mut Engine, pet: usize, kind: ledgeling::world::SurfaceKind) {
+    let surface = *engine
+        .surfaces
+        .iter()
+        .find(|s| s.owner == 1 && s.kind == kind)
+        .expect("the window has that edge");
+    let pet = &mut engine.pets[pet];
+    pet.perch = Some(ledgeling::pet::pathfind::Perch {
+        key: surface.key(),
+        t: surface.midpoint_t(),
+    });
+    pet.position = surface.point(surface.midpoint_t());
+    pet.motion = ledgeling::pet::Motion::Settled;
+    pet.listen(true);
+}
+
+/// A window swung 250 px back and forth every tenth of a second, as a hand
+/// shakes it.
+fn shaken() -> Vec<Vec<WindowInfo>> {
+    let mut frames = vec![vec![win(1, 400., 500., 700., 300.)]];
+    for i in 0..14 {
+        let x = if i % 2 == 0 { 525. } else { 275. };
+        frames.push(vec![win(1, x, 500., 700., 300.)]);
+    }
+    frames.push(vec![win(1, 400., 500., 700., 300.)]);
+    frames
+}
+
+#[test]
+fn a_dragged_window_carries_the_pet_smoothly() {
+    let (mut engine, platform) = engine(
+        monitors(),
+        vec![
+            vec![win(1, 300., 500., 700., 300.)],
+            vec![win(1, 500., 400., 700., 300.)],
+            vec![win(1, 700., 300., 700., 300.)],
+        ],
+    );
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 2.);
+    perch_on_window(&mut engine, 0, ledgeling::world::SurfaceKind::WindowTop);
+    run(&mut engine, &platform, 0.5);
+    let mut biggest: f64 = 0.;
+    for _ in 0..2 {
+        platform.advance();
+        let mut last = engine.pets[0].drawn_position();
+        for _ in 0..60 {
+            engine.tick(1. / 60., &platform);
+            let now = engine.pets[0].drawn_position();
+            biggest = biggest.max(now.distance(last));
+            last = now;
+        }
+    }
+    let pet = &engine.pets[0];
+    assert_eq!(
+        pet.perch.map(|p| p.key.owner),
+        Some(1),
+        "still on the window"
+    );
+    // Each step moved the window 224 px at once; before, the pet did too.
+    assert!(
+        biggest < 60.,
+        "the drawn pet jumped {biggest} px in one frame"
+    );
+    assert!(
+        pet.drawn_position().distance(pet.position) < 2.,
+        "and it has caught up a second later"
+    );
+}
+
+#[test]
+fn shaking_a_window_knocks_off_a_squirrel_but_not_a_gecko() {
+    let (mut engine, platform) = engine(monitors(), shaken());
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    engine.spawn("com.perch.gecko-glass").unwrap();
+    run(&mut engine, &platform, 2.);
+    perch_on_window(&mut engine, 0, ledgeling::world::SurfaceKind::WindowTop);
+    perch_on_window(&mut engine, 1, ledgeling::world::SurfaceKind::WindowLeft);
+    run(&mut engine, &platform, 0.5);
+    let mut squirrel_fell = false;
+    for _ in 0..15 {
+        platform.advance();
+        for _ in 0..6 {
+            engine.tick(1. / 60., &platform);
+            squirrel_fell |= engine.pets[0].perch.map(|p| p.key.owner) != Some(1);
+            assert_eq!(
+                engine.pets[1].perch.map(|p| p.key.owner),
+                Some(1),
+                "the gecko holds on"
+            );
+        }
+    }
+    assert!(squirrel_fell, "the squirrel was shaken loose");
+    run(&mut engine, &platform, 6.);
+    assert!(engine.pets[0].perch.is_some(), "and it landed somewhere");
+}
+
+#[test]
+fn with_jelly_off_nothing_wobbles_or_falls_off() {
+    let mut settings = Settings::default();
+    settings.pets.clear();
+    settings.effects.jelly = false;
+    let mut engine = Engine::new(settings, packs());
+    let platform = MockPlatform::new(monitors(), shaken());
+    engine.set_monitors(monitors());
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 2.);
+    perch_on_window(&mut engine, 0, ledgeling::world::SurfaceKind::WindowTop);
+    run(&mut engine, &platform, 0.5);
+    for _ in 0..15 {
+        platform.advance();
+        for _ in 0..6 {
+            engine.tick(1. / 60., &platform);
+            let pet = &engine.pets[0];
+            assert_eq!(pet.perch.map(|p| p.key.owner), Some(1), "it holds on");
+            let frame = pet.frame(1., 1.);
+            assert_eq!((frame.squash_x, frame.squash_y, frame.lean), (1., 1., 0.));
+        }
+    }
+}
+
 #[test]
 fn closing_the_last_window_leaves_no_pet_stranded_in_mid_air() {
     let (mut engine, platform) = engine(

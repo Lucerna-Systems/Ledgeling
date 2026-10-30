@@ -252,6 +252,28 @@ makes a good morning hello.
 Packs without a `behavior` block get these states and reactions for free; both
 clips are optional and fall back to `alert`/`happy`, then `idle`.
 
+**Squish and wobble** need nothing from you: every pet squashes when it lands,
+stretches when it jumps or is thrown, breathes while it sits, and sways on a
+window the user drags. A shaken window can loosen its grip, which reaches your
+pack as `thrown`. To tune the feel, add an optional `jelly` block. Every value
+multiplies Ledgeling's own default, except `grip`:
+
+```json
+"jelly": { "stiffness": 1, "damping": 1, "squash": 1.2, "breath": 1, "grip": 0.95 }
+```
+
+| Field | Range | Default | What it does |
+|---|---|---|---|
+| `stiffness` | 0.1–3 | 1 | How quickly it springs back. Higher is snappier. |
+| `damping` | 0.1–3 | 1 | How soon the wobble dies down. 3 barely overshoots. |
+| `squash` | 0–3 | 1 | How much it squashes and leans. 0 turns both off. |
+| `breath` | 0–3 | 1 | How deeply it breathes while sitting still. |
+| `grip` | 0–1 | 0.6 | How hard a shake has to be to knock it off. 1 never lets go. |
+
+A value outside its range is clamped and noted, never a reason the pack fails
+to load. Users can switch squish and wobble off in Settings, and Ledgeling
+honours the system's reduce-motion setting.
+
 ---
 
 ## 5. When something is wrong

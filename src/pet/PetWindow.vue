@@ -45,7 +45,8 @@ function draw(frame: Frame) {
   node.style.width = `${frame.width}px`
   node.style.height = `${frame.height}px`
   node.style.transformOrigin = `${frame.anchorX * 100}% ${frame.anchorY * 100}%`
-  node.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(${frame.rotation}deg) scaleX(${frame.flipX ? -1 : 1})`
+  // Squash and lean are about the anchor (the feet), like the rotation.
+  node.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(${frame.rotation + frame.lean}deg) scale(${(frame.flipX ? -1 : 1) * frame.squashX}, ${frame.squashY})`
   node.style.opacity = String(frame.opacity)
   node.style.backgroundImage = `url(${clip.image})`
   node.style.backgroundSize = `${clip.frames * frame.width}px ${frame.height}px`
@@ -101,6 +102,13 @@ onMounted(async () => {
   await subscribe<string>('pet:sound', source => { void new Audio(source).play().catch(() => {}) })
   // The backend sends spawn payloads before this webview could listen; ask it
   // to re-send them now that every listener is registered.
+  // Rust decides what reduced motion means; the overlay only reports it.
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)')
+  const tell = () => { void invoke('set_reduced_motion', { on: reduce.matches }).catch(() => {}) }
+  tell()
+  reduce.addEventListener('change', tell)
+  const forget = () => reduce.removeEventListener('change', tell)
+  if (disposed) forget(); else off.push(forget)
   const monitor = new URLSearchParams(location.search).get('monitor')
   if (monitor !== null) await invoke('pet_surface_ready', { monitor: Number(monitor) })
 })

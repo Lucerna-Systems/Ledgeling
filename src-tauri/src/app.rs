@@ -283,6 +283,14 @@ async fn pet_action(
     Ok(app.snapshot())
 }
 
+/// The overlay reports the OS reduced-motion preference; Rust decides what it
+/// means (no squash or wobble), so the renderer stays a renderer.
+#[tauri::command]
+async fn set_reduced_motion(on: bool, state: State<'_, Shared>) -> Result<(), String> {
+    locked(&state)?.engine.reduced_motion = on;
+    Ok(())
+}
+
 #[tauri::command]
 async fn pet_interact(kind: String, state: State<'_, Shared>) -> Result<(), String> {
     let mut app = locked(&state)?;
@@ -949,6 +957,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             get_snapshot,
             pet_action,
             pet_interact,
+            set_reduced_motion,
             set_settings,
             set_app_icon,
             list_packs,
@@ -1788,7 +1797,7 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
     plan.moving = engine
         .pets
         .iter()
-        .any(|pet| !matches!(pet.motion, Motion::Settled));
+        .any(|pet| !matches!(pet.motion, Motion::Settled) || pet.jelly.is_active());
     for monitor in &engine.monitors {
         let here: Vec<&crate::pet::Pet> = engine
             .pets
@@ -1825,7 +1834,7 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
         let mut interactive = false;
         for pet in &here {
             let mut frame = pet.frame(monitor.scale, 1.);
-            let local = windows_mgr::to_local(pet.position, monitor);
+            let local = windows_mgr::to_local(pet.drawn_position(), monitor);
             frame.x = local.x;
             frame.y = local.y;
             frames.push(frame);

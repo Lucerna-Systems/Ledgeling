@@ -250,3 +250,10 @@ The same sprint added a first-run welcome, throwing and petting, a per-pet bond
 (name, days together, affection) and Studio templates with export. What has
 actually been hand-run is recorded in
 [`docs/verification.md`](../docs/verification.md).
+
+**Pulled forward on 2026-10-30 at the user's direction** (branch
+`feature/jelly-biomes`, five PRs in order): squash, stretch and wobble with
+pets that ride a dragged window smoothly and can be shaken off (PR 1); decor
+packs and per-app window biomes (PR 2); a Decorate mode (PR 3); an opt-in
+"make room at the top" that shortens a window under a pet or biome (PR 4);
+and Studio decor authoring (PR 5). Each has a switch to turn it off.
