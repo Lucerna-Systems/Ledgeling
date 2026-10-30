@@ -1,7 +1,7 @@
 //! Geometry-only CoreGraphics adapter. It reads window numbers, layers, bounds,
 //! alpha and owner PIDs, plus input idle time. It never reads window names,
 //! owner names, screen images, keystrokes, or the clipboard.
-use super::{Platform, ProcessInfo};
+use super::{Platform, ProcessInfo, ResizeAccess};
 use crate::world::{MonitorInfo, Point, Rect, WindowInfo};
 use std::{
     ffi::c_void,
@@ -158,6 +158,25 @@ impl Platform for NativePlatform {
 
     fn process_name(&self, pid: u32) -> Option<String> {
         process_name(pid as i32)
+    }
+
+    fn resize_access(&self) -> ResizeAccess {
+        if super::macos_ax::trusted() {
+            ResizeAccess::Granted
+        } else {
+            ResizeAccess::NeedsPermission
+        }
+    }
+
+    fn request_resize_access(&self) {
+        super::macos_ax::ask();
+    }
+
+    fn set_window_frame(&self, window: &WindowInfo, to: Rect) -> Result<(), String> {
+        let pid = window.pid.ok_or("That window's app is unknown.")?;
+        let scale = engine_scale();
+        let points = |r: Rect| (r.x / scale, r.y / scale, r.width / scale, r.height / scale);
+        super::macos_ax::set_frame(pid as i32, points(window.rect), points(to))
     }
 
     fn idle_seconds(&self) -> Result<f64, String> {

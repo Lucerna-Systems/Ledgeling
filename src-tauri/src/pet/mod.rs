@@ -159,6 +159,9 @@ pub struct WorldView<'a> {
     pub jelly: bool,
     /// Surfaces of this pet's home biome; empty when it has none on screen.
     pub home: &'a [SurfaceKey],
+    /// Windows pressed against the top of the screen that could not be given
+    /// room: a pet on their top edge would be cut off, so it goes elsewhere.
+    pub cramped: &'a [u64],
     /// Window the user is working in. Only set while a nudge is escalating, so
     /// the pet drifts somewhere visible instead of somewhere random.
     pub attention: Option<u64>,
@@ -1580,7 +1583,11 @@ impl Pet {
 }
 
 fn candidates_of<'s>(view: &WorldView<'s>, manifest: &Manifest) -> Vec<(usize, &'s Surface)> {
-    pathfind::candidates(view.surfaces, manifest, view.scale)
+    let mut candidates = pathfind::candidates(view.surfaces, manifest, view.scale);
+    candidates.retain(|(_, s)| {
+        !(s.kind == crate::world::SurfaceKind::WindowTop && view.cramped.contains(&s.owner))
+    });
+    candidates
 }
 
 /// Where a new pet should appear: on a surface it likes, else mid-screen.

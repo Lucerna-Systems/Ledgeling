@@ -177,6 +177,8 @@ export interface Effects {
   jelly: boolean
   /** Biomes are drawn on their windows. Off, they are kept but not shown. */
   biomes: boolean
+  /** Move a window's top down when a pet or biome on it would be cut off. */
+  makeRoom?: boolean
 }
 
 export interface SessionSummary {
@@ -240,6 +242,8 @@ export interface Snapshot {
   scanMs: number
   scanError: string | null
   suspended: boolean
+  /** Whether "make room at the top" may move windows on this desktop. */
+  resizeAccess?: 'granted' | 'needs_permission' | 'unsupported'
   notes: string[]
   packsDir: string
   native: boolean

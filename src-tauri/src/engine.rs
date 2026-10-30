@@ -12,7 +12,8 @@ use crate::{
         loader, LocomotionClass, Pack,
     },
     pet::{fsm::Rng, spawn_point, Bond, Peer, Pet, WorldView},
-    platform::Platform,
+    platform::{Platform, ResizeAccess},
+    room::{Need, Room},
     settings::{clean_name, PetSetting, Settings},
     world::{
         self, virtual_desktop, MonitorInfo, Point, Rect, Surface, SurfaceChange, SurfaceGraph,
@@ -29,6 +30,9 @@ const FAST_SCAN_WINDOW: f64 = 2.;
 /// A window edge moving faster than this looks alarming to a pet on it.
 const STARTLING_SPEED: f64 = 900.;
 const MIN_SEGMENT: f64 = 48.;
+/// Room above a window's top edge, logical pixels, below which a pet standing
+/// there would be cut off by the top of the screen.
+const CRAMPED_HEIGHT: f64 = 56.;
 
 /// One change to the biome being decorated.
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -72,6 +76,14 @@ pub struct Engine {
     /// A click the overlay reported while picking a window, served on the
     /// next tick, where the platform is at hand.
     pending_pick: Option<Point>,
+    pub room: Room,
+    /// Whether windows may be moved, as the platform last said. Only asked
+    /// while "make room at the top" is on.
+    pub resize_access: ResizeAccess,
+    /// The user asked to be shown the system's permission prompt.
+    access_requested: bool,
+    /// Windows with no room above them that could not be given any.
+    pub cramped: Vec<u64>,
     tracker: SurfaceTracker,
     next_id: u64,
     clock: f64,
@@ -110,6 +122,10 @@ impl Engine {
             edit: None,
             edit_error: None,
             pending_pick: None,
+            room: Room::default(),
+            resize_access: ResizeAccess::Unsupported,
+            access_requested: false,
+            cramped: Vec::new(),
             tracker: SurfaceTracker::default(),
             next_id: 1,
             clock: 0.,
@@ -161,15 +177,95 @@ impl Engine {
 
     fn rebuild(&mut self) {
         self.surfaces = world::surfaces(&self.windows, &self.monitors, MIN_SEGMENT);
+        self.cramped = self.find_cramped();
         if self.settings.effects.biomes {
             let scale = self.pet_scale();
-            let placed =
-                self.biomes
-                    .layout(&self.settings.biomes, &self.decor, &self.surfaces, scale);
+            let placed = self.biomes.layout(
+                &self.settings.biomes,
+                &self.decor,
+                &self.surfaces,
+                scale,
+                &self.cramped,
+            );
             let ledges = Biomes::prop_surfaces(&placed, scale);
             self.surfaces.extend(ledges);
         }
         self.graph = SurfaceGraph::build(&self.surfaces);
+    }
+
+    /// Windows against the top of the screen whose top edge cannot be given
+    /// room. Only while the user wants room made: without it, nothing changes.
+    fn find_cramped(&self) -> Vec<u64> {
+        if !self.settings.effects.make_room {
+            return Vec::new();
+        }
+        let Some(monitor) = self.monitors.first() else {
+            return Vec::new();
+        };
+        let room_for = CRAMPED_HEIGHT * monitor.scale;
+        self.windows
+            .iter()
+            .filter(|w| w.rect.y - monitor.work.y < room_for)
+            .filter(|w| self.resize_access != ResizeAccess::Granted || self.room.refused(w.id))
+            .map(|w| w.id)
+            .collect()
+    }
+
+    /// Make room above windows that need it, or put them back.
+    fn make_room(&mut self, platform: &dyn Platform) {
+        if !self.settings.effects.make_room {
+            self.room.restore_all(&self.windows, platform);
+            return;
+        }
+        let Some(monitor) = self.monitors.first().copied() else {
+            return;
+        };
+        let mut needs: Vec<Need> = Vec::new();
+        let mut need =
+            |window: u64, height: f64| match needs.iter_mut().find(|n| n.window == window) {
+                Some(n) => n.height = n.height.max(height),
+                None => needs.push(Need { window, height }),
+            };
+        if self.settings.effects.biomes {
+            for biome in &self.settings.biomes {
+                if let Some(&host) = self.biomes.hosts.get(&biome.id) {
+                    need(host, Biomes::height(biome, &self.decor, monitor.scale));
+                }
+            }
+        }
+        for pet in &self.pets {
+            if let Some(perch) = pet
+                .perch
+                .filter(|p| p.key.kind == world::SurfaceKind::WindowTop)
+            {
+                let sprite = pet.manifest().sprite;
+                need(
+                    perch.key.owner,
+                    sprite.height * sprite.scale * monitor.scale,
+                );
+            }
+        }
+        needs.retain(|n| n.height > 0.);
+        self.room.update(
+            self.clock,
+            &self.windows,
+            monitor.work.y,
+            monitor.scale,
+            &needs,
+            self.resize_access,
+            platform.mouse_down() == Some(true),
+            platform,
+        );
+    }
+
+    /// Ledgeling is quitting: windows it moved go back where they were.
+    pub fn release_windows(&mut self, platform: &dyn Platform) {
+        self.room.restore_all(&self.windows, platform);
+    }
+
+    /// Show the system's permission prompt on the next tick.
+    pub fn request_resize_access(&mut self) {
+        self.access_requested = true;
     }
 
     /// Pets live on one screen, so one scale serves every biome.
@@ -188,6 +284,7 @@ impl Engine {
             &self.decor,
             &self.surfaces,
             self.pet_scale(),
+            &self.cramped,
         );
         self.biomes.frames(&placed)
     }
@@ -557,6 +654,13 @@ impl Engine {
             // Suspending in a fullscreen app is the difference between a
             // companion and something you uninstall during a film.
             self.suspended = platform.fullscreen_app_active().unwrap_or(false);
+            if self.settings.effects.make_room {
+                self.resize_access = platform.resize_access();
+            }
+        }
+        if std::mem::take(&mut self.access_requested) {
+            platform.request_resize_access();
+            self.resize_access = platform.resize_access();
         }
         self.suspended = self.suspended || !self.screens_available || self.monitors.is_empty();
         if self.suspended || self.settings.paused || self.settings.hidden {
@@ -623,6 +727,7 @@ impl Engine {
                     .home_biome
                     .and_then(|id| homes.get(&id))
                     .map_or(&[], Vec::as_slice),
+                cramped: &self.cramped,
             };
             let mut pet_events = events.clone();
             pet.tick(dt, &view, base, &mut pet_events);
@@ -684,6 +789,7 @@ impl Engine {
         }
         self.rebuild();
         self.scan_ms = started.elapsed().as_secs_f64() * 1000.;
+        self.make_room(platform);
         for change in self.tracker.diff(&self.surfaces, elapsed) {
             if let SurfaceChange::Moved { key, speed } = change {
                 if speed > STARTLING_SPEED {

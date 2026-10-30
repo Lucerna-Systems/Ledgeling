@@ -191,18 +191,24 @@ impl Biomes {
 
     /// Every prop that can be seen: on a hosted biome, from an installed decor
     /// pack, and standing on a part of the top edge no other window covers.
+    /// `cramped` windows have no room above their top edge, so nothing
+    /// stands there.
     pub fn layout<'a>(
         &self,
         biomes: &'a [BiomeSetting],
         decor: &'a HashMap<String, Arc<DecorPack>>,
         surfaces: &[Surface],
         scale: f64,
+        cramped: &[u64],
     ) -> Vec<Placed<'a>> {
         let mut out = Vec::new();
         for (slot, biome) in biomes.iter().enumerate() {
             let Some(&host) = self.hosts.get(&biome.id) else {
                 continue;
             };
+            if cramped.contains(&host) {
+                continue;
+            }
             let tops: Vec<&Surface> = surfaces
                 .iter()
                 .filter(|s| s.owner == host && s.kind == SurfaceKind::WindowTop)
@@ -276,6 +282,20 @@ impl Biomes {
                 })
             })
             .collect()
+    }
+
+    /// How tall the tallest prop in this biome stands, physical pixels.
+    pub fn height(
+        biome: &BiomeSetting,
+        decor: &HashMap<String, Arc<DecorPack>>,
+        scale: f64,
+    ) -> f64 {
+        biome
+            .props
+            .iter()
+            .filter_map(|p| decor.get(&p.decor)?.manifest.props.get(&p.prop))
+            .map(|def| def.height * scale)
+            .fold(0., f64::max)
     }
 
     /// Where a pet whose home is this biome likes to be: the window's top

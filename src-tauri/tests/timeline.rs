@@ -920,3 +920,58 @@ fn decorating_picks_a_window_makes_its_biome_and_places_props() {
     assert!(engine.edit.is_none());
     assert_eq!(engine.settings.biomes[0].id, biome, "the biome stays");
 }
+
+fn room_engine(
+    make_room: bool,
+    access: ledgeling::platform::ResizeAccess,
+) -> (Engine, MockPlatform) {
+    let flush = win(1, 200., 0., 900., 700.).with_pid(7);
+    let (mut engine, platform) =
+        biome_engine(vec![vec![flush]], |s| s.effects.make_room = make_room);
+    *platform.access.lock().unwrap() = access;
+    run(&mut engine, &platform, 2.5);
+    (engine, platform)
+}
+
+#[test]
+fn make_room_off_never_touches_a_window() {
+    let (engine, platform) = room_engine(false, ledgeling::platform::ResizeAccess::Granted);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert!(
+        engine.cramped.is_empty(),
+        "nothing changes for anyone who did not ask"
+    );
+    assert_eq!(
+        engine.prop_frames().len(),
+        2,
+        "the biome still draws, clipped as before"
+    );
+}
+
+#[test]
+fn make_room_moves_a_biome_window_down_by_its_tallest_prop() {
+    let (mut engine, platform) = room_engine(true, ledgeling::platform::ResizeAccess::Granted);
+    let moves = platform.moves.lock().unwrap().clone();
+    assert_eq!(moves.len(), 1, "{moves:?}");
+    let (window, to) = moves[0];
+    assert_eq!(window, 1);
+    assert_eq!(to.y, 64. + 8., "the oak is 64 px tall, plus a margin");
+    assert_eq!(to.bottom(), 700., "the bottom stays put");
+    run(&mut engine, &platform, 1.);
+    assert!(engine.prop_frames().iter().all(|p| (p.y - 72.).abs() < 2.));
+    // Switching it off puts the window back.
+    engine.settings.effects.make_room = false;
+    run(&mut engine, &platform, 1.);
+    assert_eq!(platform.moves.lock().unwrap().last().unwrap().1.y, 0.);
+}
+
+#[test]
+fn without_permission_nothing_moves_and_the_edge_is_left_alone() {
+    let (engine, platform) = room_engine(true, ledgeling::platform::ResizeAccess::NeedsPermission);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert_eq!(engine.cramped, vec![1]);
+    assert!(
+        engine.prop_frames().is_empty(),
+        "props would be cut off, so they wait"
+    );
+}

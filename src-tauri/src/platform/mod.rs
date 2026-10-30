@@ -1,6 +1,6 @@
 //! Every OS query sits behind this trait so pet behavior can be tested without
 //! a desktop and ported without touching the engine.
-use crate::world::{MonitorInfo, Point, WindowInfo};
+use crate::world::{MonitorInfo, Point, Rect, WindowInfo};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProcessInfo {
@@ -8,6 +8,17 @@ pub struct ProcessInfo {
     /// never read; see docs/privacy.md.
     pub name: String,
     pub pid: u32,
+}
+
+/// Whether Ledgeling may move other apps' windows, for "make room at the top".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResizeAccess {
+    Granted,
+    /// Possible once the user allows it (macOS Accessibility).
+    NeedsPermission,
+    #[default]
+    Unsupported,
 }
 
 pub trait Platform: Send + Sync {
@@ -37,10 +48,23 @@ pub trait Platform: Send + Sync {
     /// exactly one monitor — the pet screen — which is what anchors the
     /// platform's coordinate conversion and window-to-screen tagging.
     fn set_monitors(&self, _monitors: Vec<MonitorInfo>) {}
+    /// May another app's window be moved? Only "make room at the top" asks.
+    fn resize_access(&self) -> ResizeAccess {
+        ResizeAccess::Unsupported
+    }
+    /// Show the system's own permission prompt, where there is one.
+    fn request_resize_access(&self) {}
+    /// Move and resize another app's window to `to`, in the same physical
+    /// pixels `enumerate_windows` reports. Nothing else about it is touched.
+    fn set_window_frame(&self, _window: &WindowInfo, _to: Rect) -> Result<(), String> {
+        Err("Moving windows isn't supported on this desktop.".into())
+    }
 }
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod macos_ax;
 #[cfg(target_os = "macos")]
 pub use macos::NativePlatform;
 #[cfg(target_os = "windows")]

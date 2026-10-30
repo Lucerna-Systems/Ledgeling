@@ -127,12 +127,16 @@ pub struct Effects {
     pub jelly: bool,
     /// Biomes are drawn on their windows. Off, they are kept but not shown.
     pub biomes: bool,
+    /// Move a window's top edge down when it is against the top of the
+    /// screen and has a pet or a biome on it. Off unless the user asks.
+    pub make_room: bool,
 }
 impl Default for Effects {
     fn default() -> Self {
         Self {
             jelly: true,
             biomes: true,
+            make_room: false,
         }
     }
 }

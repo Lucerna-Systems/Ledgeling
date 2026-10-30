@@ -559,6 +559,30 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Make room at the top (2026-10-30)
+
+Automated: `room.rs` unit tests with the mock platform:
+- a window flush with the top that has something on it is moved down just
+  enough, once;
+- nothing moves while the mouse is down or without permission;
+- a window is put back ten seconds after nothing stands on it;
+- a window the user moved is neither put back nor moved again;
+- switching off puts windows back, and a refusal is remembered;
+- a short window is never squeezed.
+
+Timelines: off never touches a window; on, it moves a biome's window down by its
+tallest prop and back when switched off; without permission nothing moves and
+the edge is left alone (no props drawn, pets steer clear).
+
+**Not run:**
+- No window has actually been moved: the macOS Accessibility calls
+  (`platform/macos_ax.rs`), the permission prompt, and the Windows `SetWindowPos`
+  border maths have only been compiled (macOS) or not at all (Windows, by CI).
+- How apps react to having their top edge moved (some snap back, some constrain
+  their size) is unknown.
+- A Windows maximised window keeps its maximised state while moved; untested.
+- Restore-on-quit has not been seen to happen.
+
 ## Decorate mode (2026-10-30)
 
 Automated: `npm test` 359 lib + 12 privacy + 29 timeline passing, `npm run
