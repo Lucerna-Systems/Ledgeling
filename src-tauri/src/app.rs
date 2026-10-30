@@ -657,6 +657,7 @@ async fn save_studio_pack(
     manifest: String,
     strips: Vec<crate::packs::studio::StudioImage>,
     preview: crate::packs::studio::StudioImage,
+    replace: Option<bool>,
     window: WebviewWindow,
     state: State<'_, Shared>,
 ) -> Result<PackSummary, String> {
@@ -664,6 +665,10 @@ async fn save_studio_pack(
         return Err("Pets can only be saved from the companion window.".into());
     }
     let dir = locked(&state)?.packs_dir.clone();
+    // Only a design opened from, or already saved as, this pack may replace it.
+    if replace != Some(true) {
+        crate::packs::studio::ensure_unused(&dir, &manifest)?;
+    }
     let summary = crate::packs::studio::save(&dir, &manifest, &strips, &preview)?;
     locked(&state)?.engine.reload_packs(&dir);
     Ok(summary)

@@ -1477,3 +1477,15 @@ mod hardening {
         );
     }
 }
+
+#[test]
+fn a_first_studio_save_never_lands_on_an_installed_pet() {
+    let root = std::env::temp_dir().join(format!("perch-studio-unused-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    super::builtin::restore(&root, &[]).unwrap();
+    let error =
+        super::studio::ensure_unused(&root, r#"{ "id": "com.perch.squirrel-red" }"#).unwrap_err();
+    assert!(error.contains("already uses that id"), "{error}");
+    assert!(super::studio::ensure_unused(&root, r#"{ "id": "com.studio.ember-k3x9" }"#).is_ok());
+    let _ = std::fs::remove_dir_all(&root);
+}
