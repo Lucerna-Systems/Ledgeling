@@ -250,7 +250,9 @@ mod tests {
         jelly.follow(Point::new(100., 0.), DT, 1.);
         assert_eq!(jelly.offset.x.x, -100., "the drawn pet stays put at first");
         let mut overshoot = f64::NEG_INFINITY;
-        run(&mut jelly, params, 1.5, |j| overshoot = overshoot.max(j.offset.x.x));
+        run(&mut jelly, params, 1.5, |j| {
+            overshoot = overshoot.max(j.offset.x.x)
+        });
         assert!(overshoot > 5., "it swings past the perch: {overshoot}");
         assert!(jelly.offset.x.x.abs() < 1., "settled: {:?}", jelly.offset);
         assert!(!jelly.is_active());

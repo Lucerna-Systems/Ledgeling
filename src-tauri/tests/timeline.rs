@@ -178,9 +178,16 @@ fn a_dragged_window_carries_the_pet_smoothly() {
         }
     }
     let pet = &engine.pets[0];
-    assert_eq!(pet.perch.map(|p| p.key.owner), Some(1), "still on the window");
+    assert_eq!(
+        pet.perch.map(|p| p.key.owner),
+        Some(1),
+        "still on the window"
+    );
     // Each step moved the window 224 px at once; before, the pet did too.
-    assert!(biggest < 60., "the drawn pet jumped {biggest} px in one frame");
+    assert!(
+        biggest < 60.,
+        "the drawn pet jumped {biggest} px in one frame"
+    );
     assert!(
         pet.drawn_position().distance(pet.position) < 2.,
         "and it has caught up a second later"

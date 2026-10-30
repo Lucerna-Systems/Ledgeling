@@ -1577,7 +1577,11 @@ fn read_jelly(root: &Map<String, Value>, report: &mut Report) -> JellyBlock {
             continue;
         };
         // Stiffness and damping of zero would leave the spring without a rest.
-        let min = if matches!(key, "stiffness" | "damping") { 0.1 } else { 0. };
+        let min = if matches!(key, "stiffness" | "damping") {
+            0.1
+        } else {
+            0.
+        };
         if !(min..=max).contains(&v) {
             report.push(Diagnostic::warning(
                 MANIFEST_FILE,

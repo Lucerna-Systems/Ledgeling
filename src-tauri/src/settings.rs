@@ -358,9 +358,11 @@ mod tests {
     #[test]
     fn effects_default_on_and_a_partial_block_keeps_the_rest() {
         let old: Settings = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
-        assert!(old.effects.jelly, "files from before effects existed get squish");
-        let off: Settings =
-            serde_json::from_str(r#"{ "effects": { "jelly": false } }"#).unwrap();
+        assert!(
+            old.effects.jelly,
+            "files from before effects existed get squish"
+        );
+        let off: Settings = serde_json::from_str(r#"{ "effects": { "jelly": false } }"#).unwrap();
         assert!(!off.effects.jelly);
     }
     #[test]

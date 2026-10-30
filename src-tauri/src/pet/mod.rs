@@ -620,7 +620,8 @@ impl Pet {
         } else if self.thrown_fall && self.motion == Motion::Falling {
             if let Arc_::Fall { vx, vy } = self.arc {
                 let speed = vx.hypot(vy) / view.scale;
-                self.jelly.aim(-(speed / THROWN_STRETCH_SPEED).min(MAX_THROWN_STRETCH));
+                self.jelly
+                    .aim(-(speed / THROWN_STRETCH_SPEED).min(MAX_THROWN_STRETCH));
             }
         }
         self.jelly.step(dt, jelly);
