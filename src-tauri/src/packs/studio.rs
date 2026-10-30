@@ -3,6 +3,7 @@
 //! loader as any other pack, so the editor can never produce something the
 //! validator would not accept from a hand-written pack.
 use super::{
+    decor,
     loader::{self, PackSummary},
     manifest::MANIFEST_FILE,
 };
@@ -75,6 +76,73 @@ pub fn save(
     loader::load(&target, false)
         .map(|pack| pack.summary())
         .map_err(|report| report.text())
+}
+
+/// Write a decor pack made in Studio's Decor mode into `packs_dir`, replacing
+/// an earlier save of the same pack. Validated by the same loader as a
+/// hand-written decor pack; bundled decor is never overwritten.
+pub fn save_decor(
+    packs_dir: &Path,
+    manifest: &str,
+    sprites: &[StudioImage],
+) -> Result<String, String> {
+    let id = serde_json::from_str::<serde_json::Value>(manifest)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(str::to_owned))
+        .ok_or("The decor pack has no id yet. Give it a name and try again.")?;
+    for sprite in sprites {
+        check_image(sprite, true)?;
+    }
+    let staging = packs_dir.join(".decor-staging");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(staging.join("sprites"))
+        .map_err(|e| format!("Could not prepare the decor folder: {e}"))?;
+    let written = (|| {
+        std::fs::write(staging.join(decor::DECOR_FILE), manifest)
+            .map_err(|e| format!("Could not write {}: {e}", decor::DECOR_FILE))?;
+        for sprite in sprites {
+            super::scaffold::write_png(
+                &staging.join(format!("sprites/{}.png", sprite.name)),
+                &sprite.pixels,
+                sprite.width,
+                sprite.height,
+            )?;
+        }
+        std::fs::write(
+            staging.join("LICENSE.txt"),
+            "Made in Ledgeling's Pet Studio. Replace this with the licence for your art before sharing the pack.\n",
+        )
+        .map_err(|e| format!("Could not write LICENSE.txt: {e}"))
+    })();
+    let checked = written.and_then(|()| {
+        decor::load(&staging, false)
+            .map(|_| ())
+            .map_err(|report| format!("The decor could not be saved yet:\n\n{}", report.text()))
+    });
+    if let Err(e) = checked {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+    let (existing, _) = decor::scan(packs_dir);
+    for pack in existing.iter().filter(|p| p.manifest.id == id) {
+        if pack.builtin {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(format!(
+                "`{}` comes with Ledgeling and cannot be replaced. Rename your decor to save it as a new pack.",
+                pack.manifest.name
+            ));
+        }
+        std::fs::remove_dir_all(&pack.directory)
+            .map_err(|e| format!("Could not replace the earlier save: {e}"))?;
+    }
+    let target = packs_dir.join(loader::folder_name(&id));
+    if target.exists() {
+        std::fs::remove_dir_all(&target)
+            .map_err(|e| format!("Could not replace {}: {e}", target.display()))?;
+    }
+    std::fs::rename(&staging, &target)
+        .map_err(|e| format!("Could not move the decor into place: {e}"))?;
+    Ok(id)
 }
 
 fn check_image(image: &StudioImage, strip: bool) -> Result<(), String> {
@@ -223,4 +291,46 @@ fn read_strip(name: &str, path: &Path) -> Result<StudioImage, String> {
         height: info.height,
         pixels,
     })
+}
+
+#[cfg(test)]
+mod decor_tests {
+    use super::*;
+
+    fn tree() -> StudioImage {
+        StudioImage {
+            name: "tree".into(),
+            width: 4,
+            height: 6,
+            pixels: [40, 120, 60, 255].repeat(24),
+        }
+    }
+
+    #[test]
+    fn a_decor_pack_from_studio_saves_loads_and_replaces_itself() {
+        let dir = std::env::temp_dir().join(format!("studio-decor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let manifest = r#"{ "format": 1, "id": "com.studio.decor-garden", "name": "Garden",
+            "author": "Me", "version": "1.0.0",
+            "props": { "tree": { "file": "sprites/tree.png", "width": 4, "height": 6, "sway": "tall" } } }"#;
+        assert_eq!(
+            save_decor(&dir, manifest, &[tree()]).unwrap(),
+            "com.studio.decor-garden"
+        );
+        save_decor(&dir, &manifest.replace("Garden", "Garden 2"), &[tree()]).unwrap();
+        let (packs, broken) = decor::scan(&dir);
+        assert!(broken.is_empty());
+        assert_eq!(packs.len(), 1, "saving again replaces the earlier save");
+        assert_eq!(packs[0].manifest.name, "Garden 2");
+        assert!(
+            loader::scan(&dir).is_empty(),
+            "decor never shows up as a broken pet"
+        );
+
+        let bad = manifest.replace("\"tall\"", "\"wobbly\"");
+        let error = save_decor(&dir, &bad, &[tree()]).unwrap_err();
+        assert!(error.contains("props.tree.sway"), "{error}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

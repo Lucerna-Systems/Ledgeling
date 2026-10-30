@@ -169,6 +169,11 @@ pub fn scan(packs_dir: &Path) -> (Vec<DecorPack>, Vec<Report>) {
     let mut directories: Vec<PathBuf> = entries
         .flatten()
         .map(|e| e.path())
+        // Dot folders are Ledgeling's scratch space, such as a save in progress.
+        .filter(|p| {
+            !p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        })
         .filter(|p| is_decor_directory(p))
         .collect();
     directories.sort();

@@ -4,6 +4,7 @@ import { AlertCircle, Check, Download, FlaskConical, Palette, PawPrint, RotateCc
 import { call, native, packs, refreshPacks } from '../state'
 import type { PackSummary } from '../types'
 import TestTab from './TestTab.vue'
+import DecorStudio from './DecorStudio.vue'
 import BehaviorEditor from './BehaviorEditor.vue'
 import SpriteEditor from './SpriteEditor.vue'
 import { FRAME, movements, payload, problems, starterDraft } from './model'
@@ -13,6 +14,8 @@ import './studio.css'
 const emit = defineEmits<{ go: [page: 'pets'] }>()
 
 const tab = ref<'look' | 'behaviour' | 'test'>('look')
+/** Studio makes pets, or decor for biomes. */
+const making = ref<'pet' | 'decor'>('pet')
 const edits = ref(0)
 // Read `edits` so drawing, which Vue cannot see, still re-checks the design.
 const issues = computed(() => (edits.value, problems(draft.value)))
@@ -82,6 +85,12 @@ function startOver() {
 
 <template>
   <section class="studio">
+    <div class="segmented studio-making" role="radiogroup" aria-label="What you're making">
+      <button type="button" role="radio" :aria-checked="making === 'pet'" @click="making = 'pet'">Pet</button>
+      <button type="button" role="radio" :aria-checked="making === 'decor'" @click="making = 'decor'">Decor</button>
+    </div>
+    <DecorStudio v-if="making === 'decor'" />
+    <template v-else>
     <header class="studio-head">
       <div class="studio-identity">
         <input v-model="draft.name" class="studio-name" aria-label="Pet name" placeholder="Name your pet" maxlength="40" spellcheck="false">
@@ -127,5 +136,6 @@ function startOver() {
     <SpriteEditor v-show="tab === 'look'" :draft="draft" @edited="edits++" />
     <BehaviorEditor v-if="tab === 'behaviour'" :draft="draft" />
     <TestTab v-if="tab === 'test'" />
+    </template>
   </section>
 </template>

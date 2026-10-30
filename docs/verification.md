@@ -559,6 +559,21 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Studio Decor mode (2026-10-30)
+
+Automated: a Rust test saves a decor pack from Studio, saves it again (it replaces
+the first, and never shows up as a broken pet), and refuses a bad sway by naming
+`props.tree.sway`. Vitest covers the draft model (unique prop names, the save
+problems in plain words, resizing from the base, the manifest and sprite payload)
+and the component (problems listed, then a painted prop saved through
+`save_decor_pack` with the right pixel). Writing it found that the decor scan
+did not skip dot folders, so a save in progress was mistaken for an old save; the
+scan now skips them.
+
+**Not run:** Decor mode has not been opened in the app; drawing feel, the ledge
+preview and the canvas size were not seen. There is no export to a `.petpack`
+for decor packs.
+
 ## Make room at the top (2026-10-30)
 
 Automated: `room.rs` unit tests with the mock platform:
