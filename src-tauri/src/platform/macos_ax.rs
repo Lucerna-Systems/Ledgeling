@@ -107,6 +107,28 @@ unsafe fn write<T>(element: Ref, attribute: &Owned, kind: u32, value: T) -> Resu
     }
 }
 
+/// Put a window back to `frame`, top first so it never runs off the screen.
+unsafe fn undo(window: Ref, position: &Owned, size: &Owned, frame: (f64, f64, f64, f64)) {
+    let _ = write(
+        window,
+        position,
+        POINT_TYPE,
+        Point {
+            x: frame.0,
+            y: frame.1,
+        },
+    );
+    let _ = write(
+        window,
+        size,
+        SIZE_TYPE,
+        Size {
+            width: frame.2,
+            height: frame.3,
+        },
+    );
+}
+
 /// Move one of `pid`'s windows from `from` to `to`, both `(x, y, width,
 /// height)` in points. AX does not expose window numbers, so the window is
 /// found by its current frame.
@@ -143,21 +165,47 @@ pub fn set_frame(
                 && close(size.width, from.2)
                 && close(size.height, from.3)
             {
-                write(
-                    window,
-                    &position_key,
-                    POINT_TYPE,
-                    Point { x: to.0, y: to.1 },
-                )?;
-                return write(
-                    window,
-                    &size_key,
-                    SIZE_TYPE,
-                    Size {
-                        width: to.2,
-                        height: to.3,
-                    },
-                );
+                let place = Point { x: to.0, y: to.1 };
+                let fit = Size {
+                    width: to.2,
+                    height: to.3,
+                };
+                // Shrinking from the top: shorten first (the top stays, the
+                // bottom rises), then move the top down so the bottom lands
+                // back where it was. Moving first would push the whole window
+                // down, and macOS may then refuse the size for running off the
+                // screen. Growing back is the same steps the other way round.
+                let steps = if to.1 > from.1 {
+                    [
+                        (&size_key, SIZE_TYPE, false),
+                        (&position_key, POINT_TYPE, true),
+                    ]
+                } else {
+                    [
+                        (&position_key, POINT_TYPE, true),
+                        (&size_key, SIZE_TYPE, false),
+                    ]
+                };
+                for (key, kind, is_position) in steps {
+                    let written = if is_position {
+                        write(window, key, kind, place)
+                    } else {
+                        write(window, key, kind, fit)
+                    };
+                    if let Err(error) = written {
+                        undo(window, &position_key, &size_key, from);
+                        return Err(error);
+                    }
+                }
+                // Apps may limit their own size; a window left shifted rather
+                // than shortened is worse than one left alone.
+                let landed = read::<Size>(window, &size_key, SIZE_TYPE)
+                    .is_some_and(|size| close(size.height, to.3));
+                if !landed {
+                    undo(window, &position_key, &size_key, from);
+                    return Err("That app would not let its window be resized.".into());
+                }
+                return Ok(());
             }
         }
         Err("That window could not be found to move it.".into())
