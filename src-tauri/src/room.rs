@@ -1,9 +1,10 @@
 //! "Make room at the top": a window pressed against the top of the screen
 //! hides whatever stands on its top edge. With the user's say-so, Ledgeling
-//! moves that window's top edge down just far enough, only for windows that
-//! have a pet or a biome on top, and puts it back afterwards unless the user
-//! has moved the window since. Where windows cannot be moved, pets keep off
-//! such edges instead (see `cramped`).
+//! moves that window's top edge down just far enough for the biome on it, and
+//! puts it back afterwards unless the user has moved the window since. Pets
+//! never move windows: they wander, and a window that shifts whenever a pet
+//! comes or goes is one the user is fighting. They keep off edges with no
+//! room above instead (see `cramped`). Nothing moves while the user is busy.
 use crate::{
     platform::{Platform, ResizeAccess},
     world::{Rect, WindowInfo},
@@ -14,8 +15,8 @@ use std::collections::{HashMap, HashSet};
 const MARGIN: f64 = 8.;
 /// A window is never squeezed below this height, logical pixels.
 const MIN_HEIGHT: f64 = 200.;
-/// Seconds a window must have nothing on top before it is put back.
-const RESTORE_AFTER: f64 = 10.;
+/// Seconds a window must have had no biome on it before it is put back.
+const RESTORE_AFTER: f64 = 30.;
 /// A window scan may still show the old frame this long after a move.
 const SETTLE: f64 = 1.;
 /// How far a window may be from where it was put before that counts as the
@@ -63,7 +64,7 @@ impl Room {
         scale: f64,
         needs: &[Need],
         access: ResizeAccess,
-        mouse_down: bool,
+        busy: bool,
         platform: &dyn Platform,
     ) {
         self.declined
@@ -85,7 +86,8 @@ impl Room {
             kept
         });
         self.declined.extend(declined);
-        if access != ResizeAccess::Granted || mouse_down {
+        // Never move a window under someone typing or clicking in it.
+        if access != ResizeAccess::Granted || busy {
             return;
         }
         for window in windows {
@@ -279,7 +281,7 @@ mod tests {
             &platform,
         );
         room.update(
-            5.,
+            20.,
             &scan(&platform),
             25.,
             1.,
@@ -290,7 +292,7 @@ mod tests {
         );
         assert_eq!(platform.moves.lock().unwrap().len(), 1, "not yet");
         room.update(
-            15.5,
+            51.,
             &scan(&platform),
             25.,
             1.,
