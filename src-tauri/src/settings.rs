@@ -110,6 +110,20 @@ pub struct Settings {
     /// tour existed reads as done, so only a genuinely new install sees it.
     #[serde(default = "tour_seen")]
     pub tour_done: bool,
+    pub effects: Effects,
+}
+
+/// The playful physics, each of which a user can switch off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Effects {
+    /// Squash, stretch and wobble. Off, pets still follow windows smoothly.
+    pub jelly: bool,
+}
+impl Default for Effects {
+    fn default() -> Self {
+        Self { jelly: true }
+    }
 }
 fn tour_seen() -> bool {
     true
@@ -136,6 +150,7 @@ impl Default for Settings {
             accent: DEFAULT_ACCENT.into(),
             welcomed: false,
             tips_dismissed: false,
+            effects: Effects::default(),
         }
     }
 }
@@ -339,6 +354,14 @@ mod tests {
             assert_eq!(settings.accent, DEFAULT_ACCENT, "should reject {bad}");
         }
         assert_eq!(settings.theme, ThemeMode::Light);
+    }
+    #[test]
+    fn effects_default_on_and_a_partial_block_keeps_the_rest() {
+        let old: Settings = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
+        assert!(old.effects.jelly, "files from before effects existed get squish");
+        let off: Settings =
+            serde_json::from_str(r#"{ "effects": { "jelly": false } }"#).unwrap();
+        assert!(!off.effects.jelly);
     }
     #[test]
     fn missing_theme_and_accent_read_as_defaults() {

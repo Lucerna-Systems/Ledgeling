@@ -53,6 +53,7 @@ impl World {
             scale: 1.,
             speed_scale: 1.,
             attention: None,
+            jelly: true,
         }
     }
 }

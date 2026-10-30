@@ -1477,3 +1477,38 @@ mod hardening {
         );
     }
 }
+
+#[test]
+fn a_pack_without_a_jelly_block_still_squishes_with_the_defaults() {
+    let (manifest, report) = parse(MINIMAL);
+    let manifest = manifest.unwrap();
+    assert!(!report.has_errors(), "{}", report.text());
+    assert_eq!(
+        manifest.jelly_params(),
+        crate::jelly::JellyParams::default()
+    );
+}
+
+#[test]
+fn a_jelly_block_tunes_the_springs_and_names_every_bad_value() {
+    let with = |jelly: &str| MINIMAL.replacen("\"format\": 1,", &format!("\"format\": 1, \"jelly\": {jelly},"), 1);
+    let (manifest, report) = parse(&with(r#"{ "grip": 0.95, "squash": 1.5 }"#));
+    let params = manifest.unwrap().jelly_params();
+    assert!(!report.has_errors(), "{}", report.text());
+    assert_eq!(params.grip, 0.95);
+    assert_eq!(params.squash, 1.5);
+
+    let (manifest, report) = parse(&with(r#"{ "grip": 4, "stiffness": 0, "wobble": 1 }"#));
+    let params = manifest.expect("bad tuning never stops a pack loading").jelly_params();
+    assert_eq!(params.grip, 1.);
+    assert!(params.stiffness > 0.);
+    let paths: Vec<&str> = report.diagnostics.iter().map(|d| d.path.as_str()).collect();
+    for path in ["jelly.grip", "jelly.stiffness", "jelly.wobble"] {
+        assert!(paths.contains(&path), "{path} is named: {}", report.text());
+    }
+    let grip = report.diagnostics.iter().find(|d| d.path == "jelly.grip").unwrap();
+    assert!(grip.expected.contains("0 to 1"), "{}", grip.expected);
+
+    let (_, report) = parse(&with(r#"{ "grip": "tight" }"#));
+    assert!(errors(&report).iter().any(|e| e.contains("jelly.grip")), "{}", report.text());
+}

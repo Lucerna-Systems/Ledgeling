@@ -137,3 +137,16 @@ describe('developer tools', () => {
     wrapper.unmount()
   })
 })
+
+describe('squish and wobble', () => {
+  it('is on for settings saved before it existed, and turns off through set_settings', async () => {
+    const wrapper = mount(SettingsPanel)
+    const toggle = wrapper.get('[aria-label="Squish and wobble"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    await toggle.trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['set_settings', {
+      settings: { ...baseSettings, effects: { jelly: false } },
+    }])
+    wrapper.unmount()
+  })
+})

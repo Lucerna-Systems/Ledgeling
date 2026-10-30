@@ -24,6 +24,9 @@ const pace = computed(() => {
   return paces.reduce((best, next) => Math.abs(next.value - current) < Math.abs(best.value - current) ? next : best).value
 })
 
+/** A snapshot from before effects existed reads as on, like the backend does. */
+const jelly = computed(() => settings.value?.effects?.jelly ?? true)
+
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
 }
@@ -142,6 +145,11 @@ const neverSeen = [
       <div><h3>Sounds</h3><p>Let pets make their own little noises.</p></div>
       <button class="toggle" :class="{ enabled: settings?.sounds }" role="switch" :aria-checked="!!settings?.sounds" aria-label="Sounds"
               @click="save({ sounds: !settings?.sounds })"><span /></button>
+    </div>
+    <div class="setting-row">
+      <div><h3>Squish &amp; wobble</h3><p>Pets squash when they land and sway on a window you drag. Reduce motion in your system settings turns this off too.</p></div>
+      <button class="toggle" :class="{ enabled: jelly }" role="switch" :aria-checked="jelly" aria-label="Squish and wobble"
+              @click="save({ effects: { ...settings?.effects, jelly: !jelly } })"><span /></button>
     </div>
     <div class="setting-row">
       <div><h3>Notice my day</h3><p>Pets get sleepy when you step away and perk up when you return.</p></div>

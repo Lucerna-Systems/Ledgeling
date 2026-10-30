@@ -5,6 +5,7 @@ pub mod locomotion;
 pub mod pathfind;
 
 use crate::{
+    jelly::Jelly,
     packs::{manifest::Event, Action, LocomotionClass, Manifest, Pack, Signals},
     world::{EdgeKind, Orientation, Point, Rect, Surface, SurfaceGraph, SurfaceKey},
 };
@@ -36,6 +37,20 @@ const AIR_DRAG: f64 = 0.985;
 const PET_MIN_MOVE: f64 = 3.;
 const PET_REVERSALS: usize = 3;
 const PET_WINDOW: f64 = 1.5;
+/// Squash-spring kicks, in squash per second. Positive squashes.
+const CLICK_SQUASH: f64 = 3.;
+const JUMP_STRETCH: f64 = 4.;
+/// Landing speed, logical px/s, per unit of squash kick.
+const LANDING_SQUASH_SPEED: f64 = 150.;
+const MAX_LANDING_SQUASH: f64 = 8.;
+const PETTED_SQUASH: f64 = 0.12;
+/// A thrown pet stretches by its speed over this, up to the cap.
+const THROWN_STRETCH_SPEED: f64 = 3000.;
+const MAX_THROWN_STRETCH: f64 = 0.25;
+/// Share of the window's swing a shaken-off pet carries with it.
+const SHAKE_CARRY: f64 = 0.6;
+/// Upward speed a shaken-off pet leaves with, logical px/s.
+const SHAKE_POP: f64 = 450.;
 const PET_COOLDOWN: f64 = 2.;
 /// Slack in logical pixels beyond the sprite's half-width that still counts as
 /// standing at the end of a surface; a pet is never planned closer than that.
@@ -137,6 +152,9 @@ pub struct WorldView<'a> {
     pub scale: f64,
     /// User-facing speed preference, applied on top of the pack's own speeds.
     pub speed_scale: f64,
+    /// Squish and wobble are on. Off, a pet still follows its window
+    /// smoothly, without overshoot, squash or being shaken loose.
+    pub jelly: bool,
     /// Window the user is working in. Only set while a nudge is escalating, so
     /// the pet drifts somewhere visible instead of somewhere random.
     pub attention: Option<u64>,
@@ -222,6 +240,12 @@ pub struct Pet {
     pub sound_request: Option<String>,
     /// The folder this pet works in, if the user gave it one.
     pub folder: Option<String>,
+    /// Springs for squash, stretch and the wobble of a dragged window. Only
+    /// where the pet is drawn moves; `position` stays the truth.
+    pub jelly: Jelly,
+    /// The perch and the point it was at last tick, so a window moving under
+    /// the pet can be told apart from the pet walking along it.
+    ride_ref: Option<(Perch, Point)>,
 }
 
 /// Energy pulled by the time of day, per hour: late at night pets tire
@@ -275,6 +299,8 @@ impl Pet {
             relocate_requested: false,
             sound_request: None,
             folder: None,
+            jelly: Jelly::default(),
+            ride_ref: None,
         }
     }
 
@@ -498,6 +524,7 @@ impl Pet {
 
     pub fn click(&mut self) {
         self.pending.push(Event::Clicked);
+        self.jelly.impulse(CLICK_SQUASH);
         self.mood = (self.mood + 0.03).min(1.);
         self.gain(0.005);
     }
@@ -546,7 +573,14 @@ impl Pet {
         let signals = self.signals(base, view);
         self.update_scalars(dt, &signals);
         self.detect_events(&signals, view, events);
+        let jelly = if view.jelly {
+            self.manifest().jelly_params()
+        } else {
+            self.manifest().jelly_params().critically_damped()
+        };
         if self.motion == Motion::Held {
+            self.ride_ref = None;
+            self.jelly.detach();
             if let Some(cursor) = view.cursor {
                 if dt > 0. {
                     let instant = Point::new(
@@ -562,9 +596,17 @@ impl Pet {
             }
             self.clamp(view);
             self.step_machine(dt, &signals, events, view);
+            self.jelly.step(dt, jelly);
             return signals;
         }
-        self.ride(view, events);
+        self.ride(dt, view, events);
+        if view.jelly
+            && self.perch.is_some()
+            && matches!(self.motion, Motion::Settled | Motion::Walking)
+            && self.jelly.shaken_off(view.scale)
+        {
+            self.shake_off(view, events);
+        }
         if std::mem::take(&mut self.relocate_requested) && self.motion != Motion::Falling {
             if let Some(target) = self.random_perch(view) {
                 self.travel_to(target, view);
@@ -573,6 +615,15 @@ impl Pet {
         self.step_machine(dt, &signals, events, view);
         self.step_motion(dt, view);
         self.clamp(view);
+        if self.tended {
+            self.jelly.aim(PETTED_SQUASH);
+        } else if self.thrown_fall && self.motion == Motion::Falling {
+            if let Arc_::Fall { vx, vy } = self.arc {
+                let speed = vx.hypot(vy) / view.scale;
+                self.jelly.aim(-(speed / THROWN_STRETCH_SPEED).min(MAX_THROWN_STRETCH));
+            }
+        }
+        self.jelly.step(dt, jelly);
         signals
     }
 
@@ -721,7 +772,8 @@ impl Pet {
     }
 
     /// Hold `(surface, t)` as windows move, and notice when the perch is gone.
-    fn ride(&mut self, view: &WorldView<'_>, events: &mut Vec<Event>) {
+    fn ride(&mut self, dt: f64, view: &WorldView<'_>, events: &mut Vec<Event>) {
+        let reference = self.ride_ref.take();
         let Some(perch) = self.perch else {
             return;
         };
@@ -746,14 +798,45 @@ impl Pet {
                     return;
                 }
                 if self.motion == Motion::Settled || self.motion == Motion::Walking {
+                    // Only the window moving counts: the same spot on the
+                    // same edge, now and last tick. Walking changes `t`.
+                    let moved = match reference {
+                        Some((last, at)) if last.key == perch.key => {
+                            let now = surface.point(last.t);
+                            Point::new(now.x - at.x, now.y - at.y)
+                        }
+                        _ => Point::default(),
+                    };
+                    self.jelly.follow(moved, dt, view.scale);
                     self.position = surface.point(perch.t);
                     self.rotation = sprite_rotation(self.manifest(), surface);
+                    self.ride_ref = Some((perch, self.position));
                 }
             }
             None => {
                 events.push(Event::SurfaceLost);
                 self.lose_surface(view);
             }
+        }
+    }
+
+    /// A window shaken hard enough loosens the pet's grip: it comes off with
+    /// the window's swing, the way a throw would send it.
+    fn shake_off(&mut self, view: &WorldView<'_>, events: &mut Vec<Event>) {
+        let swing = self.jelly.perch_velocity;
+        self.jelly.detach();
+        self.ride_ref = None;
+        events.push(Event::Thrown);
+        self.lose_surface(view);
+        if self.motion == Motion::Falling {
+            // Popped up as well as sideways, or it would land straight back
+            // on the edge it was standing on.
+            let up = (swing.y.min(0.) * SHAKE_CARRY).min(-SHAKE_POP * view.scale);
+            self.arc = Arc_::Fall {
+                vx: (swing.x * SHAKE_CARRY).clamp(-MAX_THROW, MAX_THROW),
+                vy: up.max(-MAX_THROW),
+            };
+            self.thrown_fall = true;
         }
     }
 
@@ -961,6 +1044,7 @@ impl Pet {
                             height: jump.arc_height * view.scale,
                         };
                         self.motion = Motion::Jumping;
+                        self.jelly.impulse(-JUMP_STRETCH);
                         self.flip_x = to.x < self.position.x;
                         plan.index += 1;
                         self.plan = Some(plan);
@@ -1126,6 +1210,8 @@ impl Pet {
     }
 
     fn land(&mut self, vy: f64, view: &WorldView<'_>) {
+        self.jelly
+            .impulse((vy / view.scale / LANDING_SQUASH_SPEED).clamp(0., MAX_LANDING_SQUASH));
         if self.thrown_fall && vy > HARD_LANDING * view.scale {
             self.pending.push(Event::LandedHard);
         } else {
@@ -1348,6 +1434,11 @@ pub struct Frame {
     pub height: f64,
     pub anchor_x: f64,
     pub anchor_y: f64,
+    /// Squash and stretch about the anchor; 1 is the sprite as drawn.
+    pub squash_x: f64,
+    pub squash_y: f64,
+    /// Degrees added to `rotation` while the pet wobbles.
+    pub lean: f64,
 }
 
 impl Pet {
@@ -1369,14 +1460,26 @@ impl Pet {
         ((sprite.anchor_y * strip.height as f64 - pad) / strip.height as f64).max(0.)
     }
 
+    /// Where the pet is drawn: its position plus the wobble.
+    pub fn drawn_position(&self) -> Point {
+        Point::new(
+            self.position.x + self.jelly.offset.x.x,
+            self.position.y + self.jelly.offset.x.y,
+        )
+    }
+
     pub fn frame(&self, scale: f64, opacity: f64) -> Frame {
         let sprite = self.manifest().sprite;
+        let drawn = self.drawn_position();
+        let (squash_x, squash_y) = self
+            .jelly
+            .scales(self.clock, self.motion == Motion::Settled);
         Frame {
             pet_id: self.id,
             clip: self.clip().to_string(),
             frame_index: self.frame_index(),
-            x: self.position.x / scale,
-            y: self.position.y / scale,
+            x: drawn.x / scale,
+            y: drawn.y / scale,
             flip_x: self.flip_x,
             rotation: self.rotation,
             opacity,
@@ -1384,7 +1487,15 @@ impl Pet {
             height: sprite.height * sprite.scale,
             anchor_x: sprite.anchor_x,
             anchor_y: self.anchored_y(),
+            squash_x,
+            squash_y,
+            lean: self.jelly.lean(scale),
         }
+    }
+
+    /// Rotation as drawn, wobble included.
+    fn drawn_rotation(&self, scale: f64) -> f64 {
+        self.rotation + self.jelly.lean(scale)
     }
 
     /// Bounding box of the drawn sprite in physical pixels, for hit-testing.
@@ -1392,7 +1503,8 @@ impl Pet {
     /// sits beside or below its perch rather than above it.
     pub fn sprite_rect(&self, scale: f64) -> Rect {
         let (w, h, ax, ay) = self.sprite_box(scale);
-        let (sin, cos) = self.rotation.to_radians().sin_cos();
+        let (sin, cos) = self.drawn_rotation(scale).to_radians().sin_cos();
+        let drawn = self.drawn_position();
         let corners = [(-ax, -ay), (w - ax, -ay), (-ax, h - ay), (w - ax, h - ay)]
             .map(|(x, y)| (x * cos - y * sin, x * sin + y * cos));
         let (mut left, mut top) = (f64::INFINITY, f64::INFINITY);
@@ -1403,24 +1515,22 @@ impl Pet {
             top = top.min(y);
             bottom = bottom.max(y);
         }
-        Rect::new(
-            self.position.x + left,
-            self.position.y + top,
-            right - left,
-            bottom - top,
-        )
+        Rect::new(drawn.x + left, drawn.y + top, right - left, bottom - top)
     }
 
     /// Where `point` falls within the unrotated, unflipped sprite, in physical
     /// pixels from its top-left: the inverse of the webview's transform.
     pub fn sprite_local(&self, point: Point, scale: f64) -> Point {
         let (_, _, ax, ay) = self.sprite_box(scale);
-        let (sin, cos) = self.rotation.to_radians().sin_cos();
-        let (dx, dy) = (point.x - self.position.x, point.y - self.position.y);
+        let (sin, cos) = self.drawn_rotation(scale).to_radians().sin_cos();
+        let drawn = self.drawn_position();
+        let (dx, dy) = (point.x - drawn.x, point.y - drawn.y);
         let x = dx * cos + dy * sin;
         let y = -dx * sin + dy * cos;
         let x = if self.flip_x { -x } else { x };
-        Point::new(x + ax, y + ay)
+        // Back into the unsquashed sprite. Breathing is too small to matter.
+        let (sx, sy) = self.jelly.scales(self.clock, false);
+        Point::new((x + ax) / sx, (y + ay) / sy)
     }
 
     /// Drawn width, height and anchor offset, in physical pixels.
@@ -1430,6 +1540,8 @@ impl Pet {
             sprite.width * sprite.scale * scale,
             sprite.height * sprite.scale * scale,
         );
+        let (sx, sy) = self.jelly.scales(self.clock, false);
+        let (w, h) = (w * sx, h * sy);
         (w, h, w * sprite.anchor_x, h * self.anchored_y())
     }
 }

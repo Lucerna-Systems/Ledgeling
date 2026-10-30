@@ -43,6 +43,8 @@ pub struct Engine {
     /// is actually looking. Never its title, never its contents.
     pub attention: Option<u64>,
     pub sounds: Vec<(u64, String)>,
+    /// The OS asks for reduced motion; treated as squish and wobble off.
+    pub reduced_motion: bool,
     tracker: SurfaceTracker,
     next_id: u64,
     clock: f64,
@@ -75,6 +77,7 @@ impl Engine {
             cursor: None,
             attention: None,
             sounds: Vec::new(),
+            reduced_motion: false,
             tracker: SurfaceTracker::default(),
             next_id: 1,
             clock: 0.,
@@ -404,6 +407,7 @@ impl Engine {
                 scale: self.scale_at(pet.position),
                 speed_scale: self.settings.speed_scale.clamp(0.25, 3.),
                 attention: self.attention,
+                jelly: self.settings.effects.jelly && !self.reduced_motion,
             };
             let mut pet_events = events.clone();
             pet.tick(dt, &view, base, &mut pet_events);
