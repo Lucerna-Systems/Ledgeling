@@ -33,6 +33,8 @@ const MIN_SEGMENT: f64 = 48.;
 /// Room above a window's top edge, logical pixels, below which a pet standing
 /// there would be cut off by the top of the screen.
 const CRAMPED_HEIGHT: f64 = 56.;
+/// Seconds without keyboard or mouse input before a window may be moved.
+const IDLE_BEFORE_MOVING: f64 = 2.;
 
 /// One change to the biome being decorated.
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -201,11 +203,12 @@ impl Engine {
         let Some(monitor) = self.monitors.first() else {
             return Vec::new();
         };
+        // Pets never move windows, so any top edge without room above it is
+        // one they keep off, whether or not windows can be moved here.
         let room_for = CRAMPED_HEIGHT * monitor.scale;
         self.windows
             .iter()
             .filter(|w| w.rect.y - monitor.work.y < room_for)
-            .filter(|w| self.resize_access != ResizeAccess::Granted || self.room.refused(w.id))
             .map(|w| w.id)
             .collect()
     }
@@ -252,19 +255,11 @@ impl Engine {
                 }
             }
         }
-        for pet in &self.pets {
-            if let Some(perch) = pet
-                .perch
-                .filter(|p| p.key.kind == world::SurfaceKind::WindowTop)
-            {
-                let sprite = pet.manifest().sprite;
-                need(
-                    perch.key.owner,
-                    sprite.height * sprite.scale * monitor.scale,
-                );
-            }
-        }
         needs.retain(|n| n.height > 0.);
+        // Busy is a held button or input in the last moments, measured by the
+        // same idle clock the awareness layer uses. What was typed is never read.
+        let busy = platform.mouse_down() == Some(true)
+            || platform.idle_seconds().unwrap_or(0.) < IDLE_BEFORE_MOVING;
         self.room.update(
             self.clock,
             &self.windows,
@@ -272,7 +267,7 @@ impl Engine {
             monitor.scale,
             &needs,
             self.resize_access,
-            platform.mouse_down() == Some(true),
+            busy,
             platform,
         );
     }
