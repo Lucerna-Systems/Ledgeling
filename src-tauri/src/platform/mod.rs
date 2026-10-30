@@ -59,6 +59,11 @@ pub trait Platform: Send + Sync {
     fn set_window_frame(&self, _window: &WindowInfo, _to: Rect) -> Result<(), String> {
         Err("Moving windows isn't supported on this desktop.".into())
     }
+    /// Bring another app's window to the front, because the user asked to
+    /// decorate it. Never for a nudge: nudges are body language only.
+    fn focus_window(&self, _window: &WindowInfo) -> Result<(), String> {
+        Err("Bringing windows forward isn't supported on this desktop.".into())
+    }
 }
 
 #[cfg(target_os = "macos")]

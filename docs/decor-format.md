@@ -4,9 +4,11 @@ A decor pack is a set of props (trees, flowers, rocks) that people place on the
 top edge of an app's window to make a **biome**. Like a pet pack, it is data:
 PNG sprites and one JSON file, never code.
 
-You can also draw one in **Studio → Decor**: name the pack, add props, pick a
-size, a sway and an optional ledge, draw each one, and save. Studio writes the
-same folder as below and checks it with the same loader.
+You can also make one on the **Decor** page: **Make your own decor**, then name
+the pack, add props, pick a size, a sway, animations and an optional ledge, draw
+each one, and save. Bundled decor can be edited as a copy or, if you choose, in
+place. The editor writes the same folder as below and checks it with the same
+loader.
 
 ## The folder
 
@@ -68,6 +70,27 @@ how soon it stops, and `softness` (0 to 2) how far the window's motion swings it
 
 When the user switches off **Squish & wobble**, or their system asks for reduced
 motion, props stand still and only follow their window.
+
+### Animations
+
+Props can switch on motions that are built into Ledgeling. A pack only names
+them, so it stays data:
+
+```json
+"animations": ["breeze", "rustle"]
+```
+
+| Name | What it does |
+|---|---|
+| `breeze` | Sways gently all the time, as if in wind. |
+| `bob` | Floats softly up and down. |
+| `spin` | Turns around its centre, like a pinwheel. |
+| `twinkle` | Glows softly on and off. |
+| `rustle` | Shakes when the pointer brushes past. |
+
+An unknown name is noted and ignored, never a reason the pack fails to load.
+Every animation stops when the user switches off **Squish & wobble** or their
+system asks for reduced motion.
 
 ### Perch
 

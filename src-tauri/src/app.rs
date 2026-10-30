@@ -114,6 +114,8 @@ pub struct Snapshot {
     pub resize_access: crate::platform::ResizeAccess,
     /// Why "make room at the top" last failed to move a window.
     pub room_error: Option<String>,
+    /// Biomes whose app has a window on the pets' screen right now.
+    pub open_biomes: Vec<u64>,
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
@@ -205,6 +207,7 @@ impl App {
             suspended: engine.suspended,
             resize_access: engine.resize_access,
             room_error: engine.room.last_error.clone(),
+            open_biomes: engine.biomes.hosts.keys().copied().collect(),
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
@@ -766,6 +769,7 @@ async fn save_studio_pack(
 async fn save_decor_pack(
     manifest: String,
     sprites: Vec<crate::packs::studio::StudioImage>,
+    in_place: Option<bool>,
     window: WebviewWindow,
     state: State<'_, Shared>,
 ) -> Result<String, String> {
@@ -773,9 +777,128 @@ async fn save_decor_pack(
         return Err("Decor can only be saved from the companion window.".into());
     }
     let dir = locked(&state)?.packs_dir.clone();
-    let id = crate::packs::studio::save_decor(&dir, &manifest, &sprites)?;
+    let id = crate::packs::studio::save_decor(&dir, &manifest, &sprites, in_place == Some(true))?;
     locked(&state)?.engine.reload_packs(&dir);
     Ok(id)
+}
+
+/// One installed decor pack for the Decor page.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorListing {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub builtin: bool,
+    pub props: Vec<DecorPropView>,
+    /// How many biomes use one of its props.
+    pub used_by: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorPropView {
+    pub name: String,
+    pub image: String,
+    pub frames: u32,
+    pub width: f64,
+    pub height: f64,
+    pub animations: Vec<crate::packs::decor::PropAnimation>,
+    pub perch: bool,
+}
+
+#[tauri::command]
+async fn list_decor(state: State<'_, Shared>) -> Result<Vec<DecorListing>, String> {
+    let app = locked(&state)?;
+    let engine = &app.engine;
+    let mut listings: Vec<DecorListing> = engine
+        .decor
+        .values()
+        .map(|pack| {
+            let atlas = pack.atlas();
+            DecorListing {
+                id: pack.manifest.id.clone(),
+                name: pack.manifest.name.clone(),
+                author: pack.manifest.author.clone(),
+                builtin: pack.builtin,
+                props: pack
+                    .manifest
+                    .props
+                    .iter()
+                    .filter_map(|(name, def)| {
+                        let clip = atlas.get(name)?;
+                        Some(DecorPropView {
+                            name: name.clone(),
+                            image: clip.image.clone(),
+                            frames: clip.frames,
+                            width: def.width,
+                            height: def.height,
+                            animations: def.animations.clone(),
+                            perch: def.perch.is_some(),
+                        })
+                    })
+                    .collect(),
+                used_by: engine
+                    .settings
+                    .biomes
+                    .iter()
+                    .filter(|b| b.props.iter().any(|p| p.decor == pack.manifest.id))
+                    .count(),
+            }
+        })
+        .collect();
+    listings.sort_by(|a, b| (!a.builtin, &a.name).cmp(&(!b.builtin, &b.name)));
+    Ok(listings)
+}
+
+/// Studio: hand a decor pack's `decor.json` and decoded sprites to the editor.
+#[tauri::command]
+async fn studio_open_decor(
+    id: String,
+    state: State<'_, Shared>,
+) -> Result<crate::packs::studio::OpenedDecor, String> {
+    let pack = locked(&state)?
+        .engine
+        .decor
+        .get(&id)
+        .cloned()
+        .ok_or("That decor pack isn't installed.")?;
+    crate::packs::studio::open_decor(&pack)
+}
+
+#[tauri::command]
+async fn delete_decor(
+    id: String,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("This control belongs to the companion window.".into());
+    }
+    let mut app = locked(&state)?;
+    let pack = app
+        .engine
+        .decor
+        .get(&id)
+        .cloned()
+        .ok_or("That decor pack isn't installed.")?;
+    if pack.builtin {
+        return Err(format!(
+            "{} comes with Ledgeling and can't be deleted.",
+            pack.manifest.name
+        ));
+    }
+    std::fs::remove_dir_all(&pack.directory)
+        .map_err(|e| format!("Could not delete {}: {e}", pack.manifest.name))?;
+    let dir = app.packs_dir.clone();
+    app.engine.reload_packs(&dir);
+    Ok(())
+}
+
+/// Decor page: bring a biome's window forward and open it for decorating.
+#[tauri::command]
+async fn decorate_biome(id: u64, state: State<'_, Shared>) -> Result<(), String> {
+    locked(&state)?.engine.decorate_biome(id)
 }
 
 /// Pet Studio: hand a pack's manifest and decoded sprites to the editor.
@@ -1097,6 +1220,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             new_pack,
             save_studio_pack,
             save_decor_pack,
+            list_decor,
+            studio_open_decor,
+            delete_decor,
+            decorate_biome,
             export_pack,
             spawn_pet,
             despawn_pet,

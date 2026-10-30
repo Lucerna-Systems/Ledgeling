@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import { Activity, Check, ChevronRight, Code2, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
 import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
-import type { ScreenView, Settings, Snapshot, ThemeMode } from '../types'
+import type { ScreenView, Settings, ThemeMode } from '../types'
 
-const emit = defineEmits<{ go: [page: 'desktop' | 'awareness'] }>()
+const emit = defineEmits<{ go: [page: 'desktop' | 'awareness' | 'decor'] }>()
 
 const themeChoices: { value: ThemeMode; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -31,12 +31,7 @@ const makeRoom = computed(() => settings.value?.effects?.makeRoom ?? false)
 const access = computed(() => snapshot.value?.resizeAccess ?? 'unsupported')
 async function grantAccess() { await call('request_resize_access') }
 
-async function decorate() { await call('biome_decorate_start') }
 
-async function removeBiome(id: number) {
-  const next = await call<Snapshot>('delete_biome', { id }, false)
-  if (next) snapshot.value = next
-}
 
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
@@ -188,10 +183,6 @@ const neverSeen = [
       <button class="toggle" :class="{ enabled: biomes }" role="switch" :aria-checked="biomes" aria-label="Show biomes"
               @click="save({ effects: { ...settings?.effects, jelly, biomes: !biomes } })"><span /></button>
     </div>
-    <div v-for="biome in settings?.biomes ?? []" :key="biome.id" class="setting-row biome-row">
-      <div><h3>{{ biome.app }}</h3><p>{{ biome.props.length }} {{ biome.props.length === 1 ? 'prop' : 'props' }}, on its front window.</p></div>
-      <button type="button" class="text-link" :aria-label="`Remove the ${biome.app} biome`" @click="removeBiome(biome.id)">Remove</button>
-    </div>
     <div class="setting-row">
       <div>
         <h3>Make room at the top</h3>
@@ -205,8 +196,8 @@ const neverSeen = [
               @click="save({ effects: { ...settings?.effects, jelly, biomes, makeRoom: !makeRoom } })"><span /></button>
     </div>
     <div class="setting-row">
-      <div><h3>Decorate a window</h3><p>Click a window, then drag trees and flowers onto its top edge.</p></div>
-      <button type="button" @click="decorate">Decorate</button>
+      <div><h3>Your decorations</h3><p>Make props and decorate windows on the Decor page.</p></div>
+      <button type="button" @click="emit('go', 'decor')">Open Decor</button>
     </div>
   </section>
 

@@ -78,13 +78,15 @@ pub fn save(
         .map_err(|report| report.text())
 }
 
-/// Write a decor pack made in Studio's Decor mode into `packs_dir`, replacing
-/// an earlier save of the same pack. Validated by the same loader as a
-/// hand-written decor pack; bundled decor is never overwritten.
+/// Write a decor pack made in Studio into `packs_dir`, replacing an earlier
+/// save of the same pack. Validated by the same loader as a hand-written decor
+/// pack. Bundled decor is only overwritten `in_place`, when the user chose to
+/// edit the original rather than a copy; it then stays in its own folder.
 pub fn save_decor(
     packs_dir: &Path,
     manifest: &str,
     sprites: &[StudioImage],
+    in_place: bool,
 ) -> Result<String, String> {
     let id = serde_json::from_str::<serde_json::Value>(manifest)
         .ok()
@@ -124,18 +126,21 @@ pub fn save_decor(
         return Err(e);
     }
     let (existing, _) = decor::scan(packs_dir);
+    let mut target = packs_dir.join(loader::folder_name(&id));
     for pack in existing.iter().filter(|p| p.manifest.id == id) {
-        if pack.builtin {
+        if pack.builtin && !in_place {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(format!(
-                "`{}` comes with Ledgeling and cannot be replaced. Rename your decor to save it as a new pack.",
+                "`{}` comes with Ledgeling. Edit a copy, or choose to edit the original.",
                 pack.manifest.name
             ));
         }
+        // Edited where it lives, so a bundled pack keeps its folder and is
+        // not restored a second time next launch.
+        target = pack.directory.clone();
         std::fs::remove_dir_all(&pack.directory)
             .map_err(|e| format!("Could not replace the earlier save: {e}"))?;
     }
-    let target = packs_dir.join(loader::folder_name(&id));
     if target.exists() {
         std::fs::remove_dir_all(&target)
             .map_err(|e| format!("Could not replace {}: {e}", target.display()))?;
@@ -248,6 +253,29 @@ pub fn open(directory: &Path) -> Result<StudioPack, String> {
     Ok(StudioPack { manifest, strips })
 }
 
+/// A decor pack as the editor works on it: `decor.json` and one sprite per prop.
+#[derive(Debug, Serialize)]
+pub struct OpenedDecor {
+    pub manifest: String,
+    pub sprites: Vec<StudioImage>,
+}
+
+/// Read a decor pack into the editor: its `decor.json` and every prop's sprite.
+pub fn open_decor(pack: &decor::DecorPack) -> Result<OpenedDecor, String> {
+    let manifest = std::fs::read_to_string(pack.directory.join(decor::DECOR_FILE))
+        .map_err(|e| format!("Could not read {}: {e}", decor::DECOR_FILE))?;
+    let strips = pack
+        .manifest
+        .props
+        .iter()
+        .map(|(name, prop)| read_strip(name, &pack.directory.join(&prop.file)))
+        .collect::<Result<_, _>>()?;
+    Ok(OpenedDecor {
+        manifest,
+        sprites: strips,
+    })
+}
+
 fn read_strip(name: &str, path: &Path) -> Result<StudioImage, String> {
     let bytes = std::fs::read(path)
         .map_err(|e| format!("Could not read the `{name}` sprite {}: {e}", path.display()))?;
@@ -315,10 +343,16 @@ mod decor_tests {
             "author": "Me", "version": "1.0.0",
             "props": { "tree": { "file": "sprites/tree.png", "width": 4, "height": 6, "sway": "tall" } } }"#;
         assert_eq!(
-            save_decor(&dir, manifest, &[tree()]).unwrap(),
+            save_decor(&dir, manifest, &[tree()], false).unwrap(),
             "com.studio.decor-garden"
         );
-        save_decor(&dir, &manifest.replace("Garden", "Garden 2"), &[tree()]).unwrap();
+        save_decor(
+            &dir,
+            &manifest.replace("Garden", "Garden 2"),
+            &[tree()],
+            false,
+        )
+        .unwrap();
         let (packs, broken) = decor::scan(&dir);
         assert!(broken.is_empty());
         assert_eq!(packs.len(), 1, "saving again replaces the earlier save");
@@ -329,8 +363,39 @@ mod decor_tests {
         );
 
         let bad = manifest.replace("\"tall\"", "\"wobbly\"");
-        let error = save_decor(&dir, &bad, &[tree()]).unwrap_err();
+        let error = save_decor(&dir, &bad, &[tree()], false).unwrap_err();
         assert!(error.contains("props.tree.sway"), "{error}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bundled_decor_is_edited_in_its_own_folder_only_when_asked() {
+        let dir = std::env::temp_dir().join(format!("studio-decor-builtin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        super::super::builtin::restore(&dir, &[]).unwrap();
+        let (packs, _) = decor::scan(&dir);
+        let meadow = packs
+            .iter()
+            .find(|p| p.manifest.id == "com.perch.decor-meadow")
+            .unwrap();
+        let opened = open_decor(meadow).unwrap();
+        assert_eq!(opened.sprites.len(), meadow.manifest.props.len());
+        let manifest = opened.manifest.replace("\"Meadow\"", "\"My meadow\"");
+        let refused = save_decor(&dir, &manifest, &opened.sprites, false).unwrap_err();
+        assert!(refused.contains("Edit a copy"), "{refused}");
+        save_decor(&dir, &manifest, &opened.sprites, true).unwrap();
+        let (packs, broken) = decor::scan(&dir);
+        assert!(broken.is_empty());
+        let edited: Vec<_> = packs
+            .iter()
+            .filter(|p| p.manifest.id == "com.perch.decor-meadow")
+            .collect();
+        assert_eq!(edited.len(), 1, "no second copy");
+        assert_eq!(edited[0].manifest.name, "My meadow");
+        assert!(
+            edited[0].directory.ends_with("decor-meadow"),
+            "it stays in its own folder"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

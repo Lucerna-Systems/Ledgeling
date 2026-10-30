@@ -135,13 +135,13 @@ def mushroom():
 PROPS = {
     # Pets sit on top of the canopy and the bush; ledges narrower than a pet
     # are widened by the engine, so the pet overhangs a little.
-    "oak": (oak, {"sway": "tall", "perch": {"y": 0.05, "from": 0.15, "to": 0.85}}),
-    "pine": (pine, {"sway": "tall"}),
-    "bush": (bush, {"sway": "soft", "perch": {"y": 0.15, "from": 0.1, "to": 0.9}}),
-    "flower": (flower, {"sway": "soft"}),
+    "oak": (oak, {"sway": "tall", "perch": {"y": 0.05, "from": 0.15, "to": 0.85}, "animations": ["breeze", "rustle"]}),
+    "pine": (pine, {"sway": "tall", "animations": ["breeze"]}),
+    "bush": (bush, {"sway": "soft", "perch": {"y": 0.15, "from": 0.1, "to": 0.9}, "animations": ["rustle"]}),
+    "flower": (flower, {"sway": "soft", "animations": ["breeze", "rustle"]}),
     "rock": (rock, {"sway": "stiff"}),
-    "tuft": (tuft, {"sway": "soft"}),
-    "mushroom": (mushroom, {"sway": "stiff"}),
+    "tuft": (tuft, {"sway": "soft", "animations": ["breeze", "rustle"]}),
+    "mushroom": (mushroom, {"sway": "stiff", "animations": ["twinkle"]}),
 }
 
 

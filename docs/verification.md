@@ -559,6 +559,25 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Decor page, prop animations, shared Studio (2026-10-30)
+
+Automated:
+- Rust: the animation names (a closed list, duplicates dropped, a stranger noted
+  with the valid names, a non-list refused by path); each animation moves only
+  its own part and stays in range; opening the bundled Meadow and saving it in
+  place keeps one copy in its own folder, while saving without "in place" is
+  refused; a timeline where decorating a biome from the list brings its window
+  forward and opens it for editing, and a closed app is explained.
+- Vitest: the Decor page lists packs with their animations and use, offers a
+  copy or the original for bundled decor, deletes your own only on a second
+  click, decorates an open window and greys out a closed one; and Settings now
+  links to the page.
+
+**Not run:** the page, the animations and bringing a window forward have not
+been seen in the app. Already-installed copies of Meadow keep their old
+`decor.json` (bundled packs are only written when missing), so they have no
+animations until edited or reinstalled.
+
 ## Studio Decor mode (2026-10-30)
 
 Automated: a Rust test saves a decor pack from Studio, saves it again (it replaces

@@ -989,3 +989,31 @@ fn without_permission_nothing_moves_and_pets_keep_off_but_props_still_show() {
         "Decorate says why: {notice}"
     );
 }
+
+#[test]
+fn decorating_a_biome_from_the_list_brings_its_window_forward_and_opens_it() {
+    use ledgeling::biome::edit::Edit;
+    let safari = win(1, 100., 500., 600., 300.).with_pid(7);
+    let slack = win(2, 50., 50., 600., 300.).with_pid(9);
+    let (mut engine, platform) = biome_engine(vec![front_to_back(vec![slack, safari])], |_| {});
+    run(&mut engine, &platform, 1.);
+    engine.decorate_biome(1).unwrap();
+    run(&mut engine, &platform, 0.1);
+    assert_eq!(
+        *platform.focused.lock().unwrap(),
+        vec![1],
+        "Safari came forward"
+    );
+    assert_eq!(
+        engine.edit,
+        Some(Edit::Editing { biome: 1 }),
+        "no pick needed"
+    );
+    assert!(engine.decorate_biome(99).is_err());
+
+    let (mut closed, platform) =
+        biome_engine(vec![vec![win(2, 50., 50., 600., 300.).with_pid(9)]], |_| {});
+    run(&mut closed, &platform, 1.);
+    let error = closed.decorate_biome(1).unwrap_err();
+    assert!(error.contains("Open safari"), "{error}");
+}

@@ -154,6 +154,12 @@ export interface PropFrame {
   squashX: number
   squashY: number
   flip: boolean
+  /** Logical pixels lifted off the edge (bob). */
+  lift?: number
+  /** Degrees turned about the prop's centre (spin). */
+  spin?: number
+  /** 0..1, how brightly it glows right now (twinkle). */
+  glow?: number
 }
 /** Decorate mode as the overlay shows it, in overlay-local logical pixels. */
 export interface EditView {
@@ -170,6 +176,16 @@ export interface EditView {
   notice: string | null
 }
 export interface PaletteItem { decor: string; prop: string; width: number; height: number }
+/** One installed decor pack, for the Decor page. */
+export interface DecorListing {
+  id: string
+  name: string
+  author: string
+  builtin: boolean
+  props: { name: string; image: string; frames: number; width: number; height: number; animations: string[]; perch: boolean }[]
+  /** How many biomes use one of its props. */
+  usedBy: number
+}
 export interface PropAtlas { image: string; frames: number; fps: number; width: number; height: number }
 export interface DecorPayload { decor: string; atlas: Record<string, PropAtlas> }
 
@@ -248,6 +264,8 @@ export interface Snapshot {
   resizeAccess?: 'granted' | 'needs_permission' | 'unsupported'
   /** Why "make room at the top" last failed to move a window. */
   roomError?: string | null
+  /** Biomes whose app has a window on the pets' screen right now. */
+  openBiomes?: number[]
   notes: string[]
   packsDir: string
   native: boolean

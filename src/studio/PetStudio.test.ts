@@ -159,3 +159,18 @@ it('drafts behaviours from a description through the assistant and can undo', as
   tasks.value = []
   wrapper.unmount()
 })
+
+it('undo from another animation goes back to the one it changes', async () => {
+  const wrapper = mount(PetStudio, { attachTo: document.body })
+  const canvas = wrapper.get('.pixel-canvas')
+  canvas.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 480 }) as DOMRect
+  canvas.element.setPointerCapture = () => {}
+  await canvas.trigger('pointerdown', { button: 0, clientX: 240, clientY: 240, pointerId: 1 })
+  await canvas.trigger('pointerup')
+  await wrapper.findAll('.clip-row').find(b => b.text().includes('Move'))!.trigger('click')
+  expect(wrapper.find('.clip-start').exists()).toBe(true)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }))
+  await vi.waitFor(() => expect(wrapper.get('.clip-row.selected').text()).toContain('Idle'))
+  expect(draft.value.clips.idle!.frames[0]!.some((v, i) => i % 4 === 3 && v > 0)).toBe(false)
+  wrapper.unmount()
+})
