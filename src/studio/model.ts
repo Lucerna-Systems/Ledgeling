@@ -174,6 +174,13 @@ export function slug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-pet'
 }
 
+/** An id of its own for a design's first save. A name alone is not enough:
+ *  two pets called "Ember" (or two left unnamed) would otherwise share an id,
+ *  and saving the second would replace the first and every pet using it. */
+export function uniqueId(base: string, random = Math.random): string {
+  return `${base}-${random().toString(36).slice(2, 6).padEnd(4, '0')}`
+}
+
 const locomotion: Record<Movement, Record<string, unknown>> = {
   flier: { surfaces: ['window_top', 'monitor_top', 'taskbar_top'], speed: { surface: 45, air: 220 }, gravity: 0, air_style: 'flap_arc' },
   climber: { surfaces: ['window_any', 'monitor_any', 'taskbar_top'], speed: { surface: 110, climb: 85 }, jump: { enabled: true, max_gap: 160, arc_height: 60 }, gravity: 1 },

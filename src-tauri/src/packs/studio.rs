@@ -21,6 +21,26 @@ pub struct StudioImage {
     pub pixels: Vec<u8>,
 }
 
+/// A first save must never land on a pack that is already installed: Studio
+/// gives every new design its own id, so a clash means something went wrong,
+/// and replacing that pack would change every pet already using it.
+pub fn ensure_unused(packs_dir: &Path, manifest: &str) -> Result<(), String> {
+    let id = serde_json::from_str::<serde_json::Value>(manifest)
+        .ok()
+        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(str::to_owned))
+        .ok_or("The design has no id yet. Give it a name and try again.")?;
+    match loader::scan(packs_dir)
+        .into_iter()
+        .find(|l| l.summary.id == id)
+    {
+        Some(existing) => Err(format!(
+            "`{}` already uses that id, and saving would replace it. Rename your design and save again.",
+            existing.summary.name
+        )),
+        None => Ok(()),
+    }
+}
+
 /// Write the pack into `packs_dir`, replacing an earlier Studio save of the same
 /// pack. Built-in packs are never overwritten.
 pub fn save(
