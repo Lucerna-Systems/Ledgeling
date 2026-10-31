@@ -1063,3 +1063,28 @@ fn decorating_a_biome_from_the_list_brings_its_window_forward_and_opens_it() {
     let error = closed.decorate_biome(1).unwrap_err();
     assert!(error.contains("Open safari"), "{error}");
 }
+
+#[test]
+fn a_dropdown_in_front_of_its_window_never_takes_the_biome() {
+    // Typing in a browser's address bar opens its suggestions as a separate
+    // window of the same app, in front, just under the toolbar.
+    let browser = win(1, 100., 200., 1000., 700.).with_pid(7);
+    let suggestions = win(2, 300., 260., 600., 300.).with_pid(7);
+    let (mut engine, platform) = biome_engine(
+        vec![
+            front_to_back(vec![browser.clone()]),
+            front_to_back(vec![suggestions, browser]),
+        ],
+        |_| {},
+    );
+    run(&mut engine, &platform, 1.);
+    assert_eq!(engine.biomes.hosts.get(&1), Some(&1));
+    platform.advance();
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        engine.biomes.hosts.get(&1),
+        Some(&1),
+        "still on the browser itself"
+    );
+    assert!(engine.prop_frames().iter().all(|p| (p.y - 200.).abs() < 1.));
+}

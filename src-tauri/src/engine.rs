@@ -266,7 +266,7 @@ impl Engine {
         self.room.update(
             self.clock,
             &self.windows,
-            monitor.work.y,
+            monitor.work,
             monitor.scale,
             &needs,
             self.resize_access,
