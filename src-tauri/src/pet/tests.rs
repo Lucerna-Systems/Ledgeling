@@ -1392,3 +1392,38 @@ fn a_drag_is_not_mistaken_for_care() {
     pet.release();
     assert!(!pet.is_tended());
 }
+
+#[test]
+fn an_upright_pet_on_the_ceiling_hangs_below_it_instead_of_poking_above() {
+    let world = World::new(&[]);
+    let ceiling = *world
+        .surfaces
+        .iter()
+        .find(|s| s.kind == crate::world::SurfaceKind::MonitorTop)
+        .expect("the screen has a top");
+    let mut pet = Pet::new(1, pack("budgie-classic"), ceiling.midpoint());
+    pet.perch = Some(Perch {
+        key: ceiling.key(),
+        t: ceiling.midpoint_t(),
+    });
+    pet.motion = Motion::Settled;
+    assert_eq!(pet.frame(1., 1.).anchor_y, 0., "drawn from its top down");
+    let drawn = pet.sprite_rect(1.);
+    assert!(
+        drawn.y >= ceiling.start.y - 0.5,
+        "nothing above the line: {drawn:?}"
+    );
+
+    // On a window top it still stands on its feet.
+    let world = World::new(&[win(1, 200., 400., 600., 300.)]);
+    let top = *world
+        .surfaces
+        .iter()
+        .find(|s| s.kind == crate::world::SurfaceKind::WindowTop)
+        .unwrap();
+    pet.perch = Some(Perch {
+        key: top.key(),
+        t: top.midpoint_t(),
+    });
+    assert!(pet.frame(1., 1.).anchor_y > 0.5);
+}

@@ -51,8 +51,6 @@ const MAX_THROWN_STRETCH: f64 = 0.25;
 const SHAKE_CARRY: f64 = 0.6;
 /// Upward speed a shaken-off pet leaves with, logical px/s.
 const SHAKE_POP: f64 = 450.;
-/// Share of wanders a pet with a home biome spends there.
-const HOME_BIAS: f64 = 0.6;
 const PET_COOLDOWN: f64 = 2.;
 /// Slack in logical pixels beyond the sprite's half-width that still counts as
 /// standing at the end of a surface; a pet is never planned closer than that.
@@ -157,7 +155,9 @@ pub struct WorldView<'a> {
     /// Squish and wobble are on. Off, a pet still follows its window
     /// smoothly, without overshoot, squash or being shaken loose.
     pub jelly: bool,
-    /// Surfaces of this pet's home biome; empty when it has none on screen.
+    /// Surfaces of this pet's home biome: every edge of its window and its
+    /// props. Empty when it has none on screen; otherwise the only places
+    /// the pet chooses to go.
     pub home: &'a [SurfaceKey],
     /// Windows pressed against the top of the screen that could not be given
     /// room: a pet on their top edge would be cut off, so it goes elsewhere.
@@ -1318,12 +1318,6 @@ impl Pet {
     }
 
     fn random_perch(&mut self, view: &WorldView<'_>) -> Option<Perch> {
-        // A pet with a home spends most of its wandering there, not all of it.
-        if !view.home.is_empty() && self.rng.range(0., 1.) < HOME_BIAS {
-            if let Some(perch) = self.biome_perch(view) {
-                return Some(perch);
-            }
-        }
         let current = self.perch.map(|p| p.key);
         let attention: Vec<&Surface> = view
             .attention
@@ -1486,6 +1480,9 @@ impl Pet {
     /// hop or stride stay airborne, since the whole clip shares one line.
     fn anchored_y(&self) -> f64 {
         let sprite = self.manifest().sprite;
+        if self.hangs() {
+            return 0.;
+        }
         let Some(strip) = self.pack.strip(self.clip()) else {
             return sprite.anchor_y;
         };
@@ -1494,6 +1491,16 @@ impl Pet {
         }
         let pad = (strip.height - strip.ground) as f64;
         ((sprite.anchor_y * strip.height as f64 - pad) / strip.height as f64).max(0.)
+    }
+
+    /// An upright sprite on a surface facing down (the top of the screen, a
+    /// window's underside) is never rotated, so standing on that line would
+    /// draw it behind the menu bar or on the screen above. It hangs below the
+    /// line instead, its top touching it.
+    fn hangs(&self) -> bool {
+        self.manifest().sprite.surface_orientation == crate::packs::SurfaceOrientation::Upright
+            && matches!(self.motion, Motion::Settled | Motion::Walking)
+            && self.perch.is_some_and(|p| p.key.kind.normal().y > 0.)
     }
 
     /// Where the pet is drawn: its position plus the wobble.
@@ -1587,7 +1594,18 @@ fn candidates_of<'s>(view: &WorldView<'s>, manifest: &Manifest) -> Vec<(usize, &
     candidates.retain(|(_, s)| {
         !(s.kind == crate::world::SurfaceKind::WindowTop && view.cramped.contains(&s.owner))
     });
-    candidates
+    // A pet with a home biome on screen lives there: its window and props are
+    // the only places it chooses, though it may cross others to get there.
+    let home: Vec<(usize, &'s Surface)> = candidates
+        .iter()
+        .copied()
+        .filter(|(_, s)| view.home.contains(&s.key()))
+        .collect();
+    if home.is_empty() {
+        candidates
+    } else {
+        home
+    }
 }
 
 /// Where a new pet should appear: on a surface it likes, else mid-screen.

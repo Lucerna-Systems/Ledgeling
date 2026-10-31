@@ -78,6 +78,8 @@ pub struct Engine {
     /// A click the overlay reported while picking a window, served on the
     /// next tick, where the platform is at hand.
     pending_pick: Option<Point>,
+    /// A biome whose window should come to the front for decorating.
+    pending_focus: Option<u64>,
     pub room: Room,
     /// Whether windows may be moved, as the platform last said. Only asked
     /// while "make room at the top" is on.
@@ -124,6 +126,7 @@ impl Engine {
             edit: None,
             edit_error: None,
             pending_pick: None,
+            pending_focus: None,
             room: Room::default(),
             resize_access: ResizeAccess::Unsupported,
             access_requested: false,
@@ -307,6 +310,40 @@ impl Engine {
         self.edit = Some(Edit::Picking);
         self.edit_error = None;
         self.pending_pick = None;
+    }
+
+    /// Decorate a biome straight away: bring its window to the front and
+    /// open it for editing, skipping the pick.
+    pub fn decorate_biome(&mut self, biome: u64) -> Result<(), String> {
+        let setting = self
+            .settings
+            .biomes
+            .iter()
+            .find(|b| b.id == biome)
+            .ok_or("That biome no longer exists.")?;
+        if !self.biomes.hosts.contains_key(&biome) {
+            return Err(format!(
+                "Open {} on the pets' screen first, then try again.",
+                setting.app
+            ));
+        }
+        self.settings.effects.biomes = true;
+        self.edit = Some(Edit::Editing { biome });
+        self.edit_error = None;
+        self.pending_pick = None;
+        self.pending_focus = Some(biome);
+        Ok(())
+    }
+
+    fn serve_focus(&mut self, platform: &dyn Platform) {
+        let Some(biome) = self.pending_focus.take() else {
+            return;
+        };
+        let host = self.biomes.hosts.get(&biome).copied();
+        if let Some(window) = host.and_then(|id| self.windows.iter().find(|w| w.id == id)) {
+            // Not being able to bring it forward is no reason to stop.
+            let _ = platform.focus_window(window);
+        }
     }
 
     pub fn end_decorating(&mut self) {
@@ -683,6 +720,7 @@ impl Engine {
         }
         self.scan(platform);
         self.serve_pick(platform);
+        self.serve_focus(platform);
         // Decorating a biome whose window has gone is over.
         if let Some(Edit::Editing { biome }) = self.edit {
             if !self.biomes.hosts.contains_key(&biome) {
@@ -760,6 +798,10 @@ impl Engine {
             let scale = self.pet_scale();
             self.biomes
                 .track_landings(&perches, &self.settings.biomes, jelly);
+            let placed =
+                self.biomes
+                    .layout(&self.settings.biomes, &self.decor, &self.surfaces, scale);
+            self.biomes.rustle(&placed, self.cursor, scale);
             self.biomes.tick(
                 dt,
                 &self.settings.biomes,

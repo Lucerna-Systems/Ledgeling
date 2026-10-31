@@ -76,6 +76,45 @@ impl Sway {
     }
 }
 
+/// Motions built into Ledgeling that a prop can switch on. Packs name them;
+/// they never describe how to move, so a pack stays data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PropAnimation {
+    /// A slow sway all the time, as if in wind.
+    Breeze,
+    /// A soft float up and down.
+    Bob,
+    /// Turns around its centre, like a pinwheel.
+    Spin,
+    /// A soft glow on and off.
+    Twinkle,
+    /// Shakes when the pointer brushes past.
+    Rustle,
+}
+
+impl PropAnimation {
+    pub const ALL: [PropAnimation; 5] = [
+        PropAnimation::Breeze,
+        PropAnimation::Bob,
+        PropAnimation::Spin,
+        PropAnimation::Twinkle,
+        PropAnimation::Rustle,
+    ];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PropAnimation::Breeze => "breeze",
+            PropAnimation::Bob => "bob",
+            PropAnimation::Spin => "spin",
+            PropAnimation::Twinkle => "twinkle",
+            PropAnimation::Rustle => "rustle",
+        }
+    }
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.as_str() == name)
+    }
+}
+
 /// A horizontal ledge across the prop a pet can stand on, as fractions of
 /// the prop: `y` from its top, `from`..`to` across its width.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -99,6 +138,8 @@ pub struct PropDef {
     pub fps: f64,
     pub sway: Sway,
     pub perch: Option<PropPerch>,
+    /// Built-in motions the prop has switched on.
+    pub animations: Vec<PropAnimation>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -419,11 +460,45 @@ fn read_prop(key: &str, value: &Value, report: &mut Report) -> Option<PropDef> {
             None
         }
     };
+    let mut animations = Vec::new();
+    match map.get("animations") {
+        None => {}
+        Some(Value::Array(names)) => {
+            for (i, name) in names.iter().enumerate() {
+                match name.as_str().and_then(PropAnimation::parse) {
+                    Some(a) if !animations.contains(&a) => animations.push(a),
+                    Some(_) => {}
+                    None => report.push(Diagnostic::warning(
+                        DECOR_FILE,
+                        format!("{path}.animations.{i}"),
+                        format!("`{name}` is not an animation Ledgeling knows; it was ignored."),
+                        format!(
+                            "Use any of: {}.",
+                            PropAnimation::ALL.map(PropAnimation::as_str).join(", ")
+                        ),
+                    )),
+                }
+            }
+        }
+        Some(_) => report.push(error(
+            format!("{path}.animations"),
+            "Expected a list.",
+            "Write it as `\"animations\": [\"breeze\", \"twinkle\"]`.",
+        )),
+    }
     note_unknown(
         map,
         &path,
         &[
-            "file", "width", "height", "anchorX", "frames", "fps", "sway", "perch",
+            "file",
+            "width",
+            "height",
+            "anchorX",
+            "frames",
+            "fps",
+            "sway",
+            "perch",
+            "animations",
         ],
         report,
     );
@@ -436,6 +511,7 @@ fn read_prop(key: &str, value: &Value, report: &mut Report) -> Option<PropDef> {
         fps,
         sway,
         perch,
+        animations,
     })
 }
 
@@ -589,6 +665,33 @@ mod tests {
             .find(|d| d.path == "props.oak.sway")
             .unwrap();
         assert!(sway.expected.contains("stiff"), "{}", sway.expected);
+    }
+
+    #[test]
+    fn animations_are_named_from_a_closed_list_and_strangers_are_noted() {
+        let text = MEADOW.replace(
+            "\"sway\": \"tall\",",
+            "\"sway\": \"tall\", \"animations\": [\"breeze\", \"twinkle\", \"breeze\", \"moonwalk\"],",
+        );
+        let (manifest, report) = parsed(&text);
+        let oak = &manifest.unwrap().props["oak"];
+        assert_eq!(
+            oak.animations,
+            [PropAnimation::Breeze, PropAnimation::Twinkle]
+        );
+        assert!(
+            !report.has_errors(),
+            "an unknown name never stops a pack loading"
+        );
+        let note = report
+            .diagnostics
+            .iter()
+            .find(|d| d.path == "props.oak.animations.3")
+            .expect("the stranger is named");
+        assert!(note.expected.contains("rustle"), "{}", note.expected);
+        let (_, report) =
+            parsed(&MEADOW.replace("\"sway\": \"tall\",", "\"animations\": \"spin\","));
+        assert!(paths(&report).contains(&"props.oak.animations".to_string()));
     }
 
     #[test]

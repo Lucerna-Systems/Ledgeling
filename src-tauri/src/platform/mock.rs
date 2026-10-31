@@ -25,6 +25,8 @@ pub struct MockPlatform {
     pub moves: Mutex<Vec<(u64, Rect)>>,
     /// Windows that refuse to be moved, like an elevated app on Windows.
     pub stubborn: Mutex<Vec<u64>>,
+    /// Windows brought to the front, in order.
+    pub focused: Mutex<Vec<u64>>,
 }
 impl MockPlatform {
     pub fn new(monitors: Vec<MonitorInfo>, frames: Vec<Vec<WindowInfo>>) -> Self {
@@ -73,6 +75,10 @@ impl Platform for MockPlatform {
     }
     fn resize_access(&self) -> ResizeAccess {
         *self.access.lock().unwrap()
+    }
+    fn focus_window(&self, window: &WindowInfo) -> Result<(), String> {
+        self.focused.lock().unwrap().push(window.id);
+        Ok(())
     }
     fn set_window_frame(&self, window: &WindowInfo, to: Rect) -> Result<(), String> {
         if *self.access.lock().unwrap() != ResizeAccess::Granted {

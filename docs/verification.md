@@ -559,6 +559,53 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Hand-run fixes: dropdowns, window frames, pets on the ceiling (2026-10-31)
+
+From the hand run on macOS (Chrome on the built-in display, a second monitor
+above it):
+- **Biome on the dropdown:** typing in Chrome's address bar moved the biome onto
+  the suggestions dropdown, a separate window of the same app. A window mostly
+  inside a bigger window of its own app no longer hosts a biome (timeline test).
+- **Window pushed down:** make room pushed the window down instead of shortening
+  it. AX now sets the size before the position when shrinking (and the reverse
+  when restoring), reads back the result and undoes a half-done move. The bottom
+  is kept on screen, and putting a window back restores its exact frame (unit
+  tests). Checked by a screenshot after the fix: props sit on Chrome's top edge.
+- **Pets clipped into the monitor above:** upright pets (the budgie, a Studio
+  flier) allowed on the top of the screen were drawn standing on that line,
+  behind the menu bar and on the screen above. They now hang below it (unit
+  test). Not yet looked at on screen.
+
+## Pets keep to their home biome; make room only for biomes (2026-10-30)
+
+From the hand run: Chrome kept moving down while in use, because pets wandering
+onto it made room move it and moving off made it move back, sometimes mid-typing.
+Now only biomes move windows, and only after 2 s without input; windows go back
+30 s after their biome is gone; pets keep off top edges with no room instead.
+Separately, a pet with a home biome on screen now only chooses places on that
+window (any edge) and its props. Timelines: no move while busy, one once idle; a
+pet never moves a window; a homed squirrel never settles elsewhere once home.
+**Not run:** neither change has been seen in the app yet.
+
+## Decor page, prop animations, shared Studio (2026-10-30)
+
+Automated:
+- Rust: the animation names (a closed list, duplicates dropped, a stranger noted
+  with the valid names, a non-list refused by path); each animation moves only
+  its own part and stays in range; opening the bundled Meadow and saving it in
+  place keeps one copy in its own folder, while saving without "in place" is
+  refused; a timeline where decorating a biome from the list brings its window
+  forward and opens it for editing, and a closed app is explained.
+- Vitest: the Decor page lists packs with their animations and use, offers a
+  copy or the original for bundled decor, deletes your own only on a second
+  click, decorates an open window and greys out a closed one; and Settings now
+  links to the page.
+
+**Not run:** the page, the animations and bringing a window forward have not
+been seen in the app. Already-installed copies of Meadow keep their old
+`decor.json` (bundled packs are only written when missing), so they have no
+animations until edited or reinstalled.
+
 ## Studio Decor mode (2026-10-30)
 
 Automated: a Rust test saves a decor pack from Studio, saves it again (it replaces

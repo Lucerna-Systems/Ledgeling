@@ -5,7 +5,7 @@ import AssistantPanel from './assistant/AssistantPanel.vue'
 import { activeConversation, conversationOf, conversations, startTasks, assignedPet, droppedFiles, tasks } from './assistant/state'
 import ConversationList from './assistant/ConversationList.vue'
 import type { Task } from './assistant/types'
-import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
+import { ArrowLeft, Bird, Bot, ChevronLeft, Code2, ChevronRight, Eye, EyeOff, History, MessageCircle, PawPrint, Trees, Pause, Play, Settings, ShieldCheck, Monitor, X } from '@lucide/vue'
 import { action, busy, call, error, native, notes, pets, settings, snapshot, start } from './state'
 import PageLoading from './components/PageLoading.vue'
 import { syncAppIcon } from './appIcon'
@@ -24,18 +24,20 @@ const SettingsPanel = lazy(() => import('./panels/SettingsPanel.vue'))
 const AwarenessPanel = lazy(() => import('./panels/AwarenessPanel.vue'))
 const DesktopPanel = lazy(() => import('./panels/DesktopPanel.vue'))
 const PetStudio = lazy(() => import('./studio/PetStudio.vue'))
+const DecorPanel = lazy(() => import('./panels/DecorPanel.vue'))
 
-type Page = 'pets' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'studio'
+type Page = 'pets' | 'decor' | 'assistant' | 'providers' | 'history' | 'settings' | 'desktop' | 'awareness' | 'studio'
 const nav = [
   { page: 'assistant', label: 'Assistant', icon: MessageCircle },
   { page: 'providers', label: 'AI providers', icon: Bot },
   { page: 'pets', label: 'Pets', icon: PawPrint },
+  { page: 'decor', label: 'Decor', icon: Trees },
   { page: 'history', label: 'History', icon: History },
   { page: 'settings', label: 'Settings', icon: Settings },
 ] as const
 /** Pages reached from inside another section, so the sidebar stays short. */
 const subpages: Partial<Record<Page, Page>> = { desktop: 'settings', awareness: 'settings', studio: 'pets' }
-const titles: Partial<Record<Page, string>> = { pets: 'Pets', settings: 'Settings', studio: 'Pet Studio' }
+const titles: Partial<Record<Page, string>> = { pets: 'Pets', decor: 'Decor', settings: 'Settings', studio: 'Pet Studio' }
 
 const page = ref<Page>('assistant')
 const sidebar = useSidebar()
@@ -73,7 +75,7 @@ async function initAssistant() {
   if (assistantDisposed) stop(); else stopAssistant = stop
 }
 
-const pages: Page[] = ['pets', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'studio']
+const pages: Page[] = ['pets', 'decor', 'assistant', 'providers', 'history', 'settings', 'desktop', 'awareness', 'studio']
 /** Put back what the user was doing before the window was destroyed, then replay events that arrived while it loaded. */
 async function restoreAndWatch() {
   const ready = await companionReady()
@@ -185,6 +187,7 @@ onUnmounted(() => { stop(); stopPersist(); stopIcon(); assistantDisposed = true;
       <ProvidersPanel v-if="page === 'providers'" />
       <HistoryPanel v-else-if="page === 'history'" @followup="followup" />
       <PacksPanel v-else-if="page === 'pets'" @go="go" />
+      <DecorPanel v-else-if="page === 'decor'" />
       <SettingsPanel v-else-if="page === 'settings'" @go="go" />
       <DesktopPanel v-else-if="page === 'desktop'" />
       <AwarenessPanel v-else-if="page === 'awareness'" />

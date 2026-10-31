@@ -9,7 +9,7 @@ pub mod edit;
 
 use crate::{
     jelly::{Jelly, JellyParams, Spring1},
-    packs::decor::{DecorPack, PropDef},
+    packs::decor::{DecorPack, PropAnimation, PropDef},
     platform::Platform,
     world::{Point, Rect, Surface, SurfaceKey, SurfaceKind, WindowInfo, PROP_OWNER_BASE},
 };
@@ -34,6 +34,19 @@ const MAX_PROP_SQUASH: f64 = 0.3;
 const POPUP_INSIDE: f64 = 0.8;
 /// Squash kick a prop gets when a pet lands on it.
 const LANDING_SQUASH: f64 = 2.5;
+const BREEZE_DEGREES: f64 = 4.;
+const BREEZE_PERIOD: f64 = 3.6;
+/// Logical pixels.
+const BOB_HEIGHT: f64 = 3.;
+const BOB_PERIOD: f64 = 2.4;
+/// Degrees per second.
+const SPIN_SPEED: f64 = 90.;
+const TWINKLE_PERIOD: f64 = 1.8;
+/// A pointer moving less than this per tick, logical pixels, is resting.
+const RUSTLE_MIN: f64 = 2.;
+/// Sway speed per logical pixel the pointer moved through the prop.
+const RUSTLE_KICK: f64 = 6.;
+const RUSTLE_MAX: f64 = 160.;
 
 /// One app's scene, as saved.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -130,6 +143,12 @@ pub struct PropFrame {
     pub squash_x: f64,
     pub squash_y: f64,
     pub flip: bool,
+    /// Logical pixels lifted off the edge (bob).
+    pub lift: f64,
+    /// Degrees turned about the prop's centre (spin).
+    pub spin: f64,
+    /// 0..1, how brightly it glows right now (twinkle).
+    pub glow: f64,
 }
 
 #[derive(Default)]
@@ -156,6 +175,11 @@ pub struct Biomes {
     /// Which prop each pet stood on last tick, to notice landings.
     perched: HashMap<u64, Option<SurfaceKey>>,
     clock: f64,
+    /// Squish and wobble are on; off (or reduced motion) stills every
+    /// animation too.
+    animate: bool,
+    /// The pointer last tick, for rustling.
+    last_cursor: Option<Point>,
 }
 
 /// Props are planted: they follow the window closely and leave the wobble
@@ -310,8 +334,8 @@ impl Biomes {
             .fold(0., f64::max)
     }
 
-    /// Where a pet whose home is this biome likes to be: the window's top
-    /// edge and any prop it can sit on.
+    /// Where a pet whose home is this biome lives: every edge of the window
+    /// it stands on, and any prop it can sit on.
     pub fn home_keys(
         &self,
         biome: u64,
@@ -325,7 +349,7 @@ impl Biomes {
         surfaces
             .iter()
             .filter(|s| {
-                (s.owner == host && s.kind == SurfaceKind::WindowTop)
+                (s.owner == host && s.kind.is_window())
                     || (s.kind == SurfaceKind::PropTop && slot_of(s.owner) == slot)
             })
             .map(Surface::key)
@@ -364,6 +388,7 @@ impl Biomes {
         scale: f64,
     ) {
         self.clock += dt;
+        self.animate = jelly;
         self.motion.retain(|id, _| self.hosts.contains_key(id));
         for biome in biomes {
             let Some(&host) = self.hosts.get(&biome.id) else {
@@ -440,6 +465,43 @@ impl Biomes {
         })
     }
 
+    /// Props with `rustle` shake when the pointer brushes through them.
+    pub fn rustle(&mut self, placed: &[Placed], cursor: Option<Point>, scale: f64) {
+        let last = std::mem::replace(&mut self.last_cursor, cursor);
+        let (Some(now), Some(before)) = (cursor, last) else {
+            return;
+        };
+        let moved = now.x - before.x;
+        if !self.animate || moved.abs() < RUSTLE_MIN * scale {
+            return;
+        }
+        for p in placed {
+            if !p.def.animations.contains(&PropAnimation::Rustle) {
+                continue;
+            }
+            let anchor = if p.placed.flip {
+                1. - p.def.anchor_x
+            } else {
+                p.def.anchor_x
+            };
+            let left = p.base.x - anchor * p.width;
+            let inside = now.x >= left
+                && now.x <= left + p.width
+                && now.y >= p.base.y - p.height
+                && now.y <= p.base.y;
+            if !inside {
+                continue;
+            }
+            if let Some(prop) = self
+                .motion
+                .get_mut(&p.biome)
+                .and_then(|m| m.props.get_mut(p.index))
+            {
+                prop.sway.v += (moved / scale * RUSTLE_KICK).clamp(-RUSTLE_MAX, RUSTLE_MAX);
+            }
+        }
+    }
+
     pub fn frames(&self, placed: &[Placed]) -> Vec<PropFrame> {
         placed
             .iter()
@@ -456,7 +518,18 @@ impl Biomes {
                 } else {
                     0
                 };
+                let motion = self.animate.then(|| {
+                    animate(
+                        &def.animations,
+                        self.clock,
+                        p.biome as f64 * 1.7 + p.index as f64 * 0.9,
+                    )
+                });
+                let motion = motion.unwrap_or_default();
                 PropFrame {
+                    lift: motion.lift,
+                    spin: motion.spin,
+                    glow: motion.glow,
                     key: format!("{}:{}", p.biome, p.index),
                     decor: p.placed.decor.clone(),
                     prop: p.placed.prop.clone(),
@@ -466,7 +539,7 @@ impl Biomes {
                     width: def.width,
                     height: def.height,
                     anchor_x: def.anchor_x,
-                    rotation: spring.sway.x,
+                    rotation: spring.sway.x + motion.breeze,
                     squash_x: 1. + spring.squash.x,
                     squash_y: 1. - spring.squash.x,
                     flip: p.placed.flip,
@@ -474,6 +547,31 @@ impl Biomes {
             })
             .collect()
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Motion {
+    breeze: f64,
+    lift: f64,
+    spin: f64,
+    glow: f64,
+}
+
+/// Where each switched-on animation is at `clock`. `phase` keeps props of one
+/// biome from moving in lockstep.
+fn animate(animations: &[PropAnimation], clock: f64, phase: f64) -> Motion {
+    let wave = |period: f64| (std::f64::consts::TAU * clock / period + phase).sin();
+    let mut motion = Motion::default();
+    for animation in animations {
+        match animation {
+            PropAnimation::Breeze => motion.breeze = BREEZE_DEGREES * wave(BREEZE_PERIOD),
+            PropAnimation::Bob => motion.lift = BOB_HEIGHT * (1. + wave(BOB_PERIOD)) / 2.,
+            PropAnimation::Spin => motion.spin = (clock * SPIN_SPEED + phase * 40.) % 360.,
+            PropAnimation::Twinkle => motion.glow = (1. + wave(TWINKLE_PERIOD)) / 2.,
+            PropAnimation::Rustle => {}
+        }
+    }
+    motion
 }
 
 fn area(r: Rect) -> f64 {
@@ -544,6 +642,27 @@ mod tests {
         assert_eq!(biomes[0].props.len(), MAX_PROPS);
         assert!(biomes[0].props.iter().all(|p| (0. ..=1.).contains(&p.x)));
         assert_eq!(biomes[1].props[0].x, 0.5);
+    }
+
+    #[test]
+    fn each_animation_moves_only_its_own_part_and_stays_in_range() {
+        use PropAnimation::*;
+        assert_eq!(animate(&[], 3., 0.), Motion::default());
+        assert_eq!(
+            animate(&[Rustle], 3., 0.),
+            Motion::default(),
+            "rustle needs the pointer"
+        );
+        for t in 0..200 {
+            let clock = t as f64 * 0.05;
+            let m = animate(&[Breeze, Bob, Spin, Twinkle], clock, 0.4);
+            assert!(m.breeze.abs() <= BREEZE_DEGREES);
+            assert!((0. ..=BOB_HEIGHT).contains(&m.lift));
+            assert!((0. ..360.).contains(&m.spin));
+            assert!((0. ..=1.).contains(&m.glow));
+        }
+        let spin = animate(&[Spin], 1., 0.).spin - animate(&[Spin], 0., 0.).spin;
+        assert_eq!(spin, SPIN_SPEED, "a quarter turn a second");
     }
 
     #[test]

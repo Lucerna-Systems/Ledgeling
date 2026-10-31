@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decorManifest, decorPayload, decorProblems, newProp, resize, slug, starterDecor } from './decorModel'
+import { decorFromOpened, decorManifest, decorPayload, decorProblems, newProp, resize, slug, starterDecor, type OpenedDecor } from './decorModel'
 
 function painted(width = 4, height = 4) {
   const prop = newProp([], width, height)
@@ -48,5 +48,57 @@ describe('decor drafts', () => {
     expect(JSON.parse(payload.manifest).author).toBe('Me')
     expect(payload.sprites[0]).toMatchObject({ name: 'tree', width: 3, height: 5 })
     expect(payload.sprites[0].pixels).toHaveLength(3 * 5 * 4)
+  })
+
+  it('writes animations only for props that have some', () => {
+    const still = { ...painted(), name: 'rock' }
+    const pinwheel = { ...painted(), name: 'pinwheel', animations: ['spin' as const, 'rustle' as const] }
+    const manifest = decorManifest({ name: 'Yard', author: '', props: [still, pinwheel] })
+    expect(manifest.props.rock).not.toHaveProperty('animations')
+    expect(manifest.props.pinwheel).toMatchObject({ sway: 'soft', animations: ['spin', 'rustle'] })
+  })
+
+  it('keeps an id it was given, so an in-place edit replaces the pack', () => {
+    expect(decorManifest({ id: 'com.someone.garden', name: 'Other', author: '', props: [painted()] }).id).toBe('com.someone.garden')
+  })
+})
+
+describe('opening a decor pack', () => {
+  // Two 2 × 2 frames side by side: red, then blue.
+  const strip = Array.from({ length: 2 }, () => [[255, 0, 0, 255], [255, 0, 0, 255], [0, 0, 255, 255], [0, 0, 255, 255]].flat()).flat()
+  const opened = (): OpenedDecor => ({
+    manifest: JSON.stringify({
+      format: 1, id: 'com.ana.garden', name: 'Garden', author: 'Ana', version: '1.0.0',
+      props: {
+        flag: { file: 'sprites/flag.png', width: 2, height: 2, frames: 2, fps: 4, sway: { stiffness: 3 }, animations: ['bob', 'explode', 'bob'] },
+        tree: { file: 'sprites/tree.png', width: 3, height: 4, sway: 'tall', perch: { y: 0.25, from: 0.1, to: 0.9 } },
+      },
+    }),
+    sprites: [
+      { name: 'flag', width: 4, height: 2, pixels: strip },
+      { name: 'tree', width: 3, height: 4, pixels: new Array(3 * 4 * 4).fill(9) },
+    ],
+  })
+
+  it('opens a copy under a new name and no id', () => {
+    const draft = decorFromOpened(opened(), 'copy')
+    expect(draft.name).toBe('Garden copy')
+    expect(draft.id).toBeUndefined()
+    expect(draft.author).toBe('Ana')
+    expect(decorManifest(draft).id).toBe('com.studio.decor-garden-copy')
+  })
+
+  it('keeps the id for an in-place edit', () => {
+    const draft = decorFromOpened(opened(), 'in_place')
+    expect(draft).toMatchObject({ id: 'com.ana.garden', name: 'Garden' })
+    expect(decorManifest(draft).id).toBe('com.ana.garden')
+  })
+
+  it('keeps only the first frame of a strip, maps a sway object to soft and drops unknown animations', () => {
+    const [flag, tree] = decorFromOpened(opened(), 'copy').props
+    expect(flag).toMatchObject({ name: 'flag', width: 2, height: 2, sway: 'soft', perch: null, animations: ['bob'] })
+    expect(Array.from(flag!.pixels)).toEqual([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255])
+    expect(tree).toMatchObject({ sway: 'tall', perch: { y: 0.25, from: 0.1, to: 0.9 }, animations: [] })
+    expect(tree!.pixels).toHaveLength(3 * 4 * 4)
   })
 })

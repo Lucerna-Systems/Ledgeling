@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AlertCircle, Check, Download, FlaskConical, Palette, PawPrint, RotateCcw, Workflow } from '@lucide/vue'
+import { Download, FlaskConical, Palette, PawPrint, RotateCcw, Workflow } from '@lucide/vue'
 import { call, native, packs, refreshPacks } from '../state'
 import type { PackSummary } from '../types'
 import TestTab from './TestTab.vue'
-import DecorStudio from './DecorStudio.vue'
 import BehaviorEditor from './BehaviorEditor.vue'
-import SpriteEditor from './SpriteEditor.vue'
-import { FRAME, movements, payload, problems, starterDraft } from './model'
+import PetLook from './PetLook.vue'
+import StudioShell from './StudioShell.vue'
+import { FRAME, movements, payload, problems, slug, starterDraft, uniqueId } from './model'
 import { draft, openInStudio } from './state'
-import './studio.css'
 
 const emit = defineEmits<{ go: [page: 'pets'] }>()
 
 const tab = ref<'look' | 'behaviour' | 'test'>('look')
-/** Studio makes pets, or decor for biomes. */
-const making = ref<'pet' | 'decor'>('pet')
 const edits = ref(0)
 // Read `edits` so drawing, which Vue cannot see, still re-checks the design.
 const issues = computed(() => (edits.value, problems(draft.value)))
@@ -64,8 +61,13 @@ async function save(bringOut: boolean) {
   saved.value = null
   exported.value = ''
   try {
-    const summary = await call<PackSummary>('save_studio_pack', payload(draft.value, previewImage()))
+    // Only a design that already has an id (opened to edit, or saved before)
+    // may replace a pack; a new one gets an id of its own first.
+    const replace = !!draft.value.id
+    if (!replace) draft.value.id = uniqueId(`com.studio.${slug(draft.value.name)}`)
+    const summary = await call<PackSummary>('save_studio_pack', { ...payload(draft.value, previewImage()), replace })
     if (summary) {
+      draft.value.id = summary.id
       saved.value = summary
       await refreshPacks()
       if (bringOut) await call('spawn_pet', { packId: summary.id })
@@ -84,58 +86,41 @@ function startOver() {
 </script>
 
 <template>
-  <section class="studio">
-    <div class="segmented studio-making" role="radiogroup" aria-label="What you're making">
-      <button type="button" role="radio" :aria-checked="making === 'pet'" @click="making = 'pet'">Pet</button>
-      <button type="button" role="radio" :aria-checked="making === 'decor'" @click="making = 'decor'">Decor</button>
-    </div>
-    <DecorStudio v-if="making === 'decor'" />
-    <template v-else>
-    <header class="studio-head">
-      <div class="studio-identity">
-        <input v-model="draft.name" class="studio-name" aria-label="Pet name" placeholder="Name your pet" maxlength="40" spellcheck="false">
-        <div class="studio-meta">
-          <input v-model="draft.author" aria-label="Made by" placeholder="Made by (optional)" maxlength="40">
-          <input v-model="draft.description" class="grow" aria-label="Description" placeholder="One line about your pet (optional)" maxlength="140">
+  <StudioShell v-model:name="draft.name" v-model:author="draft.author" v-model:description="draft.description" name-label="Pet name" name-placeholder="Name your pet"
+               author-placeholder="Made by (optional)" description-placeholder="One line about your pet (optional)" :issues="issues" :saved="!!saved">
+    <template #actions>
+      <button type="button" class="text-link start-over" :class="{ confirming }" @click="startOver"><RotateCcw :size="14" /> {{ confirming ? 'Click again to start over' : 'New pet' }}</button>
+      <select v-if="templates.length" class="studio-templates" aria-label="Start from a bundled pet" @change="startFrom">
+        <option value="">Start from…</option>
+        <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+      </select>
+      <button type="button" :disabled="!!issues.length || saving || !native" @click="save(false)">Save</button>
+      <button type="button" class="primary-button" :disabled="!!issues.length || saving || !native" @click="save(true)"><PawPrint :size="15" /> {{ saving ? 'Saving…' : 'Save & bring out' }}</button>
+    </template>
+
+    <template #tabs>
+      <div class="studio-bar">
+        <div class="segmented" role="radiogroup" aria-label="How it moves">
+          <button v-for="m in movements" :key="m.value" type="button" role="radio" :aria-checked="draft.movement === m.value" :title="m.blurb" @click="draft.movement = m.value">{{ m.label }}</button>
+        </div>
+        <div class="studio-tabs" role="tablist" aria-label="Studio">
+          <button type="button" role="tab" :aria-selected="tab === 'look'" @click="tab = 'look'"><Palette :size="15" /> Look</button>
+          <button type="button" role="tab" :aria-selected="tab === 'behaviour'" @click="tab = 'behaviour'"><Workflow :size="15" /> Behaviour</button>
+          <button type="button" role="tab" :aria-selected="tab === 'test'" @click="tab = 'test'"><FlaskConical :size="15" /> Test</button>
         </div>
       </div>
-      <div class="studio-actions">
-        <button type="button" class="text-link start-over" :class="{ confirming }" @click="startOver"><RotateCcw :size="14" /> {{ confirming ? 'Click again to start over' : 'New pet' }}</button>
-        <select v-if="templates.length" class="studio-templates" aria-label="Start from a bundled pet" @change="startFrom">
-          <option value="">Start from…</option>
-          <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-        </select>
-        <button type="button" :disabled="!!issues.length || saving || !native" @click="save(false)">Save</button>
-        <button type="button" class="primary-button" :disabled="!!issues.length || saving || !native" @click="save(true)"><PawPrint :size="15" /> {{ saving ? 'Saving…' : 'Save & bring out' }}</button>
-      </div>
-    </header>
+    </template>
 
-    <div class="studio-bar">
-      <div class="segmented" role="radiogroup" aria-label="How it moves">
-        <button v-for="m in movements" :key="m.value" type="button" role="radio" :aria-checked="draft.movement === m.value" :title="m.blurb" @click="draft.movement = m.value">{{ m.label }}</button>
-      </div>
-      <div class="studio-tabs" role="tablist" aria-label="Studio">
-        <button type="button" role="tab" :aria-selected="tab === 'look'" @click="tab = 'look'"><Palette :size="15" /> Look</button>
-        <button type="button" role="tab" :aria-selected="tab === 'behaviour'" @click="tab = 'behaviour'"><Workflow :size="15" /> Behaviour</button>
-        <button type="button" role="tab" :aria-selected="tab === 'test'" @click="tab = 'test'"><FlaskConical :size="15" /> Test</button>
-      </div>
-    </div>
-
-    <div v-if="saved" class="studio-saved" role="status">
-      <Check :size="16" /> <span><strong>{{ saved.name }}</strong> is saved and ready in your Pets.</span>
+    <template v-if="saved" #saved>
+      <span><strong>{{ saved.name }}</strong> is saved and ready in your Pets.</span>
       <button type="button" class="text-link" @click="emit('go', 'pets')">See it in Pets</button>
       <button type="button" class="text-link" @click="tab = 'test'"><FlaskConical :size="13" /> Test it</button>
       <button type="button" class="text-link" @click="exportSaved"><Download :size="13" /> Export .petpack</button>
       <span v-if="exported" class="path-note">Exported to {{ exported }}</span>
-    </div>
-    <div v-else-if="issues.length" class="studio-issues">
-      <AlertCircle :size="15" />
-      <span>Before saving: {{ issues[0] }}<template v-if="issues.length > 1"> <em>(+{{ issues.length - 1 }} more)</em></template></span>
-    </div>
+    </template>
 
-    <SpriteEditor v-show="tab === 'look'" :draft="draft" @edited="edits++" />
+    <PetLook v-show="tab === 'look'" :draft="draft" @edited="edits++" />
     <BehaviorEditor v-if="tab === 'behaviour'" :draft="draft" />
     <TestTab v-if="tab === 'test'" />
-    </template>
-  </section>
+  </StudioShell>
 </template>

@@ -44,6 +44,7 @@ extern "system" {
     fn GetLastInputInfo(info: *mut LastInputInfo) -> Bool;
     fn GetCursorPos(point: *mut PointW) -> Bool;
     fn GetAncestor(window: Handle, flags: u32) -> Handle;
+    fn SetForegroundWindow(window: Handle) -> Bool;
     fn SetWindowPos(
         window: Handle,
         after: Handle,
@@ -347,6 +348,14 @@ impl Platform for NativePlatform {
 
     fn process_name(&self, pid: u32) -> Option<String> {
         executable_name(pid)
+    }
+
+    fn focus_window(&self, window: &WindowInfo) -> Result<(), String> {
+        // Allowed because the click that asked for it was in Ledgeling.
+        match unsafe { SetForegroundWindow(window.id as Handle) } {
+            0 => Err("Windows would not bring that window forward.".into()),
+            _ => Ok(()),
+        }
     }
 
     fn resize_access(&self) -> super::ResizeAccess {

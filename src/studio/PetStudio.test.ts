@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, it, vi } from 'vitest'
 import PetStudio from './PetStudio.vue'
 import { draft } from './state'
@@ -51,6 +51,35 @@ it('saves the design as a pack and can bring it straight out', async () => {
   expect(args.preview).toMatchObject({ name: 'preview', width: 256, height: 256 })
   expect(api.invoke.mock.calls.find(c => c[0] === 'spawn_pet')![1]).toEqual({ packId: 'com.studio.ember' })
   expect(wrapper.text()).toContain('is saved and ready')
+  wrapper.unmount()
+})
+
+it('gives two pets with the same name their own ids, and saving again updates the same one', async () => {
+  // The bug this guards: an unnamed or same-named pet replaced an earlier one,
+  // and every pet already out of that kind changed with it.
+  api.invoke.mockImplementation(async (command: string, args: { manifest?: string }) =>
+    command === 'save_studio_pack' ? { id: JSON.parse(args.manifest!).id, name: 'Ember' } : command === 'list_packs' ? [] : undefined)
+  const draw = () => {
+    const frame = blankFrame()
+    frame.set([255, 0, 0, 255], (20 * FRAME + 20) * 4)
+    draft.value = starterDraft()
+    draft.value.name = 'Ember'
+    draft.value.clips.idle!.frames = [frame]
+  }
+  draw()
+  const wrapper = mount(PetStudio)
+  const save = () => wrapper.findAll('button').find(b => b.text() === 'Save')!.trigger('click')
+  await save(); await flushPromises()
+  await save(); await flushPromises()
+  draw()
+  await wrapper.vm.$nextTick()
+  await save(); await flushPromises()
+  const saves = api.invoke.mock.calls.filter(c => c[0] === 'save_studio_pack').map(c => c[1])
+  const ids = saves.map(s => JSON.parse(s.manifest).id)
+  expect(ids[0]).toMatch(/^com\.studio\.ember-[a-z0-9]{4}$/)
+  expect(saves.map(s => s.replace)).toEqual([false, true, false])
+  expect(ids[1]).toBe(ids[0])
+  expect(ids[2]).not.toBe(ids[0])
   wrapper.unmount()
 })
 
@@ -157,5 +186,20 @@ it('drafts behaviours from a description through the assistant and can undo', as
   await wrapper.findAll('button').find(b => b.text().includes('Undo'))!.trigger('click')
   expect(draft.value.states).toHaveLength(4)
   tasks.value = []
+  wrapper.unmount()
+})
+
+it('undo from another animation goes back to the one it changes', async () => {
+  const wrapper = mount(PetStudio, { attachTo: document.body })
+  const canvas = wrapper.get('.pixel-canvas')
+  canvas.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 480 }) as DOMRect
+  canvas.element.setPointerCapture = () => {}
+  await canvas.trigger('pointerdown', { button: 0, clientX: 240, clientY: 240, pointerId: 1 })
+  await canvas.trigger('pointerup')
+  await wrapper.findAll('.clip-row').find(b => b.text().includes('Move'))!.trigger('click')
+  expect(wrapper.find('.clip-start').exists()).toBe(true)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }))
+  await vi.waitFor(() => expect(wrapper.get('.clip-row.selected').text()).toContain('Idle'))
+  expect(draft.value.clips.idle!.frames[0]!.some((v, i) => i % 4 === 3 && v > 0)).toBe(false)
   wrapper.unmount()
 })

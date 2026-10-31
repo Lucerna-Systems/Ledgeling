@@ -15,13 +15,20 @@
         "y": 0.05,
         "from": 0.15,
         "to": 0.85
-      }
+      },
+      "animations": [
+        "breeze",
+        "rustle"
+      ]
     },
     "pine": {
       "file": "sprites/pine.png",
       "width": 32,
       "height": 64,
-      "sway": "tall"
+      "sway": "tall",
+      "animations": [
+        "breeze"
+      ]
     },
     "bush": {
       "file": "sprites/bush.png",
@@ -32,13 +39,20 @@
         "y": 0.15,
         "from": 0.1,
         "to": 0.9
-      }
+      },
+      "animations": [
+        "rustle"
+      ]
     },
     "flower": {
       "file": "sprites/flower.png",
       "width": 12,
       "height": 16,
-      "sway": "soft"
+      "sway": "soft",
+      "animations": [
+        "breeze",
+        "rustle"
+      ]
     },
     "rock": {
       "file": "sprites/rock.png",
@@ -50,13 +64,20 @@
       "file": "sprites/tuft.png",
       "width": 16,
       "height": 10,
-      "sway": "soft"
+      "sway": "soft",
+      "animations": [
+        "breeze",
+        "rustle"
+      ]
     },
     "mushroom": {
       "file": "sprites/mushroom.png",
       "width": 12,
       "height": 12,
-      "sway": "stiff"
+      "sway": "stiff",
+      "animations": [
+        "twinkle"
+      ]
     }
   }
 }

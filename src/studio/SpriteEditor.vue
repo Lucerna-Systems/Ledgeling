@@ -1,55 +1,41 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useSlots, watch } from 'vue'
 import { ArrowLeft, ArrowLeftRight, ArrowRight, Blend, BoxSelect, Circle, ClipboardPaste, Copy, Eraser, FlipHorizontal2, FlipVertical2, FoldHorizontal, Grid3x3, Layers, Minus, PaintBucket, Pause, Pencil, Pipette, Play, Plus, Redo2, Scissors, Square, Trash2, Undo2, WandSparkles, ZoomIn, ZoomOut } from '@lucide/vue'
-import { FRAME, MAX_FRAMES, blankFrame, clipDrawn, clipInfo, clipsFor, drawn, emptyClip, type Draft } from './model'
+import { MAX_FRAMES } from './model'
 import { applyGradient, combineMasks, drop, ellipsePoints, emptyMask, erase, flipPixels, invertMask, lift, linePoints, magicWand, maskEmpty, maskHas, nudge, opaqueMask, rectMask, rectPoints, shiftMask, thicken, type Mask, type Point, type Rgba } from './pixels'
+import { thumbnailer } from './thumbs'
+import './studio.css'
 
-const props = defineProps<{ draft: Draft }>()
+/** The Studio's pixel editor, for any `width × height`. It edits `frames` in
+ *  place: a pet clip's frames with `animation` on, or a decor prop's one image
+ *  with it off. What the frames belong to (clips, props) is the host's business,
+ *  shown through the `list`, `head`, `empty` and `overlay` slots. */
+const props = withDefaults(defineProps<{
+  width: number
+  height: number
+  /** Edited in place. Empty shows the `empty` slot instead of the canvas. */
+  frames: Uint8ClampedArray[]
+  /** Frame strip, onion skin and a playing preview. Off, it is one still image. */
+  animation?: boolean
+  maxFrames?: number
+  fps?: number
+  loop?: boolean
+}>(), { animation: false, maxFrames: MAX_FRAMES, fps: 8, loop: true })
 /** Pixel edits are invisible to Vue (typed arrays are not reactive), so the
- *  Studio hears about them here to re-check what still needs drawing. */
-const emit = defineEmits<{ edited: [] }>()
+ *  host hears about them here to re-check what still needs drawing. `reveal`
+ *  asks it to show the frames holding an image that undo just changed, which
+ *  may belong to another clip or prop. */
+const emit = defineEmits<{ edited: []; reveal: [pixels: Uint8ClampedArray]; 'update:fps': [fps: number]; 'update:loop': [loop: boolean] }>()
+const slots = useSlots()
 /** Bumped after every pixel change; thumbnails and the preview redraw from it. */
 const version = ref(0)
 watch(version, () => emit('edited'))
 
-// ---- which animation and frame ----
-const clipName = ref('idle')
+const size = computed(() => ({ width: props.width, height: props.height }))
 const frameIndex = ref(0)
-const clip = computed(() => props.draft.clips[clipName.value])
-const frame = computed(() => clip.value?.frames[frameIndex.value])
-const groups = computed(() => {
-  const list = clipsFor(props.draft.movement)
-  return [
-    { title: 'Basics', items: list.filter(c => c.group === 'basics') },
-    { title: 'Getting around', items: list.filter(c => c.group === 'moves') },
-    { title: 'Moods', items: list.filter(c => c.group === 'moods') },
-    { title: 'Helping you', items: list.filter(c => c.group === 'assistant') },
-  ].filter(g => g.items.length)
-})
-/** The drawn animations a new one can be copied from: Idle first, then Move. */
-const copySources = computed(() => ['idle', 'move'].filter(n => n !== clipName.value && clipDrawn(props.draft.clips[n])).map(n => clipInfo(n)!))
-/** What plays in place of an undrawn clip: its fallback if drawn, else Idle/Move, whichever exists. */
-function fallbackFor(name: string) {
-  const wanted = clipInfo(name)?.fallback ?? 'idle'
-  if (clipDrawn(props.draft.clips[wanted])) return wanted
-  const other = wanted === 'idle' ? 'move' : 'idle'
-  return clipDrawn(props.draft.clips[other]) ? other : wanted
-}
-function pickClip(name: string) { clipName.value = name; frameIndex.value = 0 }
-function startClip(copyFrom?: string) {
-  const source = copyFrom ? props.draft.clips[copyFrom] : undefined
-  props.draft.clips[clipName.value] = source
-    ? { frames: source.frames.map(f => new Uint8ClampedArray(f)), fps: source.fps, loop: true }
-    : emptyClip()
-  frameIndex.value = 0
-  version.value++
-}
-function removeClip() {
-  delete props.draft.clips[clipName.value]
-  version.value++
-}
-// A movement change can hide the selected clip; fall back to idle.
-watch(() => props.draft.movement, () => { if (!clipsFor(props.draft.movement).some(c => c.name === clipName.value)) pickClip('idle') })
+const frame = computed(() => props.frames[frameIndex.value])
+const blankImage = () => new Uint8ClampedArray(props.width * props.height * 4)
+const insideImage = (x: number, y: number) => x >= 0 && y >= 0 && x < props.width && y < props.height
 
 // ---- zoom and pan ----
 const MAX_ZOOM = 16
@@ -59,26 +45,28 @@ const stageSize = ref({ w: 480, h: 480 })
 const view = ref({ zoom: 1, x: 0, y: 0 })
 const spaceDown = ref(false)
 const panning = ref(false)
-const baseSize = computed(() => Math.max(64, Math.min(stageSize.value.w, stageSize.value.h)))
+/** Screen pixels per image pixel at 100%: the image fitted to the stage, never under 64 px across. */
+const fit = computed(() => Math.max(64 / Math.max(props.width, props.height), Math.min(stageSize.value.w / props.width, stageSize.value.h / props.height)))
+const shownSize = (zoom = view.value.zoom) => ({ w: props.width * fit.value * zoom, h: props.height * fit.value * zoom })
 /** Keeps a zoomed canvas covering the stage, and a fitted one centred. */
 const clampAxis = (pos: number, size: number, dim: number) => size <= dim ? (dim - size) / 2 : Math.min(0, Math.max(dim - size, pos))
 function shown() {
-  const size = baseSize.value * view.value.zoom
-  return { x: clampAxis(view.value.x, size, stageSize.value.w), y: clampAxis(view.value.y, size, stageSize.value.h) }
+  const { w, h } = shownSize()
+  return { x: clampAxis(view.value.x, w, stageSize.value.w), y: clampAxis(view.value.y, h, stageSize.value.h) }
 }
 const canvasStyle = computed(() => {
-  const size = baseSize.value * view.value.zoom
+  const { w, h } = shownSize()
   const at = shown()
-  return { width: `${size}px`, height: `${size}px`, left: `${at.x}px`, top: `${at.y}px` }
+  return { width: `${w}px`, height: `${h}px`, left: `${at.x}px`, top: `${at.y}px` }
 })
 /** Zooms keeping the point under (cx, cy), in stage pixels, where it is. */
 function zoomAt(factor: number, cx: number, cy: number) {
   const zoom = Math.min(MAX_ZOOM, Math.max(1, view.value.zoom * factor))
-  const size = baseSize.value * view.value.zoom
+  const { w, h } = shownSize()
   const at = shown()
-  const [fx, fy] = [(cx - at.x) / size, (cy - at.y) / size]
-  const next = baseSize.value * zoom
-  view.value = { zoom, x: cx - fx * next, y: cy - fy * next }
+  const [fx, fy] = [(cx - at.x) / w, (cy - at.y) / h]
+  const next = shownSize(zoom)
+  view.value = { zoom, x: cx - fx * next.w, y: cy - fy * next.h }
 }
 const zoomBy = (factor: number) => zoomAt(factor, stageSize.value.w / 2, stageSize.value.h / 2)
 const fitView = () => { view.value = { zoom: 1, x: 0, y: 0 } }
@@ -120,7 +108,6 @@ watch(stage, (el, old) => {
   }
   stageSize.value = { w: el.clientWidth, h: el.clientHeight }
 })
-watch(clipName, fitView)
 
 // ---- tools ----
 type Tool = 'pencil' | 'eraser' | 'fill' | 'picker' | 'line' | 'rect' | 'ellipse' | 'gradient' | 'select' | 'wand'
@@ -166,31 +153,43 @@ function useColor(value: string, secondary = false) {
 }
 function swapColors() { [color.value, color2.value] = [color2.value, color.value] }
 
-// ---- undo: snapshots of the frame before each stroke ----
-interface Snapshot { clip: string; index: number; pixels: Uint8ClampedArray }
+// ---- undo: snapshots of an image before each stroke ----
+/** `target` is the image itself, so undo finds it again after the host has
+ *  switched to another clip or prop. */
+interface Snapshot { target: Uint8ClampedArray; pixels: Uint8ClampedArray }
 const undoStack: Snapshot[] = []
 const redoStack: Snapshot[] = []
 const canUndo = ref(false)
 const canRedo = ref(false)
 function remember() {
   if (!frame.value) return
-  undoStack.push({ clip: clipName.value, index: frameIndex.value, pixels: new Uint8ClampedArray(frame.value) })
+  undoStack.push({ target: frame.value, pixels: new Uint8ClampedArray(frame.value) })
   if (undoStack.length > 100) undoStack.shift()
   redoStack.length = 0
   canUndo.value = true; canRedo.value = false
 }
 function restore(from: Snapshot[], to: Snapshot[]) {
   const snap = from.pop()
-  const target = snap && props.draft.clips[snap.clip]?.frames[snap.index]
-  if (!snap || !target) return
-  to.push({ ...snap, pixels: new Uint8ClampedArray(target) })
-  target.set(snap.pixels)
-  clipName.value = snap.clip; frameIndex.value = snap.index
+  if (!snap) return
+  to.push({ ...snap, pixels: new Uint8ClampedArray(snap.target) })
+  snap.target.set(snap.pixels)
   canUndo.value = undoStack.length > 0; canRedo.value = redoStack.length > 0
+  showImage(snap.target)
   version.value++
 }
 const undo = () => restore(undoStack, redoStack)
 const redo = () => restore(redoStack, undoStack)
+/** Brings an image into view: here if it is one of our frames, otherwise the host switches first. */
+function showImage(target: Uint8ClampedArray) {
+  const index = props.frames.indexOf(target)
+  if (index >= 0) { frameIndex.value = index; return }
+  emit('reveal', target)
+  // After the host has switched, the frames watcher has reset to frame 0; point at the right one.
+  void nextTick(() => {
+    const found = props.frames.indexOf(target)
+    if (found >= 0) frameIndex.value = found
+  })
+}
 
 // ---- selection ----
 /** The selected cells, or null. Replaced rather than edited so the canvas redraws. */
@@ -202,14 +201,14 @@ function combine(previous: Mask | null, next: Mask, event: { shiftKey: boolean; 
   if (previous && event.altKey) return combineMasks(previous, next, 'subtract')
   return next
 }
-const allowed = (x: number, y: number) => !selection.value || maskHas(selection.value, x, y)
-watch([clipName, frameIndex], () => { selection.value = null })
-/** What copy and cut hold: a full-frame layer, transparent outside what was copied. */
+const allowed = (x: number, y: number) => !selection.value || maskHas(size.value, selection.value, x, y)
+watch(frameIndex, () => { selection.value = null })
+/** What copy and cut hold: a full-size layer, transparent outside what was copied. */
 const clipboard = shallowRef<Uint8ClampedArray | null>(null)
 
-function selectAll() { select(rectMask(0, 0, FRAME - 1, FRAME - 1)) }
+function selectAll() { select(rectMask(size.value, 0, 0, props.width - 1, props.height - 1)) }
 function deselect() { select(null) }
-function invertSelection() { select(invertMask(selection.value ?? emptyMask())) }
+function invertSelection() { select(invertMask(selection.value ?? emptyMask(size.value))) }
 /** Runs an edit on the current frame as one undo step. */
 function edit(change: (pixels: Uint8ClampedArray) => void) {
   if (!frame.value) return
@@ -225,21 +224,22 @@ function copySelection(cut: boolean) {
 function deleteSelection() { edit(pixels => selection.value ? erase(pixels, selection.value) : pixels.fill(0)) }
 function paste() {
   const layer = clipboard.value
-  if (!layer) return
-  edit(pixels => drop(pixels, layer, 0, 0))
+  // A layer copied from an image of another size would land scrambled.
+  if (!layer || layer.length !== props.width * props.height * 4) return
+  edit(pixels => drop(size.value, pixels, layer, 0, 0))
   select(opaqueMask(layer))
   tool.value = 'select'
 }
-function flip(axis: 'horizontal' | 'vertical') { edit(pixels => flipPixels(pixels, axis, selection.value)) }
+function flip(axis: 'horizontal' | 'vertical') { edit(pixels => flipPixels(size.value, pixels, axis, selection.value)) }
 function nudgeBy(dx: number, dy: number) {
-  edit(pixels => nudge(pixels, dx, dy, selection.value))
-  if (selection.value) select(shiftMask(selection.value, dx, dy))
+  edit(pixels => nudge(size.value, pixels, dx, dy, selection.value))
+  if (selection.value) select(shiftMask(size.value, selection.value, dx, dy))
 }
 
 // ---- painting ----
 function setPixel(pixels: Uint8ClampedArray, x: number, y: number, value: Rgba) {
-  if (x < 0 || y < 0 || x >= FRAME || y >= FRAME || !allowed(x, y)) return
-  pixels.set(value, (y * FRAME + x) * 4)
+  if (!insideImage(x, y) || !allowed(x, y)) return
+  pixels.set(value, (y * props.width + x) * 4)
 }
 /** Paints cells with the brush, mirrored when mirror is on. */
 function paintCells(points: Point[], value: Rgba) {
@@ -247,7 +247,7 @@ function paintCells(points: Point[], value: Rgba) {
   if (!pixels) return
   for (const [x, y] of thicken(points, brush.value)) {
     setPixel(pixels, x, y, value)
-    if (mirror.value) setPixel(pixels, FRAME - 1 - x, y, value)
+    if (mirror.value) setPixel(pixels, props.width - 1 - x, y, value)
   }
 }
 const strokeValue = (): Rgba => tool.value === 'eraser' ? [0, 0, 0, 0] : rgba(color.value)
@@ -255,7 +255,7 @@ function paint(x: number, y: number) { paintCells([[x, y]], strokeValue()) }
 function fill(x: number, y: number) {
   const pixels = frame.value
   if (!pixels) return
-  const at = (px: number, py: number) => (py * FRAME + px) * 4
+  const at = (px: number, py: number) => (py * props.width + px) * 4
   const target = Array.from(pixels.subarray(at(x, y), at(x, y) + 4))
   const value = rgba(color.value)
   if (target.every((v, i) => v === value[i])) return
@@ -263,15 +263,15 @@ function fill(x: number, y: number) {
   const queue = [[x, y]]
   while (queue.length) {
     const [px, py] = queue.pop()!
-    if (px < 0 || py < 0 || px >= FRAME || py >= FRAME || !same(at(px, py)) || !allowed(px, py)) continue
-    pixels.set(value, at(px, py))
-    queue.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1])
+    if (!insideImage(px!, py!) || !same(at(px!, py!)) || !allowed(px!, py!)) continue
+    pixels.set(value, at(px!, py!))
+    queue.push([px! + 1, py!], [px! - 1, py!], [px!, py! + 1], [px!, py! - 1])
   }
 }
 function pick(x: number, y: number, secondary = false) {
   const pixels = frame.value
-  if (!pixels || x < 0 || y < 0 || x >= FRAME || y >= FRAME) return
-  const i = (y * FRAME + x) * 4
+  if (!pixels || !insideImage(x, y)) return
+  const i = (y * props.width + x) * 4
   if (pixels[i + 3]) useColor(hex(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!), secondary)
 }
 
@@ -288,9 +288,10 @@ let drag: Drag | null = null
 let painted = false
 function cell(event: PointerEvent): Point {
   const box = canvas.value!.getBoundingClientRect()
-  return [Math.floor(((event.clientX - box.left) / box.width) * FRAME), Math.floor(((event.clientY - box.top) / box.height) * FRAME)]
+  return [Math.floor(((event.clientX - box.left) / box.width) * props.width), Math.floor(((event.clientY - box.top) / box.height) * props.height)]
 }
-const clamp = (n: number) => Math.min(FRAME - 1, Math.max(0, n))
+const clampX = (n: number) => Math.min(props.width - 1, Math.max(0, n))
+const clampY = (n: number) => Math.min(props.height - 1, Math.max(0, n))
 function shapeCells(kind: Tool, [x0, y0]: Point, [x1, y1]: Point): Point[] {
   if (kind === 'line') return linePoints(x0, y0, x1, y1)
   if (kind === 'rect') return rectPoints(x0, y0, x1, y1, filledShapes.value)
@@ -299,7 +300,7 @@ function shapeCells(kind: Tool, [x0, y0]: Point, [x1, y1]: Point): Point[] {
 function gradientAt(base: Uint8ClampedArray, region: Mask, from: Point, to: Point) {
   const pixels = frame.value!
   pixels.set(base)
-  applyGradient(pixels, region, {
+  applyGradient(size.value, pixels, region, {
     from, to, start: rgba(color.value), end: gradientEnd.value === 'clear' ? null : rgba(color2.value),
     kind: gradientKind.value, dither: dither.value,
   })
@@ -318,12 +319,12 @@ function down(event: PointerEvent) {
   const id = tool.value
   if (id === 'picker') { pick(x, y, event.shiftKey); return }
   if (id === 'wand') {
-    if (x >= 0 && y >= 0 && x < FRAME && y < FRAME) select(combine(selection.value, magicWand(frame.value, x, y, tolerance.value, contiguous.value), event))
+    if (insideImage(x, y)) select(combine(selection.value, magicWand(size.value, frame.value, x, y, tolerance.value, contiguous.value), event))
     return
   }
   if (id === 'select') {
     canvas.value!.setPointerCapture(event.pointerId)
-    if (selection.value && maskHas(selection.value, x, y) && !event.shiftKey && !event.altKey) {
+    if (selection.value && maskHas(size.value, selection.value, x, y) && !event.shiftKey && !event.altKey) {
       remember()
       const base = new Uint8ClampedArray(frame.value)
       erase(base, selection.value)
@@ -334,12 +335,15 @@ function down(event: PointerEvent) {
     }
     return
   }
-  if (id === 'fill') { remember(); fill(x, y); version.value++; return }
+  if (id === 'fill') {
+    if (!insideImage(x, y)) return
+    remember(); fill(x, y); version.value++; return
+  }
   canvas.value!.setPointerCapture(event.pointerId)
   if (id === 'gradient') {
     remember()
     // Inside a selection the gradient fills it; otherwise it fills the flat region clicked, like the fill bucket.
-    const region = selection.value ?? magicWand(frame.value, clamp(x), clamp(y), 0, true)
+    const region = selection.value ?? magicWand(size.value, frame.value, clampX(x), clampY(y), 0, true)
     drag = { kind: 'gradient', start: point, base: new Uint8ClampedArray(frame.value), region }
     return
   }
@@ -358,7 +362,7 @@ function down(event: PointerEvent) {
 function move(event: PointerEvent) {
   const point = cell(event)
   const [x, y] = point
-  hover.value = x >= 0 && y >= 0 && x < FRAME && y < FRAME ? [x, y] : null
+  hover.value = insideImage(x, y) ? [x, y] : null
   if (!drag || !frame.value) return
   if (drag.kind === 'pan') {
     view.value = { zoom: view.value.zoom, x: drag.x + event.clientX - drag.from[0], y: drag.y + event.clientY - drag.from[1] }
@@ -371,14 +375,14 @@ function move(event: PointerEvent) {
     frame.value.set(drag.base)
     paintCells(shapeCells(tool.value, drag.start, point), strokeValue())
   } else if (drag.kind === 'gradient') {
-    gradientAt(drag.base, drag.region, [clamp(drag.start[0]), clamp(drag.start[1])], [clamp(x), clamp(y)])
+    gradientAt(drag.base, drag.region, [clampX(drag.start[0]), clampY(drag.start[1])], [clampX(x), clampY(y)])
   } else if (drag.kind === 'box') {
-    select(combine(drag.previous, rectMask(clamp(drag.start[0]), clamp(drag.start[1]), clamp(x), clamp(y)), drag.event))
+    select(combine(drag.previous, rectMask(size.value, clampX(drag.start[0]), clampY(drag.start[1]), clampX(x), clampY(y)), drag.event))
   } else {
     const dx = x - drag.start[0], dy = y - drag.start[1]
     frame.value.set(drag.base)
-    drop(frame.value, drag.layer, dx, dy)
-    select(shiftMask(drag.mask, dx, dy))
+    drop(size.value, frame.value, drag.layer, dx, dy)
+    select(shiftMask(size.value, drag.mask, dx, dy))
   }
   version.value++
 }
@@ -392,22 +396,22 @@ const hover = ref<[number, number] | null>(null)
 
 // ---- frames ----
 function addFrame(copy: boolean) {
-  if (!clip.value || clip.value.frames.length >= MAX_FRAMES) return
-  const next = copy && frame.value ? new Uint8ClampedArray(frame.value) : blankFrame()
-  clip.value.frames.splice(frameIndex.value + 1, 0, next)
+  if (props.frames.length >= props.maxFrames) return
+  const next = copy && frame.value ? new Uint8ClampedArray(frame.value) : blankImage()
+  props.frames.splice(frameIndex.value + 1, 0, next)
   frameIndex.value++
   version.value++
 }
 function deleteFrame() {
-  if (!clip.value || clip.value.frames.length <= 1) return
-  clip.value.frames.splice(frameIndex.value, 1)
+  if (props.frames.length <= 1) return
+  props.frames.splice(frameIndex.value, 1)
   frameIndex.value = Math.max(0, frameIndex.value - 1)
   version.value++
 }
 function shiftFrame(delta: number) {
-  const frames = clip.value?.frames
+  const frames = props.frames
   const to = frameIndex.value + delta
-  if (!frames || to < 0 || to >= frames.length) return
+  if (to < 0 || to >= frames.length) return
   ;[frames[frameIndex.value], frames[to]] = [frames[to]!, frames[frameIndex.value]!]
   frameIndex.value = to
   version.value++
@@ -421,43 +425,42 @@ function clearFrame() {
 
 // ---- drawing to screen ----
 const SCALE = 8
-/** Paints a frame as one square per pixel. Drawing one canvas onto another
+/** Paints an image as one square per pixel. Drawing one canvas onto another
  *  is avoided on purpose: WebKit (the macOS app's engine) can draw the source
  *  as it was before the latest putImageData, which showed stale or blank frames. */
-function blit(target: CanvasRenderingContext2D, pixels: Uint8ClampedArray, size: number, alpha = 1) {
-  const cell = size / FRAME
+function blit(target: CanvasRenderingContext2D, pixels: Uint8ClampedArray, cellSize: number, alpha = 1, ox = 0, oy = 0) {
+  const w = props.width
   target.globalAlpha = alpha
-  for (let i = 0; i < FRAME * FRAME; i++) {
+  for (let i = 0; i < pixels.length / 4; i++) {
     const a = pixels[i * 4 + 3]!
     if (!a) continue
     target.fillStyle = `rgba(${pixels[i * 4]},${pixels[i * 4 + 1]},${pixels[i * 4 + 2]},${a / 255})`
-    target.fillRect((i % FRAME) * cell, Math.floor(i / FRAME) * cell, cell, cell)
+    target.fillRect(ox + (i % w) * cellSize, oy + Math.floor(i / w) * cellSize, cellSize, cellSize)
   }
   target.globalAlpha = 1
 }
-/** Thumbnails read their canvas back with toDataURL, which always sees the latest pixels. */
-const thumbCanvas = document.createElement('canvas')
-thumbCanvas.width = thumbCanvas.height = FRAME
+const thumb = thumbnailer()
 function render() {
   const ctx = canvas.value?.getContext('2d')
   if (!ctx) return
-  const size = FRAME * SCALE
-  ctx.clearRect(0, 0, size, size)
+  const [w, h] = [props.width * SCALE, props.height * SCALE]
+  ctx.clearRect(0, 0, w, h)
   const dark = document.documentElement.dataset.theme === 'dark'
-  for (let y = 0; y < FRAME; y += 2) for (let x = 0; x < FRAME; x += 2) {
+  for (let y = 0; y < props.height; y += 2) for (let x = 0; x < props.width; x += 2) {
     ctx.fillStyle = (x + y) % 4 === 0 ? (dark ? '#262b29' : '#f3f2ec') : (dark ? '#2d3331' : '#e9e8e0')
     ctx.fillRect(x * SCALE, y * SCALE, SCALE * 2, SCALE * 2)
   }
-  const previous = clip.value?.frames[frameIndex.value - 1]
-  if (onion.value && previous) blit(ctx, previous, size, 0.25)
-  if (frame.value) blit(ctx, frame.value, size)
+  const previous = props.frames[frameIndex.value - 1]
+  if (props.animation && onion.value && previous) blit(ctx, previous, SCALE, 0.25)
+  if (frame.value) blit(ctx, frame.value, SCALE)
   if (grid.value) {
     ctx.strokeStyle = dark ? '#ffffff14' : '#0000000f'
     ctx.lineWidth = 1
     ctx.beginPath()
-    for (let i = 1; i < FRAME; i++) { ctx.moveTo(i * SCALE + 0.5, 0); ctx.lineTo(i * SCALE + 0.5, size); ctx.moveTo(0, i * SCALE + 0.5); ctx.lineTo(size, i * SCALE + 0.5) }
+    for (let i = 1; i < props.width; i++) { ctx.moveTo(i * SCALE + 0.5, 0); ctx.lineTo(i * SCALE + 0.5, h) }
+    for (let i = 1; i < props.height; i++) { ctx.moveTo(0, i * SCALE + 0.5); ctx.lineTo(w, i * SCALE + 0.5) }
     ctx.stroke()
-    if (mirror.value) { ctx.strokeStyle = '#41a6f6aa'; ctx.beginPath(); ctx.moveTo(size / 2, 0); ctx.lineTo(size / 2, size); ctx.stroke() }
+    if (mirror.value) { ctx.strokeStyle = '#41a6f6aa'; ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke() }
   }
   if (selection.value) outline(ctx, selection.value, dark)
   if (hover.value && tool.value !== 'fill') {
@@ -467,14 +470,15 @@ function render() {
 }
 /** Traces the edge of the selection: dark underneath, light dashes on top, so it reads on any colour. */
 function outline(ctx: CanvasRenderingContext2D, mask: Mask, dark: boolean) {
+  const has = (x: number, y: number) => maskHas(size.value, mask, x, y)
   ctx.beginPath()
-  for (let y = 0; y < FRAME; y++) for (let x = 0; x < FRAME; x++) {
-    if (!mask[y * FRAME + x]) continue
+  for (let y = 0; y < props.height; y++) for (let x = 0; x < props.width; x++) {
+    if (!mask[y * props.width + x]) continue
     const [l, t, r, b] = [x * SCALE, y * SCALE, (x + 1) * SCALE, (y + 1) * SCALE]
-    if (!maskHas(mask, x, y - 1)) { ctx.moveTo(l, t); ctx.lineTo(r, t) }
-    if (!maskHas(mask, x, y + 1)) { ctx.moveTo(l, b); ctx.lineTo(r, b) }
-    if (!maskHas(mask, x - 1, y)) { ctx.moveTo(l, t); ctx.lineTo(l, b) }
-    if (!maskHas(mask, x + 1, y)) { ctx.moveTo(r, t); ctx.lineTo(r, b) }
+    if (!has(x, y - 1)) { ctx.moveTo(l, t); ctx.lineTo(r, t) }
+    if (!has(x, y + 1)) { ctx.moveTo(l, b); ctx.lineTo(r, b) }
+    if (!has(x - 1, y)) { ctx.moveTo(l, t); ctx.lineTo(l, b) }
+    if (!has(x + 1, y)) { ctx.moveTo(r, t); ctx.lineTo(r, b) }
   }
   ctx.lineWidth = 2
   ctx.strokeStyle = dark ? '#000000cc' : '#000000aa'
@@ -486,51 +490,54 @@ function outline(ctx: CanvasRenderingContext2D, mask: Mask, dark: boolean) {
   ctx.stroke()
   ctx.setLineDash([])
 }
-watch([version, clipName, frameIndex, onion, grid, mirror, hover, tool, selection], render)
-
-const thumbCache = new Map<Uint8ClampedArray, { version: number; url: string }>()
-function thumb(pixels: Uint8ClampedArray | undefined) {
-  if (!pixels) return ''
-  const cached = thumbCache.get(pixels)
-  if (cached?.version === version.value) return cached.url
-  thumbCanvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), FRAME, FRAME), 0, 0)
-  const url = drawn(pixels) ? thumbCanvas.toDataURL() : ''
-  thumbCache.set(pixels, { version: version.value, url })
-  return url
-}
+watch([version, frameIndex, onion, grid, mirror, hover, tool, selection], render)
 
 // ---- preview ----
 // Paused, the preview shows the frame being edited. It animates only while the
 // user asks, so an open Studio costs no CPU.
+const PREVIEW = 144
 const preview = ref<HTMLCanvasElement | null>(null)
 const playing = ref(false)
-const canPlay = computed(() => (clip.value?.frames.length ?? 0) > 1)
+const canPlay = computed(() => props.frames.length > 1)
 let tick = 0
 let previewFrame = 0
 let lastTime = 0
 function showInPreview(pixels: Uint8ClampedArray | undefined) {
   const ctx = preview.value?.getContext('2d')
   if (!ctx) return
-  ctx.clearRect(0, 0, 144, 144)
-  if (pixels) blit(ctx, pixels, 144)
+  ctx.clearRect(0, 0, PREVIEW, PREVIEW)
+  const cellSize = PREVIEW / Math.max(props.width, props.height)
+  if (pixels) blit(ctx, pixels, cellSize, 1, (PREVIEW - props.width * cellSize) / 2, (PREVIEW - props.height * cellSize) / 2)
 }
 function animate(time: number) {
-  const current = clip.value
-  if (!playing.value || !current) return
+  const frames = props.frames
+  if (!playing.value || !frames.length) return
   tick = requestAnimationFrame(animate)
-  if (time - lastTime < 1000 / current.fps) return
+  if (time - lastTime < 1000 / props.fps) return
   lastTime = time
-  if (previewFrame >= current.frames.length - 1 && !current.loop) { playing.value = false; return }
-  previewFrame = (previewFrame + 1) % current.frames.length
-  showInPreview(current.frames[previewFrame])
+  if (previewFrame >= frames.length - 1 && !props.loop) { playing.value = false; return }
+  previewFrame = (previewFrame + 1) % frames.length
+  showInPreview(frames[previewFrame])
 }
 watch(playing, on => {
   cancelAnimationFrame(tick)
   if (on) { previewFrame = -1; lastTime = 0; tick = requestAnimationFrame(animate) }
   else showInPreview(frame.value)
 })
-watch([version, clipName, frameIndex, preview], () => { if (!playing.value) showInPreview(frame.value) })
-watch([clipName, canPlay], () => { playing.value = false })
+watch([version, frameIndex, preview], () => { if (!playing.value) showInPreview(frame.value) })
+watch(canPlay, () => { playing.value = false })
+
+/** Another clip or prop, or a new size: start fresh on its first frame. */
+watch([() => props.frames, () => props.width, () => props.height], async () => {
+  frameIndex.value = 0
+  selection.value = null
+  playing.value = false
+  hover.value = null
+  fitView()
+  await nextTick()
+  render()
+  showInPreview(frame.value)
+})
 
 function key(event: KeyboardEvent) {
   if ((event.target as HTMLElement).closest?.('input, textarea, [contenteditable]')) return
@@ -554,8 +561,8 @@ function key(event: KeyboardEvent) {
   const found = tools.find(t => t.key === event.key.toLowerCase())
   if (found) tool.value = found.id
   else if (event.key.toLowerCase() === 'm') mirror.value = !mirror.value
-  else if (event.key === ',' ) frameIndex.value = Math.max(0, frameIndex.value - 1)
-  else if (event.key === '.' && clip.value) frameIndex.value = Math.min(clip.value.frames.length - 1, frameIndex.value + 1)
+  else if (props.animation && event.key === ',') frameIndex.value = Math.max(0, frameIndex.value - 1)
+  else if (props.animation && event.key === '.') frameIndex.value = Math.min(props.frames.length - 1, frameIndex.value + 1)
 }
 const keyUp = (event: KeyboardEvent) => { if (event.key === ' ') spaceDown.value = false }
 onMounted(async () => {
@@ -564,45 +571,17 @@ onMounted(async () => {
   window.addEventListener('keyup', keyUp)
 })
 onUnmounted(() => { cancelAnimationFrame(tick); observer?.disconnect(); window.removeEventListener('keydown', key); window.removeEventListener('keyup', keyUp) })
-watch(clip, async () => { await nextTick(); render() })
 defineExpose({ version })
 </script>
 
 <template>
-  <div class="sprite-editor">
-    <aside class="clip-list" aria-label="Animations">
-      <template v-for="group in groups" :key="group.title">
-        <h3>{{ group.title }}</h3>
-        <button v-for="info in group.items" :key="info.name" type="button" class="clip-row" :class="{ selected: clipName === info.name }"
-                :aria-pressed="clipName === info.name" @click="pickClip(info.name)">
-          <span class="clip-thumb" :class="{ empty: !clipDrawn(draft.clips[info.name]) }">
-            <img v-if="thumb(draft.clips[info.name]?.frames[0])" :src="thumb(draft.clips[info.name]?.frames[0])" alt="">
-          </span>
-          <span class="clip-text">
-            <strong>{{ info.label }}</strong>
-            <small v-if="clipDrawn(draft.clips[info.name])">{{ draft.clips[info.name]!.frames.length }} frame{{ draft.clips[info.name]!.frames.length === 1 ? '' : 's' }}</small>
-            <small v-else>Uses {{ clipInfo(fallbackFor(info.name))?.label }}</small>
-          </span>
-        </button>
-      </template>
-    </aside>
+  <div class="sprite-editor" :class="{ solo: !slots.list }">
+    <slot name="list" />
 
     <section class="canvas-area">
-      <header class="canvas-head">
-        <div>
-          <h2>{{ clipInfo(clipName)?.label }}</h2>
-          <p>{{ clipInfo(clipName)?.blurb }}</p>
-        </div>
-        <button v-if="clip" type="button" class="text-link danger-link" @click="removeClip">Remove animation</button>
-      </header>
+      <slot name="head" />
 
-      <div v-if="!clip" class="clip-start">
-        <p>This animation is optional. Until you draw it, your pet plays <strong>{{ clipInfo(fallbackFor(clipName))?.label }}</strong> instead.</p>
-        <div class="clip-start-actions">
-          <button type="button" class="primary-button" @click="startClip()"><Plus :size="15" /> Start drawing</button>
-          <button v-for="source in copySources" :key="source.name" type="button" @click="startClip(source.name)"><Copy :size="15" /> Start from {{ source.label }}</button>
-        </div>
-      </div>
+      <slot v-if="!frames.length" name="empty" />
 
       <template v-else>
         <div class="toolbar" role="toolbar" aria-label="Drawing tools">
@@ -614,7 +593,7 @@ defineExpose({ version })
           </template>
           <span class="rail-sep" />
           <button type="button" class="rail-button" :aria-pressed="mirror" title="Mirror: draw both sides at once (M)" aria-label="Mirror drawing" @click="mirror = !mirror"><FoldHorizontal :size="16" /></button>
-          <button type="button" class="rail-button" :aria-pressed="onion" title="Show the previous frame faintly" aria-label="Onion skin" @click="onion = !onion"><Layers :size="16" /></button>
+          <button v-if="animation" type="button" class="rail-button" :aria-pressed="onion" title="Show the previous frame faintly" aria-label="Onion skin" @click="onion = !onion"><Layers :size="16" /></button>
           <button type="button" class="rail-button" :aria-pressed="grid" title="Grid" aria-label="Grid" @click="grid = !grid"><Grid3x3 :size="16" /></button>
           <span class="rail-sep" />
           <button type="button" class="rail-button" :disabled="!canUndo" title="Undo (⌘Z)" aria-label="Undo" @click="undo"><Undo2 :size="16" /></button>
@@ -654,32 +633,34 @@ defineExpose({ version })
               <button type="button" class="icon-button" title="Copy (⌘C)" aria-label="Copy" @click="copySelection(false)"><Copy :size="15" /></button>
             </template>
             <button type="button" class="icon-button" title="Paste (⌘V)" aria-label="Paste" :disabled="!clipboard" @click="paste"><ClipboardPaste :size="15" /></button>
-            <button type="button" class="icon-button" :title="hasSelection ? 'Flip the selection left to right' : 'Flip the frame left to right'" aria-label="Flip horizontally" @click="flip('horizontal')"><FlipHorizontal2 :size="15" /></button>
-            <button type="button" class="icon-button" :title="hasSelection ? 'Flip the selection upside down' : 'Flip the frame upside down'" aria-label="Flip vertically" @click="flip('vertical')"><FlipVertical2 :size="15" /></button>
+            <button type="button" class="icon-button" :title="hasSelection ? 'Flip the selection left to right' : 'Flip the image left to right'" aria-label="Flip horizontally" @click="flip('horizontal')"><FlipHorizontal2 :size="15" /></button>
+            <button type="button" class="icon-button" :title="hasSelection ? 'Flip the selection upside down' : 'Flip the image upside down'" aria-label="Flip vertically" @click="flip('vertical')"><FlipVertical2 :size="15" /></button>
             <template v-if="hasSelection">
               <button type="button" class="text-link" @click="invertSelection">Invert</button>
               <button type="button" class="text-link" @click="deleteSelection">Delete</button>
               <button type="button" class="text-link" @click="deselect">Deselect</button>
             </template>
             <button v-else type="button" class="text-link" @click="selectAll">Select all</button>
+            <button v-if="!animation" type="button" class="text-link" @click="clearFrame">Clear</button>
           </span>
         </div>
 
         <div ref="stage" class="canvas-stage" :class="{ panning: spaceDown || panning }">
-          <canvas ref="canvas" class="pixel-canvas" :class="`tool-${tool}`" :width="FRAME * SCALE" :height="FRAME * SCALE" :style="canvasStyle"
+          <canvas ref="canvas" class="pixel-canvas" :class="`tool-${tool}`" :width="width * SCALE" :height="height * SCALE" :style="canvasStyle"
                   aria-label="Drawing canvas" @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" @pointerleave="hover = null" />
+          <div v-if="slots.overlay" class="canvas-overlay" :style="canvasStyle"><slot name="overlay" :width="width" :height="height" /></div>
         </div>
-        <div class="frame-strip" aria-label="Frames">
-          <button v-for="(f, i) in clip.frames" :key="i" type="button" class="frame-thumb" :aria-pressed="frameIndex === i" :aria-label="`Frame ${i + 1}`" @click="frameIndex = i">
-            <img v-if="thumb(f)" :src="thumb(f)" alt=""><span>{{ i + 1 }}</span>
+        <div v-if="animation" class="frame-strip" aria-label="Frames">
+          <button v-for="(f, i) in frames" :key="i" type="button" class="frame-thumb" :aria-pressed="frameIndex === i" :aria-label="`Frame ${i + 1}`" @click="frameIndex = i">
+            <img v-if="thumb(f, width, height, version)" :src="thumb(f, width, height, version)" alt=""><span>{{ i + 1 }}</span>
           </button>
-          <button type="button" class="frame-add" :disabled="clip.frames.length >= MAX_FRAMES" title="Add a blank frame" aria-label="Add a blank frame" @click="addFrame(false)"><Plus :size="16" /></button>
+          <button type="button" class="frame-add" :disabled="frames.length >= maxFrames" title="Add a blank frame" aria-label="Add a blank frame" @click="addFrame(false)"><Plus :size="16" /></button>
           <div class="frame-tools">
-            <button type="button" class="icon-button" title="Duplicate this frame" aria-label="Duplicate frame" :disabled="clip.frames.length >= MAX_FRAMES" @click="addFrame(true)"><Copy :size="15" /></button>
+            <button type="button" class="icon-button" title="Duplicate this frame" aria-label="Duplicate frame" :disabled="frames.length >= maxFrames" @click="addFrame(true)"><Copy :size="15" /></button>
             <button type="button" class="icon-button" title="Move frame left" aria-label="Move frame left" @click="shiftFrame(-1)"><ArrowLeft :size="15" /></button>
             <button type="button" class="icon-button" title="Move frame right" aria-label="Move frame right" @click="shiftFrame(1)"><ArrowRight :size="15" /></button>
             <button type="button" class="icon-button" title="Clear this frame" aria-label="Clear frame" @click="clearFrame"><Eraser :size="15" /></button>
-            <button type="button" class="icon-button" title="Delete this frame" aria-label="Delete frame" :disabled="clip.frames.length <= 1" @click="deleteFrame"><Trash2 :size="15" /></button>
+            <button type="button" class="icon-button" title="Delete this frame" aria-label="Delete frame" :disabled="frames.length <= 1" @click="deleteFrame"><Trash2 :size="15" /></button>
           </div>
         </div>
       </template>
@@ -702,16 +683,17 @@ defineExpose({ version })
           <button v-for="swatch in recent" :key="swatch" type="button" class="paint small" :style="{ background: swatch }" :aria-label="`Recent ${swatch}`" @click="useColor(swatch)" />
         </div>
       </div>
-      <div v-if="clip" class="panel-block">
+      <div v-if="animation && frames.length" class="panel-block">
         <div class="preview-head">
           <h3>Preview</h3>
           <button type="button" class="preview-play" :disabled="!canPlay" :aria-pressed="playing" :title="canPlay ? undefined : 'Add a second frame to play the animation'"
                   @click="playing = !playing"><Pause v-if="playing" :size="14" /><Play v-else :size="14" />{{ playing ? 'Pause' : 'Play' }}</button>
         </div>
-        <div class="preview-stage"><canvas ref="preview" width="144" height="144" :aria-label="playing ? 'Animation preview, playing' : 'Animation preview, paused'" /></div>
-        <label class="fps-row">Speed <input v-model.number="clip.fps" type="range" min="1" max="24" aria-label="Frames per second"><span>{{ clip.fps }} fps</span></label>
-        <label class="check-row"><input v-model="clip.loop" type="checkbox"> Loop</label>
+        <div class="preview-stage"><canvas ref="preview" :width="PREVIEW" :height="PREVIEW" :aria-label="playing ? 'Animation preview, playing' : 'Animation preview, paused'" /></div>
+        <label class="fps-row">Speed <input :value="fps" type="range" min="1" max="24" aria-label="Frames per second" @input="emit('update:fps', Number(($event.target as HTMLInputElement).value))"><span>{{ fps }} fps</span></label>
+        <label class="check-row"><input :checked="loop" type="checkbox" @change="emit('update:loop', ($event.target as HTMLInputElement).checked)"> Loop</label>
       </div>
+      <slot name="side" />
     </aside>
   </div>
 </template>

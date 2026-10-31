@@ -152,20 +152,10 @@ describe('squish and wobble', () => {
 })
 
 describe('biomes', () => {
-  it('lists each biome and removes one through delete_biome', async () => {
-    snapshot.value = { settings: { ...baseSettings, biomes: [{ id: 4, app: 'safari', props: [{ decor: 'd', prop: 'oak', x: 0.5, flip: false }] }] } } as unknown as Snapshot
+  it('sends you to the Decor page for decorations', async () => {
     const wrapper = mount(SettingsPanel)
-    expect(wrapper.text()).toContain('safari')
-    expect(wrapper.text()).toContain('1 prop,')
-    await wrapper.get('[aria-label="Remove the safari biome"]').trigger('click')
-    expect(api.invoke.mock.calls[0]).toEqual(['delete_biome', { id: 4 }])
-    wrapper.unmount()
-  })
-
-  it('starts decorate mode from settings', async () => {
-    const wrapper = mount(SettingsPanel)
-    await wrapper.findAll('button').find(b => b.text() === 'Decorate')!.trigger('click')
-    expect(api.invoke).toHaveBeenCalledWith('biome_decorate_start', {})
+    await wrapper.findAll('button').find(b => b.text() === 'Open Decor')!.trigger('click')
+    expect(wrapper.emitted('go')).toEqual([['decor']])
     wrapper.unmount()
   })
 

@@ -78,12 +78,16 @@ function drawProp(prop: PropFrame) {
     propNodes.set(prop.key, node)
   }
   const left = prop.x - prop.width * prop.anchorX
-  const top = prop.y - prop.height
+  const top = prop.y - prop.height - (prop.lift ?? 0)
   node.style.width = `${prop.width}px`
   node.style.height = `${prop.height}px`
   // Sway and squash pivot on the foot, where the prop meets the window.
   node.style.transformOrigin = `${prop.anchorX * 100}% 100%`
-  node.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(${prop.rotation}deg) scale(${(prop.flip ? -1 : 1) * prop.squashX}, ${prop.squashY})`
+  // A spin turns about the prop's middle, after sway has tilted it at the foot.
+  const half = prop.height / 2
+  const spin = prop.spin ? ` translateY(${-half}px) rotate(${prop.spin}deg) translateY(${half}px)` : ''
+  node.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(${prop.rotation}deg) scale(${(prop.flip ? -1 : 1) * prop.squashX}, ${prop.squashY})${spin}`
+  node.style.filter = prop.glow ? `brightness(${1 + 0.35 * prop.glow}) drop-shadow(0 0 ${(4 * prop.glow).toFixed(1)}px rgba(255, 236, 170, 0.85))` : ''
   node.style.backgroundImage = `url(${clip.image})`
   node.style.backgroundSize = `${clip.frames * prop.width}px ${prop.height}px`
   node.style.backgroundPositionX = `${-prop.frameIndex * prop.width}px`

@@ -172,6 +172,19 @@ impl Platform for NativePlatform {
         super::macos_ax::ask();
     }
 
+    fn focus_window(&self, window: &WindowInfo) -> Result<(), String> {
+        extern "C" {
+            fn perch_app_activate(pid: i32) -> i32;
+        }
+        let pid = window.pid.ok_or("That window's app is unknown.")?;
+        // A biome stands on its app's front window, so bringing the app
+        // forward brings that window with it.
+        match unsafe { perch_app_activate(pid as i32) } {
+            1 => Ok(()),
+            _ => Err("macOS would not bring that app forward.".into()),
+        }
+    }
+
     fn set_window_frame(&self, window: &WindowInfo, to: Rect) -> Result<(), String> {
         let pid = window.pid.ok_or("That window's app is unknown.")?;
         let scale = engine_scale();
