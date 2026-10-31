@@ -286,6 +286,49 @@ async fn pet_action(
     Ok(app.snapshot())
 }
 
+/// Start Decorate mode from the companion or a pet's bubble.
+#[tauri::command]
+async fn biome_decorate_start(state: State<'_, Shared>) -> Result<(), String> {
+    locked(&state)?.engine.start_decorating();
+    Ok(())
+}
+
+/// The overlay was clicked while picking a window, at overlay-local logical
+/// pixels; Rust works out which window and which app.
+#[tauri::command]
+async fn biome_pick(point: (f64, f64), state: State<'_, Shared>) -> Result<(), String> {
+    let mut app = locked(&state)?;
+    let monitor = app
+        .engine
+        .monitors
+        .first()
+        .copied()
+        .ok_or("There is no pet screen right now.")?;
+    let point = Point::new(
+        monitor.bounds.x + point.0 * monitor.scale,
+        monitor.bounds.y + point.1 * monitor.scale,
+    );
+    app.engine.request_pick(point);
+    Ok(())
+}
+
+#[tauri::command]
+async fn biome_decorate(
+    change: crate::engine::Decoration,
+    state: State<'_, Shared>,
+) -> Result<(), String> {
+    let mut app = locked(&state)?;
+    app.engine.decorate(change)?;
+    app.dirty = true;
+    Ok(())
+}
+
+#[tauri::command]
+async fn biome_decorate_end(state: State<'_, Shared>) -> Result<(), String> {
+    locked(&state)?.engine.end_decorating();
+    Ok(())
+}
+
 #[tauri::command]
 async fn delete_biome(
     id: u64,
@@ -994,6 +1037,10 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             set_reduced_motion,
             delete_biome,
             set_pet_home,
+            biome_decorate_start,
+            biome_pick,
+            biome_decorate,
+            biome_decorate_end,
             set_settings,
             set_app_icon,
             list_packs,
@@ -1884,6 +1931,10 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
             })
             .collect();
         let mut used: Vec<String> = props.iter().map(|p| p.decor.clone()).collect();
+        // The palette shows every installed prop while decorating.
+        if engine.edit.is_some() {
+            used.extend(engine.decor.keys().cloned());
+        }
         used.sort();
         used.dedup();
         let decor = renderer
@@ -1918,11 +1969,23 @@ fn plan_render(app: &mut App, renderer: &NativeSurface, resting: bool) -> Render
                 }
             }
         }
+        let edit = engine.edit_view().map(|view| {
+            let edge = windows_mgr::to_local(Point::new(view.edge_x, view.edge_y), monitor);
+            crate::biome::edit::EditView {
+                edge_x: edge.x,
+                edge_y: edge.y,
+                edge_width: view.edge_width / monitor.scale,
+                ..view
+            }
+        });
+        // Decorating needs every click, on the window being decorated too.
+        interactive |= edit.is_some();
         plan.interactive.push((monitor.id, interactive));
         plan.scenes.push(Scene {
             monitor: monitor.id,
             frames,
             props,
+            edit,
             debug: engine.settings.debug.then(|| debug_overlay(app, monitor)),
         });
     }

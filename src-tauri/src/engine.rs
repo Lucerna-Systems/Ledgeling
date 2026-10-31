@@ -3,7 +3,10 @@
 //! replaying a window-layout timeline through a mock platform.
 use crate::{
     awareness::{Awareness, AwarenessSummary},
-    biome::{Biomes, PropFrame},
+    biome::{
+        edit::{self, Edit, EditView},
+        Biomes, PropFrame,
+    },
     packs::{
         decor::{self, DecorPack},
         loader, LocomotionClass, Pack,
@@ -26,6 +29,16 @@ const FAST_SCAN_WINDOW: f64 = 2.;
 /// A window edge moving faster than this looks alarming to a pet on it.
 const STARTLING_SPEED: f64 = 900.;
 const MIN_SEGMENT: f64 = 48.;
+
+/// One change to the biome being decorated.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Decoration {
+    Place { decor: String, prop: String, x: f64 },
+    Move { index: usize, x: f64 },
+    Flip { index: usize },
+    Remove { index: usize },
+}
 
 pub struct Engine {
     pub packs: HashMap<String, Arc<Pack>>,
@@ -52,6 +65,13 @@ pub struct Engine {
     /// The OS asks for reduced motion; treated as squish and wobble off.
     pub reduced_motion: bool,
     pub biomes: Biomes,
+    /// Decorate mode, while the user is building a biome.
+    pub edit: Option<Edit>,
+    /// Why the last Decorate step did not happen, in plain words.
+    pub edit_error: Option<String>,
+    /// A click the overlay reported while picking a window, served on the
+    /// next tick, where the platform is at hand.
+    pending_pick: Option<Point>,
     tracker: SurfaceTracker,
     next_id: u64,
     clock: f64,
@@ -87,6 +107,9 @@ impl Engine {
             sounds: Vec::new(),
             reduced_motion: false,
             biomes: Biomes::default(),
+            edit: None,
+            edit_error: None,
+            pending_pick: None,
             tracker: SurfaceTracker::default(),
             next_id: 1,
             clock: 0.,
@@ -167,6 +190,116 @@ impl Engine {
             self.pet_scale(),
         );
         self.biomes.frames(&placed)
+    }
+
+    /// Start Decorate mode: the next click on a window picks it.
+    pub fn start_decorating(&mut self) {
+        self.edit = Some(Edit::Picking);
+        self.edit_error = None;
+        self.pending_pick = None;
+    }
+
+    pub fn end_decorating(&mut self) {
+        self.edit = None;
+        self.edit_error = None;
+        self.pending_pick = None;
+    }
+
+    /// The user clicked here while picking a window, in physical pixels.
+    pub fn request_pick(&mut self, point: Point) {
+        if self.edit == Some(Edit::Picking) {
+            self.pending_pick = Some(point);
+        }
+    }
+
+    /// Find the app of the clicked window and open its biome, making one if
+    /// needed. Reading the app's name is what the user asked for here.
+    fn serve_pick(&mut self, platform: &dyn Platform) {
+        let Some(point) = self.pending_pick.take() else {
+            return;
+        };
+        let Some(window) = self
+            .windows
+            .iter()
+            .find(|w| !w.is_minimized && w.rect.contains(point))
+        else {
+            self.edit_error =
+                Some("There's no window there. Click the window you want to decorate.".into());
+            return;
+        };
+        let Some(app) = crate::biome::apps::app_of(window, platform) else {
+            self.edit_error = Some(
+                "This desktop doesn't say which app owns that window, so it can't hold a biome."
+                    .into(),
+            );
+            return;
+        };
+        match edit::adopt(&mut self.settings.biomes, &app) {
+            Ok(biome) => {
+                self.edit = Some(Edit::Editing { biome });
+                self.edit_error = None;
+                self.settings.effects.biomes = true;
+                self.settings_changed = true;
+                self.biomes
+                    .update_hosts(&self.settings.biomes, &self.windows, platform);
+                self.rebuild();
+            }
+            Err(error) => self.edit_error = Some(error),
+        }
+    }
+
+    /// Apply one Decorate change to the biome being edited.
+    pub fn decorate(&mut self, change: Decoration) -> Result<(), String> {
+        let Some(Edit::Editing { biome }) = self.edit else {
+            return Err("Decorate mode isn't on.".into());
+        };
+        let biomes = &mut self.settings.biomes;
+        let result = match change {
+            Decoration::Place { decor, prop, x } => {
+                edit::place(biomes, &self.decor, biome, &decor, &prop, x).map(|_| ())
+            }
+            Decoration::Move { index, x } => edit::move_to(biomes, biome, index, x),
+            Decoration::Flip { index } => edit::flip(biomes, biome, index),
+            Decoration::Remove { index } => edit::remove(biomes, biome, index),
+        };
+        self.edit_error = result.as_ref().err().cloned();
+        if result.is_ok() {
+            self.settings_changed = true;
+            self.rebuild();
+        }
+        result
+    }
+
+    /// What the overlay shows while decorating, positions in physical pixels.
+    pub fn edit_view(&self) -> Option<EditView> {
+        let edit = self.edit?;
+        let palette = edit::palette(&self.decor);
+        let mut view = EditView {
+            picking: edit == Edit::Picking,
+            biome: None,
+            app: None,
+            edge_x: 0.,
+            edge_y: 0.,
+            edge_width: 0.,
+            props: Vec::new(),
+            palette,
+            error: self.edit_error.clone(),
+        };
+        if let Edit::Editing { biome } = edit {
+            let setting = self.settings.biomes.iter().find(|b| b.id == biome)?;
+            let host = self.biomes.hosts.get(&biome)?;
+            let edge = self
+                .surfaces
+                .iter()
+                .find(|s| s.owner == *host && s.kind == world::SurfaceKind::WindowTop)?;
+            view.biome = Some(biome);
+            view.app = Some(setting.app.clone());
+            view.edge_x = edge.span_start.x;
+            view.edge_y = edge.span_start.y;
+            view.edge_width = edge.span_end.x - edge.span_start.x;
+            view.props = setting.props.clone();
+        }
+        Some(view)
     }
 
     /// Make a biome this pet's home, or none.
@@ -430,6 +563,13 @@ impl Engine {
             return;
         }
         self.scan(platform);
+        self.serve_pick(platform);
+        // Decorating a biome whose window has gone is over.
+        if let Some(Edit::Editing { biome }) = self.edit {
+            if !self.biomes.hosts.contains_key(&biome) {
+                self.end_decorating();
+            }
+        }
         if self.pending_welcome && !self.surfaces.is_empty() {
             self.welcome();
         }

@@ -162,6 +162,13 @@ describe('biomes', () => {
     wrapper.unmount()
   })
 
+  it('starts decorate mode from settings', async () => {
+    const wrapper = mount(SettingsPanel)
+    await wrapper.findAll('button').find(b => b.text() === 'Decorate')!.trigger('click')
+    expect(api.invoke).toHaveBeenCalledWith('biome_decorate_start', {})
+    wrapper.unmount()
+  })
+
   it('switches off without forgetting squish and wobble', async () => {
     const wrapper = mount(SettingsPanel)
     await wrapper.get('[aria-label="Show biomes"]').trigger('click')

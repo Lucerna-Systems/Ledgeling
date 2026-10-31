@@ -28,6 +28,8 @@ const pace = computed(() => {
 const jelly = computed(() => settings.value?.effects?.jelly ?? true)
 const biomes = computed(() => settings.value?.effects?.biomes ?? true)
 
+async function decorate() { await call('biome_decorate_start') }
+
 async function removeBiome(id: number) {
   const next = await call<Snapshot>('delete_biome', { id }, false)
   if (next) snapshot.value = next
@@ -187,7 +189,10 @@ const neverSeen = [
       <div><h3>{{ biome.app }}</h3><p>{{ biome.props.length }} {{ biome.props.length === 1 ? 'prop' : 'props' }}, on its front window.</p></div>
       <button type="button" class="text-link" :aria-label="`Remove the ${biome.app} biome`" @click="removeBiome(biome.id)">Remove</button>
     </div>
-    <div v-if="!settings?.biomes?.length" class="setting-row"><div><p>No biomes yet.</p></div></div>
+    <div class="setting-row">
+      <div><h3>Decorate a window</h3><p>Click a window, then drag trees and flowers onto its top edge.</p></div>
+      <button type="button" @click="decorate">Decorate</button>
+    </div>
   </section>
 
   <h2 class="group-title">General</h2>

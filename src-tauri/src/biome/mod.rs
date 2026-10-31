@@ -5,6 +5,7 @@
 //! What is saved lives in `Settings::biomes`; everything here besides those
 //! types is runtime state rebuilt from the windows on screen.
 pub mod apps;
+pub mod edit;
 
 use crate::{
     jelly::{Jelly, JellyParams, Spring1},

@@ -874,6 +874,54 @@ fn a_lone_pet_never_greets_anyone() {
 }
 
 #[test]
+fn decorating_picks_a_window_makes_its_biome_and_places_props() {
+    use ledgeling::{biome::edit::Edit, engine::Decoration, world::Point};
+    let safari = win(1, 100., 500., 600., 300.).with_pid(7);
+    let (mut engine, platform) = biome_engine(vec![vec![safari]], |s| s.biomes.clear());
+    run(&mut engine, &platform, 1.);
+    engine.start_decorating();
+    engine.request_pick(Point::new(50., 50.));
+    run(&mut engine, &platform, 0.1);
+    assert!(engine
+        .edit_error
+        .as_deref()
+        .is_some_and(|e| e.contains("no window")));
+    assert_eq!(engine.edit, Some(Edit::Picking), "still picking");
+
+    engine.request_pick(Point::new(300., 600.));
+    run(&mut engine, &platform, 0.1);
+    let Some(Edit::Editing { biome }) = engine.edit else {
+        panic!("not editing: {:?} {:?}", engine.edit, engine.edit_error);
+    };
+    assert_eq!(engine.settings.biomes.len(), 1);
+    assert_eq!(engine.settings.biomes[0].app, "safari");
+    let view = engine
+        .edit_view()
+        .expect("the overlay has something to show");
+    assert_eq!(
+        (view.edge_x, view.edge_y, view.edge_width),
+        (100., 500., 600.)
+    );
+    assert_eq!(view.palette.len(), 7);
+
+    engine
+        .decorate(Decoration::Place {
+            decor: "com.perch.decor-meadow".into(),
+            prop: "bush".into(),
+            x: 0.25,
+        })
+        .unwrap();
+    run(&mut engine, &platform, 0.1);
+    let props = engine.prop_frames();
+    assert_eq!(props.len(), 1);
+    assert!((props[0].x - 250.).abs() < 1., "a quarter along the edge");
+    assert!(engine.decorate(Decoration::Remove { index: 3 }).is_err());
+    engine.end_decorating();
+    assert!(engine.edit.is_none());
+    assert_eq!(engine.settings.biomes[0].id, biome, "the biome stays");
+}
+
+#[test]
 fn a_dropdown_in_front_of_its_window_never_takes_the_biome() {
     // Typing in a browser's address bar opens its suggestions as a separate
     // window of the same app, in front, just under the toolbar.

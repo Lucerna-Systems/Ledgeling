@@ -49,6 +49,7 @@ export interface Scene {
   monitor: number
   frames: Frame[]
   props: PropFrame[]
+  edit: EditView | null
   debug: DebugOverlay | null
 }
 
@@ -154,6 +155,19 @@ export interface PropFrame {
   squashY: number
   flip: boolean
 }
+/** Decorate mode as the overlay shows it, in overlay-local logical pixels. */
+export interface EditView {
+  picking: boolean
+  biome: number | null
+  app: string | null
+  edgeX: number
+  edgeY: number
+  edgeWidth: number
+  props: PlacedProp[]
+  palette: PaletteItem[]
+  error: string | null
+}
+export interface PaletteItem { decor: string; prop: string; width: number; height: number }
 export interface PropAtlas { image: string; frames: number; fps: number; width: number; height: number }
 export interface DecorPayload { decor: string; atlas: Record<string, PropAtlas> }
 
