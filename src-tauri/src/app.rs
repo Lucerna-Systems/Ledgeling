@@ -760,6 +760,24 @@ async fn save_studio_pack(
     Ok(summary)
 }
 
+/// Studio's Decor mode: save a decor pack and load it, so its props show up
+/// in Decorate mode straight away.
+#[tauri::command]
+async fn save_decor_pack(
+    manifest: String,
+    sprites: Vec<crate::packs::studio::StudioImage>,
+    window: WebviewWindow,
+    state: State<'_, Shared>,
+) -> Result<String, String> {
+    if window.label() != "main" {
+        return Err("Decor can only be saved from the companion window.".into());
+    }
+    let dir = locked(&state)?.packs_dir.clone();
+    let id = crate::packs::studio::save_decor(&dir, &manifest, &sprites)?;
+    locked(&state)?.engine.reload_packs(&dir);
+    Ok(id)
+}
+
 /// Pet Studio: hand a pack's manifest and decoded sprites to the editor.
 #[tauri::command]
 async fn studio_open_pack(
@@ -1078,6 +1096,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             uninstall_pack,
             new_pack,
             save_studio_pack,
+            save_decor_pack,
             export_pack,
             spawn_pet,
             despawn_pet,

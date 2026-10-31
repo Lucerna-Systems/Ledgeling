@@ -4,6 +4,10 @@ A decor pack is a set of props (trees, flowers, rocks) that people place on the
 top edge of an app's window to make a **biome**. Like a pet pack, it is data:
 PNG sprites and one JSON file, never code.
 
+You can also draw one in **Studio → Decor**: name the pack, add props, pick a
+size, a sway and an optional ledge, draw each one, and save. Studio writes the
+same folder as below and checks it with the same loader.
+
 ## The folder
 
 ```
