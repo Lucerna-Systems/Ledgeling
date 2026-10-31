@@ -110,6 +110,10 @@ pub struct Snapshot {
     pub scan_ms: f64,
     pub scan_error: Option<String>,
     pub suspended: bool,
+    /// Whether "make room at the top" may move windows here.
+    pub resize_access: crate::platform::ResizeAccess,
+    /// Why "make room at the top" last failed to move a window.
+    pub room_error: Option<String>,
     pub notes: Vec<String>,
     pub packs_dir: String,
     pub native: bool,
@@ -199,6 +203,8 @@ impl App {
             scan_ms: engine.scan_ms,
             scan_error: engine.scan_error.clone(),
             suspended: engine.suspended,
+            resize_access: engine.resize_access,
+            room_error: engine.room.last_error.clone(),
             notes: self.notes.clone(),
             packs_dir: self.packs_dir.to_string_lossy().to_string(),
             native: true,
@@ -886,10 +892,26 @@ fn pet_pointer(point: Option<(f64, f64)>, window: WebviewWindow, state: State<'_
 fn quit_app(app: tauri::AppHandle, window: WebviewWindow, state: State<'_, Shared>) {
     if window.label() == "main" {
         if let Ok(mut shared) = state.inner().lock() {
+            release_windows(&mut shared);
             let _ = shared.persist();
         }
         app.exit(0);
     }
+}
+
+/// Windows that "make room at the top" moved go back before Ledgeling exits.
+fn release_windows(app: &mut App) {
+    // A unit struct everywhere but Linux, where nothing is ever moved.
+    #[allow(clippy::default_constructed_unit_structs)]
+    let platform = NativePlatform::default();
+    app.engine.release_windows(&platform);
+}
+
+/// Show the system's permission prompt for moving windows (macOS).
+#[tauri::command]
+async fn request_resize_access(state: State<'_, Shared>) -> Result<(), String> {
+    locked(&state)?.engine.request_resize_access();
+    Ok(())
 }
 
 // ---------------------------------------------------------------------- setup
@@ -1041,6 +1063,7 @@ pub fn run(context: tauri::Context<tauri::Wry>) {
             biome_pick,
             biome_decorate,
             biome_decorate_end,
+            request_resize_access,
             set_settings,
             set_app_icon,
             list_packs,
@@ -1561,6 +1584,7 @@ fn handle_menu(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
         }
         "quit" => {
             if let Ok(mut app_state) = app.state::<Shared>().inner().lock() {
+                release_windows(&mut app_state);
                 let _ = app_state.persist();
             }
             app.exit(0);

@@ -1,7 +1,7 @@
 //! Scripted platform for integration tests: replay a window-layout timeline so
 //! "the user dragged a window while the squirrel was climbing it" is repeatable.
-use super::{Platform, ProcessInfo};
-use crate::world::{MonitorInfo, Point, WindowInfo};
+use super::{Platform, ProcessInfo, ResizeAccess};
+use crate::world::{MonitorInfo, Point, Rect, WindowInfo};
 use std::{collections::HashMap, sync::Mutex};
 
 #[derive(Default)]
@@ -19,6 +19,12 @@ pub struct MockPlatform {
     pub names: Mutex<HashMap<u32, String>>,
     /// How many times a name was asked for, so tests can see the cache work.
     pub name_lookups: Mutex<usize>,
+    pub access: Mutex<ResizeAccess>,
+    /// Every window move asked for, in order. A move also changes the window
+    /// in the current timeline frame, as the real desktop would.
+    pub moves: Mutex<Vec<(u64, Rect)>>,
+    /// Windows that refuse to be moved, like an elevated app on Windows.
+    pub stubborn: Mutex<Vec<u64>>,
 }
 impl MockPlatform {
     pub fn new(monitors: Vec<MonitorInfo>, frames: Vec<Vec<WindowInfo>>) -> Self {
@@ -64,5 +70,24 @@ impl Platform for MockPlatform {
     }
     fn mouse_down(&self) -> Option<bool> {
         Some(*self.mouse_down.lock().unwrap())
+    }
+    fn resize_access(&self) -> ResizeAccess {
+        *self.access.lock().unwrap()
+    }
+    fn set_window_frame(&self, window: &WindowInfo, to: Rect) -> Result<(), String> {
+        if *self.access.lock().unwrap() != ResizeAccess::Granted {
+            return Err("No permission.".into());
+        }
+        if self.stubborn.lock().unwrap().contains(&window.id) {
+            return Err("That window refused.".into());
+        }
+        self.moves.lock().unwrap().push((window.id, to));
+        let i = *self.cursor_frame.lock().unwrap();
+        if let Some(frame) = self.frames.lock().unwrap().get_mut(i) {
+            for w in frame.iter_mut().filter(|w| w.id == window.id) {
+                w.rect = to;
+            }
+        }
+        Ok(())
     }
 }

@@ -56,6 +56,21 @@ The one name that is saved is the one you chose: making a biome for Safari write
 `safari` into that biome in `settings.json`. Removing the biome under **Settings →
 Biomes** removes the name with it.
 
+## Moving windows ("make room at the top")
+
+Off unless you switch it on in **Settings → Biomes**. When it is on, and a window
+touching the top of the screen has a pet or a biome on its top edge, Ledgeling
+moves that window's top edge down by the height of what stands there, and puts it
+back when they leave, when you switch the feature off, or when Ledgeling quits.
+A window you have moved or resized since is left as you put it.
+
+On macOS this needs the Accessibility permission, which Ledgeling asks for only
+after you switch the feature on, through the system's own prompt. Ledgeling uses
+it to read and set one thing: a window's position and size. Nothing else a window
+exposes is read. On Windows no permission is needed; windows of apps running as
+administrator cannot be moved and are left alone. Linux does not offer this, so
+pets simply keep off those edges.
+
 ## How this is enforced
 
 `src-tauri/tests/privacy.rs` fails the build if any source file references a

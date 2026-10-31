@@ -44,6 +44,15 @@ extern "system" {
     fn GetLastInputInfo(info: *mut LastInputInfo) -> Bool;
     fn GetCursorPos(point: *mut PointW) -> Bool;
     fn GetAncestor(window: Handle, flags: u32) -> Handle;
+    fn SetWindowPos(
+        window: Handle,
+        after: Handle,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        flags: u32,
+    ) -> Bool;
     fn SetWindowLongPtrW(window: Handle, index: i32, value: isize) -> isize;
     fn SetPropW(window: Handle, name: *const u16, data: isize) -> Bool;
     fn GetPropW(window: Handle, name: *const u16) -> isize;
@@ -338,6 +347,48 @@ impl Platform for NativePlatform {
 
     fn process_name(&self, pid: u32) -> Option<String> {
         executable_name(pid)
+    }
+
+    fn resize_access(&self) -> super::ResizeAccess {
+        super::ResizeAccess::Granted
+    }
+
+    /// `to` is in visible-frame terms (what `enumerate_windows` reports);
+    /// `SetWindowPos` wants the outer rectangle, invisible borders included.
+    fn set_window_frame(&self, window: &WindowInfo, to: Rect) -> Result<(), String> {
+        const SWP_NOZORDER: u32 = 0x0004;
+        const SWP_NOACTIVATE: u32 = 0x0010;
+        const SWP_NOOWNERZORDER: u32 = 0x0200;
+        let handle = window.id as Handle;
+        unsafe {
+            let mut outer = RectW::default();
+            if GetWindowRect(handle, &mut outer) == 0 {
+                return Err("That window is gone.".into());
+            }
+            let mut visible = outer;
+            DwmGetWindowAttribute(
+                handle,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &mut visible as *mut RectW as *mut std::ffi::c_void,
+                std::mem::size_of::<RectW>() as u32,
+            );
+            let (left, top) = (visible.left - outer.left, visible.top - outer.top);
+            let (right, bottom) = (outer.right - visible.right, outer.bottom - visible.bottom);
+            let moved = SetWindowPos(
+                handle,
+                0,
+                to.x.round() as i32 - left,
+                to.y.round() as i32 - top,
+                to.width.round() as i32 + left + right,
+                to.height.round() as i32 + top + bottom,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            );
+            if moved == 0 {
+                // An app running as administrator ignores a normal app.
+                return Err("Windows would not let Ledgeling move that window.".into());
+            }
+        }
+        Ok(())
     }
 
     fn monitors(&self) -> Result<Vec<MonitorInfo>, String> {

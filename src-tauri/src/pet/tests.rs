@@ -55,6 +55,7 @@ impl World {
             attention: None,
             jelly: true,
             home: &[],
+            cramped: &[],
         }
     }
 }

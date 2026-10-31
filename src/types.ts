@@ -166,6 +166,8 @@ export interface EditView {
   props: PlacedProp[]
   palette: PaletteItem[]
   error: string | null
+  /** Why props here may be cut off by the top of the screen, if they are. */
+  notice: string | null
 }
 export interface PaletteItem { decor: string; prop: string; width: number; height: number }
 export interface PropAtlas { image: string; frames: number; fps: number; width: number; height: number }
@@ -177,6 +179,8 @@ export interface Effects {
   jelly: boolean
   /** Biomes are drawn on their windows. Off, they are kept but not shown. */
   biomes: boolean
+  /** Move a window's top down when a pet or biome on it would be cut off. */
+  makeRoom?: boolean
 }
 
 export interface SessionSummary {
@@ -240,6 +244,10 @@ export interface Snapshot {
   scanMs: number
   scanError: string | null
   suspended: boolean
+  /** Whether "make room at the top" may move windows on this desktop. */
+  resizeAccess?: 'granted' | 'needs_permission' | 'unsupported'
+  /** Why "make room at the top" last failed to move a window. */
+  roomError?: string | null
   notes: string[]
   packsDir: string
   native: boolean

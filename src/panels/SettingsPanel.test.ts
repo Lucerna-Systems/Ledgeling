@@ -178,3 +178,32 @@ describe('biomes', () => {
     wrapper.unmount()
   })
 })
+
+describe('make room at the top', () => {
+  it('is off by default and turns on through set_settings', async () => {
+    const wrapper = mount(SettingsPanel)
+    const toggle = wrapper.get('[aria-label="Make room at the top"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    await toggle.trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['set_settings', {
+      settings: { ...baseSettings, effects: { jelly: true, biomes: true, makeRoom: true } },
+    }])
+    wrapper.unmount()
+  })
+
+  it('explains the missing permission and opens the system prompt', async () => {
+    snapshot.value = { settings: { ...baseSettings, effects: { jelly: true, biomes: true, makeRoom: true } }, resizeAccess: 'needs_permission' } as unknown as Snapshot
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.text()).toContain('Accessibility permission')
+    await wrapper.findAll('button').find(b => b.text() === 'Allow in System Settings')!.trigger('click')
+    expect(api.invoke).toHaveBeenCalledWith('request_resize_access', {})
+    wrapper.unmount()
+  })
+})
+
+it('says why the last window could not be moved', () => {
+  snapshot.value = { settings: { ...baseSettings, effects: { jelly: true, biomes: true, makeRoom: true } }, resizeAccess: 'granted', roomError: 'That window could not be found to move it.' } as unknown as Snapshot
+  const wrapper = mount(SettingsPanel)
+  expect(wrapper.text()).toContain("couldn't be moved: That window could not be found")
+  wrapper.unmount()
+})

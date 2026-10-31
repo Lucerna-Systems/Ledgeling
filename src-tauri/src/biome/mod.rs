@@ -100,6 +100,8 @@ pub struct Placed<'a> {
     pub slot: usize,
     pub index: usize,
     pub biome: u64,
+    /// The window it stands on.
+    pub host: u64,
     /// Where the prop stands on its window's top edge.
     pub base: Point,
     pub width: f64,
@@ -241,6 +243,7 @@ impl Biomes {
                         slot,
                         index,
                         biome: biome.id,
+                        host,
                         base,
                         width: def.width * scale,
                         height: def.height * scale,
@@ -291,6 +294,20 @@ impl Biomes {
                 })
             })
             .collect()
+    }
+
+    /// How tall the tallest prop in this biome stands, physical pixels.
+    pub fn height(
+        biome: &BiomeSetting,
+        decor: &HashMap<String, Arc<DecorPack>>,
+        scale: f64,
+    ) -> f64 {
+        biome
+            .props
+            .iter()
+            .filter_map(|p| decor.get(&p.decor)?.manifest.props.get(&p.prop))
+            .map(|def| def.height * scale)
+            .fold(0., f64::max)
     }
 
     /// Where a pet whose home is this biome likes to be: the window's top

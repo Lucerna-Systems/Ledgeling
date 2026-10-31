@@ -921,6 +921,115 @@ fn decorating_picks_a_window_makes_its_biome_and_places_props() {
     assert_eq!(engine.settings.biomes[0].id, biome, "the biome stays");
 }
 
+fn room_engine(
+    make_room: bool,
+    access: ledgeling::platform::ResizeAccess,
+) -> (Engine, MockPlatform) {
+    let flush = win(1, 200., 0., 900., 700.).with_pid(7);
+    let (mut engine, platform) =
+        biome_engine(vec![vec![flush]], |s| s.effects.make_room = make_room);
+    *platform.access.lock().unwrap() = access;
+    *platform.idle.lock().unwrap() = 10.;
+    run(&mut engine, &platform, 2.5);
+    (engine, platform)
+}
+
+#[test]
+fn make_room_waits_while_you_work_and_pets_never_move_a_window() {
+    // Busy: input a moment ago, so nothing moves yet.
+    let flush = win(1, 200., 0., 900., 700.).with_pid(7);
+    let (mut engine, platform) =
+        biome_engine(vec![vec![flush.clone()]], |s| s.effects.make_room = true);
+    *platform.access.lock().unwrap() = ledgeling::platform::ResizeAccess::Granted;
+    run(&mut engine, &platform, 3.);
+    assert!(
+        platform.moves.lock().unwrap().is_empty(),
+        "not while typing"
+    );
+    *platform.idle.lock().unwrap() = 5.;
+    run(&mut engine, &platform, 1.);
+    assert_eq!(
+        platform.moves.lock().unwrap().len(),
+        1,
+        "once the user pauses"
+    );
+
+    // A pet standing on a window with no biome never makes it move.
+    let slack = win(2, 200., 0., 900., 700.).with_pid(9);
+    let (mut engine, platform) = biome_engine(vec![vec![slack]], |s| {
+        s.effects.make_room = true;
+        s.biomes.clear();
+    });
+    *platform.access.lock().unwrap() = ledgeling::platform::ResizeAccess::Granted;
+    *platform.idle.lock().unwrap() = 10.;
+    run(&mut engine, &platform, 1.);
+    engine.spawn("com.perch.squirrel-red").unwrap();
+    run(&mut engine, &platform, 20.);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert_eq!(
+        engine.cramped,
+        vec![2],
+        "its edge has no room, so pets keep off it"
+    );
+}
+
+#[test]
+fn make_room_off_never_touches_a_window() {
+    let (engine, platform) = room_engine(false, ledgeling::platform::ResizeAccess::Granted);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert!(
+        engine.cramped.is_empty(),
+        "nothing changes for anyone who did not ask"
+    );
+    assert_eq!(
+        engine.prop_frames().len(),
+        2,
+        "the biome still draws, clipped as before"
+    );
+}
+
+#[test]
+fn make_room_moves_a_biome_window_down_by_its_tallest_prop() {
+    let (mut engine, platform) = room_engine(true, ledgeling::platform::ResizeAccess::Granted);
+    let moves = platform.moves.lock().unwrap().clone();
+    assert_eq!(moves.len(), 1, "{moves:?}");
+    let (window, to) = moves[0];
+    assert_eq!(window, 1);
+    assert_eq!(to.y, 64. + 8., "the oak is 64 px tall, plus a margin");
+    assert_eq!(to.bottom(), 700., "the bottom stays put");
+    run(&mut engine, &platform, 1.);
+    assert!(engine.prop_frames().iter().all(|p| (p.y - 72.).abs() < 2.));
+    // Switching it off puts the window back.
+    engine.settings.effects.make_room = false;
+    run(&mut engine, &platform, 1.);
+    assert_eq!(platform.moves.lock().unwrap().last().unwrap().1.y, 0.);
+}
+
+#[test]
+fn without_permission_nothing_moves_and_pets_keep_off_but_props_still_show() {
+    let (mut engine, platform) =
+        room_engine(true, ledgeling::platform::ResizeAccess::NeedsPermission);
+    assert!(platform.moves.lock().unwrap().is_empty());
+    assert_eq!(engine.cramped, vec![1]);
+    assert_eq!(
+        engine.prop_frames().len(),
+        2,
+        "the user's own decorations are never hidden"
+    );
+    assert!(prop_ledges(&engine).is_empty(), "but no pet sits in them");
+    engine.start_decorating();
+    engine.request_pick(ledgeling::world::Point::new(500., 300.));
+    run(&mut engine, &platform, 0.1);
+    let notice = engine
+        .edit_view()
+        .and_then(|v| v.notice)
+        .unwrap_or_default();
+    assert!(
+        notice.contains("Accessibility"),
+        "Decorate says why: {notice}"
+    );
+}
+
 #[test]
 fn a_dropdown_in_front_of_its_window_never_takes_the_biome() {
     // Typing in a browser's address bar opens its suggestions as a separate

@@ -30,6 +30,8 @@ pub struct EditView {
     pub props: Vec<PlacedProp>,
     pub palette: Vec<PaletteItem>,
     pub error: Option<String>,
+    /// Why props here may be cut off by the top of the screen, if they are.
+    pub notice: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

@@ -12,7 +12,8 @@ use crate::{
         loader, LocomotionClass, Pack,
     },
     pet::{fsm::Rng, spawn_point, Bond, Peer, Pet, WorldView},
-    platform::Platform,
+    platform::{Platform, ResizeAccess},
+    room::{Need, Room},
     settings::{clean_name, PetSetting, Settings},
     world::{
         self, virtual_desktop, MonitorInfo, Point, Rect, Surface, SurfaceChange, SurfaceGraph,
@@ -29,6 +30,11 @@ const FAST_SCAN_WINDOW: f64 = 2.;
 /// A window edge moving faster than this looks alarming to a pet on it.
 const STARTLING_SPEED: f64 = 900.;
 const MIN_SEGMENT: f64 = 48.;
+/// Room above a window's top edge, logical pixels, below which a pet standing
+/// there would be cut off by the top of the screen.
+const CRAMPED_HEIGHT: f64 = 56.;
+/// Seconds without keyboard or mouse input before a window may be moved.
+const IDLE_BEFORE_MOVING: f64 = 2.;
 
 /// One change to the biome being decorated.
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -72,6 +78,14 @@ pub struct Engine {
     /// A click the overlay reported while picking a window, served on the
     /// next tick, where the platform is at hand.
     pending_pick: Option<Point>,
+    pub room: Room,
+    /// Whether windows may be moved, as the platform last said. Only asked
+    /// while "make room at the top" is on.
+    pub resize_access: ResizeAccess,
+    /// The user asked to be shown the system's permission prompt.
+    access_requested: bool,
+    /// Windows with no room above them that could not be given any.
+    pub cramped: Vec<u64>,
     tracker: SurfaceTracker,
     next_id: u64,
     clock: f64,
@@ -110,6 +124,10 @@ impl Engine {
             edit: None,
             edit_error: None,
             pending_pick: None,
+            room: Room::default(),
+            resize_access: ResizeAccess::Unsupported,
+            access_requested: false,
+            cramped: Vec::new(),
             tracker: SurfaceTracker::default(),
             next_id: 1,
             clock: 0.,
@@ -161,15 +179,107 @@ impl Engine {
 
     fn rebuild(&mut self) {
         self.surfaces = world::surfaces(&self.windows, &self.monitors, MIN_SEGMENT);
+        self.cramped = self.find_cramped();
         if self.settings.effects.biomes {
             let scale = self.pet_scale();
-            let placed =
+            let mut placed =
                 self.biomes
                     .layout(&self.settings.biomes, &self.decor, &self.surfaces, scale);
+            // Props on a cramped window are still drawn (they are the user's),
+            // but a pet sitting in them would be cut off.
+            placed.retain(|p| !self.cramped.contains(&p.host));
             let ledges = Biomes::prop_surfaces(&placed, scale);
             self.surfaces.extend(ledges);
         }
         self.graph = SurfaceGraph::build(&self.surfaces);
+    }
+
+    /// Windows against the top of the screen whose top edge cannot be given
+    /// room. Only while the user wants room made: without it, nothing changes.
+    fn find_cramped(&self) -> Vec<u64> {
+        if !self.settings.effects.make_room {
+            return Vec::new();
+        }
+        let Some(monitor) = self.monitors.first() else {
+            return Vec::new();
+        };
+        // Pets never move windows, so any top edge without room above it is
+        // one they keep off, whether or not windows can be moved here.
+        let room_for = CRAMPED_HEIGHT * monitor.scale;
+        self.windows
+            .iter()
+            .filter(|w| w.rect.y - monitor.work.y < room_for)
+            .map(|w| w.id)
+            .collect()
+    }
+
+    /// Why props on this window may be cut off by the top of the screen, and
+    /// what would help; `None` when there is room.
+    fn headroom_notice(&self, host: u64) -> Option<String> {
+        let monitor = self.monitors.first()?;
+        let window = self.windows.iter().find(|w| w.id == host)?;
+        if window.rect.y - monitor.work.y >= CRAMPED_HEIGHT * monitor.scale
+            || self.room.is_holding(host)
+        {
+            return None;
+        }
+        Some(if !self.settings.effects.make_room {
+            "This window touches the top of the screen, so tall props are cut off. Turn on Make room at the top in Settings → Biomes to fix that."
+        } else if self.resize_access == ResizeAccess::NeedsPermission {
+            "This window touches the top of the screen, so tall props are cut off. Allow Ledgeling under Accessibility (Settings → Biomes) so it can make room."
+        } else {
+            "This window touches the top of the screen and can't be moved, so tall props are cut off."
+        }
+        .into())
+    }
+
+    /// Make room above windows that need it, or put them back.
+    fn make_room(&mut self, platform: &dyn Platform) {
+        if !self.settings.effects.make_room {
+            self.room.restore_all(&self.windows, platform);
+            return;
+        }
+        let Some(monitor) = self.monitors.first().copied() else {
+            return;
+        };
+        let mut needs: Vec<Need> = Vec::new();
+        let mut need =
+            |window: u64, height: f64| match needs.iter_mut().find(|n| n.window == window) {
+                Some(n) => n.height = n.height.max(height),
+                None => needs.push(Need { window, height }),
+            };
+        if self.settings.effects.biomes {
+            for biome in &self.settings.biomes {
+                if let Some(&host) = self.biomes.hosts.get(&biome.id) {
+                    need(host, Biomes::height(biome, &self.decor, monitor.scale));
+                }
+            }
+        }
+        needs.retain(|n| n.height > 0.);
+        // Busy is a held button or input in the last moments, measured by the
+        // same idle clock the awareness layer uses. What was typed is never read.
+        let busy = platform.mouse_down() == Some(true)
+            || platform.idle_seconds().unwrap_or(0.) < IDLE_BEFORE_MOVING;
+        self.room.update(
+            self.clock,
+            &self.windows,
+            monitor.work,
+            monitor.scale,
+            &needs,
+            self.resize_access,
+            busy,
+            platform,
+        );
+    }
+
+    /// Ledgeling is quitting: windows it moved go back where they were.
+    pub fn release_windows(&mut self, platform: &dyn Platform) {
+        self.room.restore_all(&self.windows, platform);
+    }
+
+    /// Show the system's permission prompt on the next tick.
+    pub fn request_resize_access(&mut self) {
+        self.access_requested = true;
     }
 
     /// Pets live on one screen, so one scale serves every biome.
@@ -284,6 +394,7 @@ impl Engine {
             props: Vec::new(),
             palette,
             error: self.edit_error.clone(),
+            notice: None,
         };
         if let Edit::Editing { biome } = edit {
             let setting = self.settings.biomes.iter().find(|b| b.id == biome)?;
@@ -298,6 +409,7 @@ impl Engine {
             view.edge_y = edge.span_start.y;
             view.edge_width = edge.span_end.x - edge.span_start.x;
             view.props = setting.props.clone();
+            view.notice = self.headroom_notice(*host);
         }
         Some(view)
     }
@@ -557,6 +669,13 @@ impl Engine {
             // Suspending in a fullscreen app is the difference between a
             // companion and something you uninstall during a film.
             self.suspended = platform.fullscreen_app_active().unwrap_or(false);
+            if self.settings.effects.make_room {
+                self.resize_access = platform.resize_access();
+            }
+        }
+        if std::mem::take(&mut self.access_requested) {
+            platform.request_resize_access();
+            self.resize_access = platform.resize_access();
         }
         self.suspended = self.suspended || !self.screens_available || self.monitors.is_empty();
         if self.suspended || self.settings.paused || self.settings.hidden {
@@ -623,6 +742,7 @@ impl Engine {
                     .home_biome
                     .and_then(|id| homes.get(&id))
                     .map_or(&[], Vec::as_slice),
+                cramped: &self.cramped,
             };
             let mut pet_events = events.clone();
             pet.tick(dt, &view, base, &mut pet_events);
@@ -684,6 +804,7 @@ impl Engine {
         }
         self.rebuild();
         self.scan_ms = started.elapsed().as_secs_f64() * 1000.;
+        self.make_room(platform);
         for change in self.tracker.diff(&self.surfaces, elapsed) {
             if let SurfaceChange::Moved { key, speed } = change {
                 if speed > STARTLING_SPEED {
