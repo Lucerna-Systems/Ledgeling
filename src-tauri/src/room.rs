@@ -28,7 +28,8 @@ const RETRY_AFTER: f64 = 30.;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Record {
-    original_top: f64,
+    /// Where the window's top and bottom were, to put it back exactly.
+    original: Rect,
     our_top: f64,
     moved_at: f64,
     idle_since: Option<f64>,
@@ -60,7 +61,7 @@ impl Room {
         &mut self,
         clock: f64,
         windows: &[WindowInfo],
-        work_top: f64,
+        work: Rect,
         scale: f64,
         needs: &[Need],
         access: ResizeAccess,
@@ -102,9 +103,9 @@ impl Room {
                     .idle_since
                     .is_some_and(|since| clock - since >= RESTORE_AFTER)
                 {
-                    let original = record.original_top;
+                    let original = record.original;
                     self.records.remove(&window.id);
-                    let _ = platform.set_window_frame(window, with_top(window.rect, original));
+                    let _ = platform.set_window_frame(window, put_back(window.rect, original));
                 }
                 continue;
             }
@@ -114,11 +115,14 @@ impl Room {
             if self.refused(window.id) {
                 continue;
             }
-            let wanted = work_top + need.height + MARGIN * scale;
+            let wanted = work.y + need.height + MARGIN * scale;
             if window.rect.y >= wanted - 1. {
                 continue;
             }
-            let target = with_top(window.rect, wanted);
+            // The bottom stays where it was, or comes back onto the screen if
+            // it had run off it: room at the top never pushes a window down.
+            let bottom = window.rect.bottom().min(work.bottom());
+            let target = Rect::new(window.rect.x, wanted, window.rect.width, bottom - wanted);
             if target.height < MIN_HEIGHT * scale {
                 continue;
             }
@@ -128,7 +132,7 @@ impl Room {
                     self.records.insert(
                         window.id,
                         Record {
-                            original_top: window.rect.y,
+                            original: window.rect,
                             our_top: wanted,
                             moved_at: clock,
                             idle_since: None,
@@ -149,8 +153,8 @@ impl Room {
         for (id, record) in self.records.drain() {
             if let Some(window) = windows.iter().find(|w| w.id == id) {
                 if (window.rect.y - record.our_top).abs() <= TOLERANCE {
-                    let _ = platform
-                        .set_window_frame(window, with_top(window.rect, record.original_top));
+                    let _ =
+                        platform.set_window_frame(window, put_back(window.rect, record.original));
                 }
             }
         }
@@ -169,9 +173,9 @@ impl Room {
     }
 }
 
-/// The same window with its top edge at `top` and its bottom where it was.
-fn with_top(rect: Rect, top: f64) -> Rect {
-    Rect::new(rect.x, top, rect.width, rect.bottom() - top)
+/// The window as it is now, with its original top and height back.
+fn put_back(now: Rect, original: Rect) -> Rect {
+    Rect::new(now.x, original.y, now.width, original.height)
 }
 
 #[cfg(test)]
@@ -193,6 +197,14 @@ mod tests {
         platform.enumerate_windows().unwrap()
     }
 
+    /// A tall work area whose top is 25 px down, like a menu bar.
+    const WORK: Rect = Rect {
+        x: 0.,
+        y: 25.,
+        width: 2000.,
+        height: 2000.,
+    };
+
     const NEED: [Need; 1] = [Need {
         window: 1,
         height: 64.,
@@ -205,7 +217,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -219,7 +231,7 @@ mod tests {
         room.update(
             0.5,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -229,7 +241,7 @@ mod tests {
         room.update(
             3.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -246,7 +258,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -256,7 +268,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::NeedsPermission,
@@ -273,7 +285,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -283,7 +295,7 @@ mod tests {
         room.update(
             20.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &[],
             ResizeAccess::Granted,
@@ -294,7 +306,7 @@ mod tests {
         room.update(
             51.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &[],
             ResizeAccess::Granted,
@@ -313,7 +325,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -324,7 +336,7 @@ mod tests {
         room.update(
             2.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -348,7 +360,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -364,7 +376,7 @@ mod tests {
         room.update(
             0.,
             &scan(&stubborn),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -379,7 +391,7 @@ mod tests {
         room.update(
             31.,
             &windows,
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -401,7 +413,7 @@ mod tests {
         room.update(
             0.,
             &scan(&platform),
-            25.,
+            WORK,
             1.,
             &NEED,
             ResizeAccess::Granted,
@@ -409,5 +421,36 @@ mod tests {
             &platform,
         );
         assert!(platform.moves.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_window_running_off_the_bottom_is_brought_back_on_screen() {
+        let platform = platform(25.);
+        let screen = Rect::new(0., 25., 2000., 600.);
+        let mut room = Room::default();
+        let windows = scan(&platform);
+        room.update(
+            0.,
+            &windows,
+            screen,
+            1.,
+            &NEED,
+            ResizeAccess::Granted,
+            false,
+            &platform,
+        );
+        let moved = platform.moves.lock().unwrap()[0].1;
+        assert_eq!(
+            (moved.y, moved.bottom()),
+            (97., 625.),
+            "top down, bottom on screen"
+        );
+        room.restore_all(&scan(&platform), &platform);
+        let back = platform.moves.lock().unwrap().last().unwrap().1;
+        assert_eq!(
+            back,
+            Rect::new(100., 25., 800., 700.),
+            "put back exactly as it was"
+        );
     }
 }
