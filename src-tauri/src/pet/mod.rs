@@ -1480,6 +1480,9 @@ impl Pet {
     /// hop or stride stay airborne, since the whole clip shares one line.
     fn anchored_y(&self) -> f64 {
         let sprite = self.manifest().sprite;
+        if self.hangs() {
+            return 0.;
+        }
         let Some(strip) = self.pack.strip(self.clip()) else {
             return sprite.anchor_y;
         };
@@ -1488,6 +1491,16 @@ impl Pet {
         }
         let pad = (strip.height - strip.ground) as f64;
         ((sprite.anchor_y * strip.height as f64 - pad) / strip.height as f64).max(0.)
+    }
+
+    /// An upright sprite on a surface facing down (the top of the screen, a
+    /// window's underside) is never rotated, so standing on that line would
+    /// draw it behind the menu bar or on the screen above. It hangs below the
+    /// line instead, its top touching it.
+    fn hangs(&self) -> bool {
+        self.manifest().sprite.surface_orientation == crate::packs::SurfaceOrientation::Upright
+            && matches!(self.motion, Motion::Settled | Motion::Walking)
+            && self.perch.is_some_and(|p| p.key.kind.normal().y > 0.)
     }
 
     /// Where the pet is drawn: its position plus the wobble.

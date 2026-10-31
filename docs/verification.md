@@ -559,6 +559,23 @@ once by planting a fake `option_env!("LEDGELING_API_TOKEN")`, which it caught).
 Windows by hand (CI runs its tests there); `npm run dev:app` and
 `npm run build:app` were not launched.
 
+## Hand-run fixes: dropdowns, window frames, pets on the ceiling (2026-10-31)
+
+From the hand run on macOS (Chrome on the built-in display, a second monitor
+above it):
+- **Biome on the dropdown:** typing in Chrome's address bar moved the biome onto
+  the suggestions dropdown, a separate window of the same app. A window mostly
+  inside a bigger window of its own app no longer hosts a biome (timeline test).
+- **Window pushed down:** make room pushed the window down instead of shortening
+  it. AX now sets the size before the position when shrinking (and the reverse
+  when restoring), reads back the result and undoes a half-done move. The bottom
+  is kept on screen, and putting a window back restores its exact frame (unit
+  tests). Checked by a screenshot after the fix: props sit on Chrome's top edge.
+- **Pets clipped into the monitor above:** upright pets (the budgie, a Studio
+  flier) allowed on the top of the screen were drawn standing on that line,
+  behind the menu bar and on the screen above. They now hang below it (unit
+  test). Not yet looked at on screen.
+
 ## Pets keep to their home biome; make room only for biomes (2026-10-30)
 
 From the hand run: Chrome kept moving down while in use, because pets wandering
