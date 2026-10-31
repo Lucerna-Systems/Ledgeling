@@ -11,7 +11,7 @@ use crate::{
     jelly::{Jelly, JellyParams, Spring1},
     packs::decor::{DecorPack, PropDef},
     platform::Platform,
-    world::{Point, Surface, SurfaceKey, SurfaceKind, WindowInfo, PROP_OWNER_BASE},
+    world::{Point, Rect, Surface, SurfaceKey, SurfaceKind, WindowInfo, PROP_OWNER_BASE},
 };
 use apps::AppResolver;
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,9 @@ const SWAY_PER_PIXEL: f64 = 0.35;
 const MAX_SWAY: f64 = 25.;
 const SQUASH_PER_PIXEL: f64 = 0.01;
 const MAX_PROP_SQUASH: f64 = 0.3;
+/// A window this much inside a bigger window of the same app is a popup of
+/// it, never a biome's host.
+const POPUP_INSIDE: f64 = 0.8;
 /// Squash kick a prop gets when a pet lands on it.
 const LANDING_SQUASH: f64 = 2.5;
 
@@ -177,7 +180,19 @@ impl Biomes {
         let owners = self.resolver.resolve(windows, platform);
         self.hosts.clear();
         for window in windows {
-            if let Some(biome) = owners.get(&window.id) {
+            let Some(biome) = owners.get(&window.id) else {
+                continue;
+            };
+            // A dropdown, menu or popover is a window of its own, in front of
+            // the window it belongs to: the browser's address suggestions,
+            // say. Standing on it would put the scene on the toolbar.
+            let popup = windows.iter().any(|other| {
+                other.id != window.id
+                    && owners.get(&other.id) == Some(biome)
+                    && area(other.rect) > area(window.rect)
+                    && overlap(window.rect, other.rect) >= POPUP_INSIDE * area(window.rect)
+            });
+            if !popup {
                 self.hosts.entry(*biome).or_insert(window.id);
             }
         }
@@ -459,6 +474,16 @@ impl Biomes {
             })
             .collect()
     }
+}
+
+fn area(r: Rect) -> f64 {
+    r.width.max(0.) * r.height.max(0.)
+}
+
+fn overlap(a: Rect, b: Rect) -> f64 {
+    let w = a.right().min(b.right()) - a.x.max(b.x);
+    let h = a.bottom().min(b.bottom()) - a.y.max(b.y);
+    w.max(0.) * h.max(0.)
 }
 
 fn owner_of(slot: usize, index: usize) -> u64 {
