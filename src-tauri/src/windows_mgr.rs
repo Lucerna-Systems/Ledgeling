@@ -15,7 +15,17 @@ use tauri::{Emitter, WebviewWindow};
 pub struct Scene {
     pub monitor: u64,
     pub frames: Vec<Frame>,
+    /// Biome props, drawn beneath the pets.
+    pub props: Vec<crate::biome::PropFrame>,
     pub debug: Option<DebugOverlay>,
+}
+
+/// One decor pack's images, sent once per overlay before its props are drawn.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorPayload {
+    pub decor: String,
+    pub atlas: std::collections::BTreeMap<String, crate::packs::decor::PropAtlas>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -60,6 +70,8 @@ pub struct NativeSurface {
     /// Per overlay, the pets it has sprite data for and which pack build it
     /// came from, so a live-reloaded pack re-sends its images.
     known: HashMap<u64, HashMap<u64, usize>>,
+    /// Per overlay, the decor packs whose images it already has.
+    decor_known: HashMap<u64, std::collections::HashSet<String>>,
     visible: bool,
 }
 
@@ -70,6 +82,7 @@ impl NativeSurface {
             last: HashMap::new(),
             interactive: HashMap::new(),
             known: HashMap::new(),
+            decor_known: HashMap::new(),
             visible: true,
         }
     }
@@ -78,11 +91,13 @@ impl NativeSurface {
         self.last.clear();
         self.interactive.clear();
         self.known.clear();
+        self.decor_known.clear();
     }
     /// A freshly mounted overlay missed earlier spawn payloads; drop the
     /// record of what it holds so the next tick re-sends them.
     pub fn request_atlases(&mut self, monitor: u64) {
         self.known.remove(&monitor);
+        self.decor_known.remove(&monitor);
     }
     pub fn windows(&self) -> impl Iterator<Item = (&u64, &WebviewWindow)> {
         self.windows.iter()
@@ -105,6 +120,28 @@ impl NativeSurface {
             .filter(|(id, build)| known.and_then(|k| k.get(id)) != Some(build))
             .map(|(id, _)| *id)
             .collect()
+    }
+
+    /// Which decor packs this overlay still needs images for.
+    pub fn missing_decor(&self, monitor: u64, decor: &[String]) -> Vec<String> {
+        let known = self.decor_known.get(&monitor);
+        decor
+            .iter()
+            .filter(|id| !known.is_some_and(|k| k.contains(*id)))
+            .cloned()
+            .collect()
+    }
+
+    pub fn sync_decor(&mut self, monitor: u64, payloads: Vec<DecorPayload>) -> tauri::Result<()> {
+        let Some(window) = self.windows.get(&monitor) else {
+            return Ok(());
+        };
+        let known = self.decor_known.entry(monitor).or_default();
+        for payload in payloads {
+            window.emit("decor:spawn", &payload)?;
+            known.insert(payload.decor);
+        }
+        Ok(())
     }
 
     /// Emit `pet:spawn` / `pet:despawn` so each overlay holds exactly the

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, Brush, Check, Download, FolderOpen, MoreHorizontal, Package, PawPrint, Search, Trash2, X } from '@lucide/vue'
 import { call, packs, pets, refreshPacks, saveSettings, settings, snapshot } from '../state'
-import type { PackSummary } from '../types'
+import type { PackSummary, Snapshot } from '../types'
 import { openInStudio } from '../studio/state'
 import DiagnosticList from './DiagnosticList.vue'
 import FilterPill from '../components/FilterPill.vue'
@@ -84,6 +84,14 @@ async function editInStudio(id: string) {
   if (await openInStudio(id, false)) emit('go', 'studio')
 }
 async function spawn(id: string) { await call('spawn_pet', { packId: id }) }
+/** A home biome is where the pet rests and spends most of its wandering. */
+async function setHome(packId: string, event: Event) {
+  const pet = petFor(packId)
+  if (!pet) return
+  const value = (event.target as HTMLSelectElement).value
+  const next = await call<Snapshot>('set_pet_home', { pet: pet.id, biome: value === '' ? null : Number(value) }, false)
+  if (next) snapshot.value = next
+}
 async function despawn(id: string) {
   const pet = pets.value.find(p => p.packId === id)
   if (pet) await call('despawn_pet', { petId: pet.id })
@@ -153,6 +161,10 @@ async function exportPack(id: string) {
           <input class="pet-name" maxlength="24" :value="petFor(listing.summary.id)!.name" :aria-label="`Name for ${listing.summary.name}`" @change="rename(listing.summary.id, $event)" @keydown.enter="($event.target as HTMLInputElement).blur()">
           <span class="bond-days">Together {{ petFor(listing.summary.id)!.days }} {{ petFor(listing.summary.id)!.days === 1 ? 'day' : 'days' }}</span>
           <meter class="affection" min="0" max="1" :value="petFor(listing.summary.id)!.affection" aria-label="How fond it is of you" />
+          <select v-if="settings?.biomes?.length" class="pet-home" :value="petFor(listing.summary.id)!.homeBiome ?? ''" :aria-label="`Home for ${listing.summary.name}`" @change="setHome(listing.summary.id, $event)">
+            <option value="">No home</option>
+            <option v-for="biome in settings.biomes" :key="biome.id" :value="biome.id">Home: {{ biome.app }}</option>
+          </select>
         </div>
         <div class="pack-actions">
           <button v-if="!spawnedFor.has(listing.summary.id)" class="primary-button" :disabled="!listing.summary.loadable" @click="spawn(listing.summary.id)"><PawPrint :size="15" /> Bring out</button>

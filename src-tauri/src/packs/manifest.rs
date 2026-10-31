@@ -513,6 +513,9 @@ impl Manifest {
         self.animations.get(self.resolve_clip(wanted))
     }
     pub fn allows(&self, kind: SurfaceKind) -> bool {
+        if kind == SurfaceKind::PropTop {
+            return self.allows(SurfaceKind::WindowTop);
+        }
         self.locomotion.surfaces.contains(&kind)
     }
 }

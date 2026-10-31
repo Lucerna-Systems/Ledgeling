@@ -240,12 +240,15 @@ extern "system" fn collect(window: Handle, param: isize) -> Bool {
             return 1;
         }
         let z_index = collector.windows.len();
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(window, &mut pid);
         collector.windows.push(WindowInfo {
             id: window as u64,
             rect,
             z_index,
             is_minimized: IsIconic(window) != 0,
             monitor_id: monitor_for(rect),
+            pid: (pid != 0).then_some(pid),
         });
     }
     1
@@ -263,6 +266,32 @@ fn monitor_for(rect: Rect) -> u64 {
                 .map(|m| m.id)
         })
         .unwrap_or(0)
+}
+
+/// The executable's file stem for a process, lowercased. The path, not the
+/// window title; only the stem is kept, and only long enough to match it.
+fn executable_name(pid: u32) -> Option<String> {
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process == 0 {
+            return None;
+        }
+        let mut buffer = [0_u16; 512];
+        let mut size = buffer.len() as u32;
+        let ok = QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut size);
+        CloseHandle(process);
+        if ok == 0 {
+            return None;
+        }
+        let path = String::from_utf16_lossy(&buffer[..size as usize]);
+        let name = path
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches(".exe")
+            .to_lowercase();
+        (!name.is_empty()).then_some(name)
+    }
 }
 
 impl Platform for NativePlatform {
@@ -303,28 +332,12 @@ impl Platform for NativePlatform {
             if pid == 0 {
                 return Ok(None);
             }
-            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if process == 0 {
-                return Ok(None);
-            }
-            let mut buffer = [0_u16; 512];
-            let mut size = buffer.len() as u32;
-            // The executable path, not the window title. Only the file stem is
-            // kept, and only long enough to map it to a category.
-            let ok = QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut size);
-            CloseHandle(process);
-            if ok == 0 {
-                return Ok(None);
-            }
-            let path = String::from_utf16_lossy(&buffer[..size as usize]);
-            let name = path
-                .rsplit(['\\', '/'])
-                .next()
-                .unwrap_or_default()
-                .trim_end_matches(".exe")
-                .to_lowercase();
-            Ok((!name.is_empty()).then_some(ProcessInfo { name, pid }))
+            Ok(executable_name(pid).map(|name| ProcessInfo { name, pid }))
         }
+    }
+
+    fn process_name(&self, pid: u32) -> Option<String> {
+        executable_name(pid)
     }
 
     fn monitors(&self) -> Result<Vec<MonitorInfo>, String> {

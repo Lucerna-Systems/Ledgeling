@@ -74,6 +74,7 @@ pub fn front_to_back(
             z_index: windows.len(),
             is_minimized: false,
             monitor_id: monitor_for(rect),
+            pid: toplevel.pid,
         });
     }
     windows

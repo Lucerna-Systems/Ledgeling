@@ -145,7 +145,28 @@ describe('squish and wobble', () => {
     expect(toggle.attributes('aria-checked')).toBe('true')
     await toggle.trigger('click')
     expect(api.invoke.mock.calls[0]).toEqual(['set_settings', {
-      settings: { ...baseSettings, effects: { jelly: false } },
+      settings: { ...baseSettings, effects: { jelly: false, biomes: true } },
+    }])
+    wrapper.unmount()
+  })
+})
+
+describe('biomes', () => {
+  it('lists each biome and removes one through delete_biome', async () => {
+    snapshot.value = { settings: { ...baseSettings, biomes: [{ id: 4, app: 'safari', props: [{ decor: 'd', prop: 'oak', x: 0.5, flip: false }] }] } } as unknown as Snapshot
+    const wrapper = mount(SettingsPanel)
+    expect(wrapper.text()).toContain('safari')
+    expect(wrapper.text()).toContain('1 prop,')
+    await wrapper.get('[aria-label="Remove the safari biome"]').trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['delete_biome', { id: 4 }])
+    wrapper.unmount()
+  })
+
+  it('switches off without forgetting squish and wobble', async () => {
+    const wrapper = mount(SettingsPanel)
+    await wrapper.get('[aria-label="Show biomes"]').trigger('click')
+    expect(api.invoke.mock.calls[0]).toEqual(['set_settings', {
+      settings: { ...baseSettings, effects: { jelly: true, biomes: false } },
     }])
     wrapper.unmount()
   })

@@ -387,6 +387,8 @@ pub fn scan(packs_dir: &Path) -> Vec<PackListing> {
             !p.file_name()
                 .is_some_and(|n| n.to_string_lossy().starts_with('.'))
         })
+        // Decor packs live here too; they are not pets.
+        .filter(|p| !super::decor::is_decor_directory(p))
         .collect();
     directories.sort();
     for directory in directories {

@@ -48,6 +48,7 @@ export interface DebugOverlay {
 export interface Scene {
   monitor: number
   frames: Frame[]
+  props: PropFrame[]
   debug: DebugOverlay | null
 }
 
@@ -126,12 +127,42 @@ export interface Settings {
   /** The "meet your pet" tip card has been dismissed. */
   tipsDismissed: boolean
   effects: Effects
+  biomes: BiomeSetting[]
 }
+
+/** A scene of decor on one app's frontmost window. */
+export interface BiomeSetting {
+  id: number
+  /** The app's executable name, as the system reports it. */
+  app: string
+  props: PlacedProp[]
+}
+export interface PlacedProp { decor: string; prop: string; x: number; flip: boolean }
+
+export interface PropFrame {
+  key: string
+  decor: string
+  prop: string
+  frameIndex: number
+  x: number
+  y: number
+  width: number
+  height: number
+  anchorX: number
+  rotation: number
+  squashX: number
+  squashY: number
+  flip: boolean
+}
+export interface PropAtlas { image: string; frames: number; fps: number; width: number; height: number }
+export interface DecorPayload { decor: string; atlas: Record<string, PropAtlas> }
 
 /** The playful physics, each of which can be switched off. */
 export interface Effects {
   /** Squash, stretch and wobble. Off, pets still follow windows smoothly. */
   jelly: boolean
+  /** Biomes are drawn on their windows. Off, they are kept but not shown. */
+  biomes: boolean
 }
 
 export interface SessionSummary {
@@ -169,6 +200,8 @@ export interface PetView {
   /** Days spent together, and how fond the pet is of the user (0 to 1). */
   days: number
   affection: number
+  /** The biome this pet calls home. */
+  homeBiome: number | null
 }
 
 export interface MonitorInfo { id: number; bounds: Rect; work: Rect; scale: number; isPrimary: boolean }

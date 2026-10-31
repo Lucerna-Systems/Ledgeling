@@ -1,6 +1,7 @@
 //! Pet packs: data, never code. Nothing in this module evaluates anything but
 //! the fixed condition grammar in `expr`, and no pack field is ever executed.
 pub mod builtin;
+pub mod decor;
 pub mod diagnostics;
 pub mod expr;
 pub mod gallery;

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Activity, Check, ChevronRight, Code2, Monitor, Power, ShieldCheck, Shuffle, X } from '@lucide/vue'
 import { action, busy, call, native, pets, saveSettings, settings, snapshot } from '../state'
 import { ACCENT_PRESETS, DEFAULT_ACCENT, presetFor } from '../theme'
-import type { ScreenView, Settings, ThemeMode } from '../types'
+import type { ScreenView, Settings, Snapshot, ThemeMode } from '../types'
 
 const emit = defineEmits<{ go: [page: 'desktop' | 'awareness'] }>()
 
@@ -26,6 +26,12 @@ const pace = computed(() => {
 
 /** A snapshot from before effects existed reads as on, like the backend does. */
 const jelly = computed(() => settings.value?.effects?.jelly ?? true)
+const biomes = computed(() => settings.value?.effects?.biomes ?? true)
+
+async function removeBiome(id: number) {
+  const next = await call<Snapshot>('delete_biome', { id }, false)
+  if (next) snapshot.value = next
+}
 
 function save(patch: Partial<Settings>) {
   if (settings.value) void saveSettings({ ...settings.value, ...patch })
@@ -149,7 +155,7 @@ const neverSeen = [
     <div class="setting-row">
       <div><h3>Squish &amp; wobble</h3><p>Pets squash when they land and sway on a window you drag. Reduce motion in your system settings turns this off too.</p></div>
       <button class="toggle" :class="{ enabled: jelly }" role="switch" :aria-checked="jelly" aria-label="Squish and wobble"
-              @click="save({ effects: { ...settings?.effects, jelly: !jelly } })"><span /></button>
+              @click="save({ effects: { ...settings?.effects, jelly: !jelly, biomes } })"><span /></button>
     </div>
     <div class="setting-row">
       <div><h3>Notice my day</h3><p>Pets get sleepy when you step away and perk up when you return.</p></div>
@@ -168,6 +174,20 @@ const neverSeen = [
                 :disabled="!settings?.awareness.enabled" @click="toggleReminders"><span /></button>
       </div>
     </div>
+  </section>
+
+  <h2 class="group-title">Biomes</h2>
+  <section class="settings-group">
+    <div class="setting-row">
+      <div><h3>Show biomes</h3><p>Little scenes of trees and flowers on top of an app's window. They move with it, and a pet can call one home.</p></div>
+      <button class="toggle" :class="{ enabled: biomes }" role="switch" :aria-checked="biomes" aria-label="Show biomes"
+              @click="save({ effects: { ...settings?.effects, jelly, biomes: !biomes } })"><span /></button>
+    </div>
+    <div v-for="biome in settings?.biomes ?? []" :key="biome.id" class="setting-row biome-row">
+      <div><h3>{{ biome.app }}</h3><p>{{ biome.props.length }} {{ biome.props.length === 1 ? 'prop' : 'props' }}, on its front window.</p></div>
+      <button type="button" class="text-link" :aria-label="`Remove the ${biome.app} biome`" @click="removeBiome(biome.id)">Remove</button>
+    </div>
+    <div v-if="!settings?.biomes?.length" class="setting-row"><div><p>No biomes yet.</p></div></div>
   </section>
 
   <h2 class="group-title">General</h2>

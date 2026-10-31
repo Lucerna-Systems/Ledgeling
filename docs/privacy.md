@@ -15,6 +15,8 @@ below.
 | Mouse pointer position | So the pet can react to your cursor and be picked up | Memory only |
 | How long your current unbroken stretch of work has been | The nudge ladder, and nothing else | Memory only |
 | Your settings, and where each pet was last standing | So it is where you left it after a restart | `settings.json` in Ledgeling's own config folder |
+| Which process owns each window | So a biome can find its app's front window | Memory only; see below |
+| The executable name of an app *you made a biome for*, such as `safari` | So that biome comes back on that app | `settings.json`, only inside that biome; deleting the biome deletes it |
 
 ## Never collected
 
@@ -40,14 +42,30 @@ below.
 Step 4's table is yours to edit, under **Settings → Advanced → Awareness details**. The window title is never
 part of this sequence.
 
+## How biomes find their app
+
+A biome belongs to an app, so Ledgeling has to know which app owns each window.
+For each window it asks which process owns it, asks once for that process's
+executable name, and compares the name with the apps you made biomes for. Only
+the answer is kept, in memory: "this process is the Safari biome" or "this
+process is none of them". A name that matches no biome is never stored, and with
+no biomes, or with biomes switched off, no name is asked for at all. The window
+title is never part of this.
+
+The one name that is saved is the one you chose: making a biome for Safari writes
+`safari` into that biome in `settings.json`. Removing the biome under **Settings →
+Biomes** removes the name with it.
+
 ## How this is enforced
 
 `src-tauri/tests/privacy.rs` fails the build if any source file references a
 window-title API, a screen-capture API, a keyboard-state API, or anything that can
 open a network connection outside the `net` gate and the assistant's task adapters,
 if more than one file holds an HTTP client, if the gate's `send` does not check your
-consent first, and if Ledgeling's permission list grants anything beyond local
-window events. It is checked by a machine on every test run, not by memory.
+consent first, if Ledgeling's permission list grants anything beyond local
+window events, if any code outside the platform adapters and the biome resolver
+asks for a process name, and if a process name other than a biome's own app
+reaches `settings.json`. It is checked by a machine on every test run, not by memory.
 
 ## Online features
 

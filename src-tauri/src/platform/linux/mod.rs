@@ -191,6 +191,10 @@ impl Platform for NativePlatform {
         }
     }
 
+    fn process_name(&self, pid: u32) -> Option<String> {
+        process(pid).map(|info| info.name)
+    }
+
     fn foreground_process(&self) -> Result<Option<ProcessInfo>, String> {
         if self.session == Session::Wayland {
             // Without a window source only XWayland apps could be named, and

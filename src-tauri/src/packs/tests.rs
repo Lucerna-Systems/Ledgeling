@@ -815,7 +815,11 @@ fn every_bundled_pet_reacts_to_throws_and_petting_with_its_own_clips() {
 
 #[test]
 fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warnings() {
-    assert_eq!(super::builtin::BUILTIN.len(), 4);
+    assert_eq!(
+        super::builtin::BUILTIN.len(),
+        5,
+        "four pets and the meadow decor"
+    );
     let root = std::env::temp_dir().join(format!("perch-builtin-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let written = super::builtin::restore(&root, &[]).unwrap();
@@ -828,6 +832,13 @@ fn four_pets_ship_and_all_load_from_the_embedded_files_without_errors_or_warning
         assert_eq!(listing.summary.errors, 0, "{}", listing.report.text());
         assert_eq!(listing.summary.warnings, 0, "{}", listing.report.text());
     }
+    let (decor, broken) = super::decor::scan(&root);
+    assert_eq!(decor.len(), 1, "the meadow is decor, not a broken pet");
+    assert!(
+        broken.is_empty(),
+        "{:?}",
+        broken.iter().map(Report::text).collect::<Vec<_>>()
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
